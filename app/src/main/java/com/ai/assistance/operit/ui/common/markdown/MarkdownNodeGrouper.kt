@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.ai.assistance.operit.util.markdown.MarkdownNodeStable
+import com.ai.assistance.operit.util.stream.Stream
 
 sealed class MarkdownGroupedItem {
     data class Single(val index: Int) : MarkdownGroupedItem()
@@ -29,6 +30,7 @@ interface MarkdownNodeGrouper {
         textColor: Color,
         onLinkClick: ((String) -> Unit)?,
         xmlRenderer: XmlContentRenderer,
+        xmlStreamResolver: (Int) -> Stream<String>?,
         fillMaxWidth: Boolean
     )
 }
@@ -49,6 +51,7 @@ object NoopMarkdownNodeGrouper : MarkdownNodeGrouper {
         textColor: Color,
         onLinkClick: ((String) -> Unit)?,
         xmlRenderer: XmlContentRenderer,
+        xmlStreamResolver: (Int) -> Stream<String>?,
         fillMaxWidth: Boolean
     ) {
     }

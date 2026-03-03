@@ -203,6 +203,7 @@ const linuxSshTools = (function () {
     const DEFAULT_CONNECT_OPEN_TIMEOUT_MS = 3000;
     const DEFAULT_LOCAL_SESSION_NAME = "linux_ssh_default_session";
     const DEFAULT_TMUX_SESSION_NAME = "operit_ai";
+    const REMOTE_WRITE_B64_CHUNK_SIZE = 3072;
     const ENV_KEYS = {
         host: "LINUX_SSH_HOST",
         port: "LINUX_SSH_PORT",
@@ -269,18 +270,6 @@ const linuxSshTools = (function () {
     }
     function shellQuote(value) {
         return `'${asText(value).replace(/'/g, `'"'"'`)}'`;
-    }
-    function maskConfig(config) {
-        return {
-            host: config.host,
-            port: config.port,
-            username: config.username,
-            hasPassword: !!config.password,
-            privateKeyPath: config.privateKeyPath || "",
-            tmuxSessionName: config.tmuxSessionName,
-            localSessionName: config.localSessionName,
-            timeoutMs: config.timeoutMs
-        };
     }
     function extractStringResult(result) {
         if (typeof result === "string") {
@@ -511,6 +500,12 @@ const linuxSshTools = (function () {
         }
         return raw;
     }
+    function encodeBase64Utf8(value) {
+        if (typeof Buffer === "undefined") {
+            throw new Error("Failed to encode content: Buffer is not available");
+        }
+        return Buffer.from(asText(value), "utf-8").toString("base64");
+    }
     async function ensureRemoteTmux(config) {
         const installScript = [
             "if command -v tmux >/dev/null 2>&1; then",
@@ -574,21 +569,38 @@ const linuxSshTools = (function () {
     async function writeRemoteFileContent(config, path, content, appendMode) {
         const escapedPath = shellQuote(path);
         const redirectOperator = appendMode ? ">>" : ">";
-        const script = [
+        const encoded = encodeBase64Utf8(content);
+        const tempBase64Path = `/tmp/operit_linux_ssh_write_${Date.now()}_${Math.random().toString(16).slice(2)}.b64`;
+        const escapedTempBase64Path = shellQuote(tempBase64Path);
+        const initScript = [
             `mkdir -p \"$(dirname -- ${escapedPath})\"`,
-            `cat ${redirectOperator} ${escapedPath} <<'__OPERIT_EOF__'`,
-            asText(content),
-            "__OPERIT_EOF__"
+            `: > ${escapedTempBase64Path}`
         ].join("\n");
-        const result = await runRemoteCommand(config, script, config.timeoutMs);
-        if (result.exitCode !== 0 || result.timedOut) {
-            throw new Error(`Failed to write remote file: ${result.output}`);
+        const initResult = await runRemoteCommand(config, initScript, config.timeoutMs);
+        if (initResult.exitCode !== 0 || initResult.timedOut) {
+            throw new Error(`Failed to initialize remote write: ${initResult.output}`);
         }
-        return {
-            output: result.output,
-            exitCode: result.exitCode,
-            timedOut: result.timedOut
-        };
+        for (let offset = 0; offset < encoded.length; offset += REMOTE_WRITE_B64_CHUNK_SIZE) {
+            const chunk = encoded.slice(offset, offset + REMOTE_WRITE_B64_CHUNK_SIZE);
+            const chunkScript = `printf '%s' '${chunk}' >> ${escapedTempBase64Path}`;
+            const chunkResult = await runRemoteCommand(config, chunkScript, config.timeoutMs);
+            if (chunkResult.exitCode !== 0 || chunkResult.timedOut) {
+                throw new Error(`Failed to upload remote write chunk: ${chunkResult.output}`);
+            }
+        }
+        const decodeScript = [
+            "set -e",
+            `trap 'rm -f ${escapedTempBase64Path}' EXIT`,
+            "if ! command -v base64 >/dev/null 2>&1; then",
+            "  echo '__OPERIT_BASE64_NOT_FOUND__'",
+            "  exit 19",
+            "fi",
+            `base64 -d ${escapedTempBase64Path} ${redirectOperator} ${escapedPath}`
+        ].join("\n");
+        const decodeResult = await runRemoteCommand(config, decodeScript, config.timeoutMs);
+        if (decodeResult.exitCode !== 0 || decodeResult.timedOut) {
+            throw new Error(`Failed to decode and write remote file: ${decodeResult.output}`);
+        }
     }
     async function linux_ssh_configure(params) {
         try {
@@ -606,7 +618,6 @@ const linuxSshTools = (function () {
             return {
                 success: true,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 testConnection,
                 connection
             };
@@ -641,12 +652,10 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 timeoutMs,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
                 output: block || result.output,
-                rawOutput: result.output,
                 error: success ? "" : `SSH connection failed, exitCode=${result.exitCode}`
             };
         }
@@ -676,7 +685,6 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 command,
                 timeoutMs,
                 exitCode: result.exitCode,
@@ -706,7 +714,6 @@ const linuxSshTools = (function () {
             return {
                 success: !!tmuxResult.success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 exitCode: tmuxResult.exitCode,
                 timedOut: tmuxResult.timedOut,
                 output: tmuxResult.output,
@@ -755,7 +762,6 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 tmuxSessionName,
                 windowName,
                 command,
@@ -805,14 +811,12 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 tmuxSessionName,
                 windowName,
                 maxLines,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
                 output: content || result.output,
-                rawOutput: result.output,
                 error: success ? "" : `tmux capture failed, exitCode=${result.exitCode}`
             };
         }
@@ -865,7 +869,6 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 tmuxSessionName,
                 sessionExists: !notFound,
                 windows,
@@ -873,7 +876,6 @@ const linuxSshTools = (function () {
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
                 output: block || result.output,
-                rawOutput: result.output,
                 error: notFound
                     ? `tmux session not found: ${tmuxSessionName}`
                     : (success ? "" : `tmux list windows failed, exitCode=${result.exitCode}`)
@@ -903,7 +905,6 @@ const linuxSshTools = (function () {
             return {
                 success: true,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 sessionId: openResult.sessionId || session.sessionId,
                 timeoutMs,
                 timedOut: !!openResult.timedOut,
@@ -1010,7 +1011,6 @@ const linuxSshTools = (function () {
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 path,
                 exitCode: result.exitCode,
                 timedOut: result.timedOut,
@@ -1047,12 +1047,10 @@ const linuxSshTools = (function () {
             return {
                 success: true,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 path,
                 lineStart: lineStart === undefined ? null : lineStart,
                 lineEnd: lineEnd === undefined ? null : lineEnd,
-                content: readResult.content,
-                rawOutput: readResult.output
+                content: readResult.content
             };
         }
         catch (error) {
@@ -1080,17 +1078,13 @@ const linuxSshTools = (function () {
             });
             const content = asText(params.content);
             const append = parseBoolean(params && params.append, false);
-            const writeResult = await writeRemoteFileContent(config, path, content, append);
+            await writeRemoteFileContent(config, path, content, append);
             return {
                 success: true,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 path,
                 append,
-                contentLength: content.length,
-                exitCode: writeResult.exitCode,
-                timedOut: writeResult.timedOut,
-                output: writeResult.output
+                contentLength: content.length
             };
         }
         catch (error) {
@@ -1134,7 +1128,6 @@ const linuxSshTools = (function () {
             return {
                 success: true,
                 packageVersion: PACKAGE_VERSION,
-                config: maskConfig(config),
                 path,
                 replacements,
                 expectedReplacements,

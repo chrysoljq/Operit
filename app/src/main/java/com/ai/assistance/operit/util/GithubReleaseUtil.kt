@@ -36,7 +36,7 @@ class GithubReleaseUtil(private val context: Context) {
     )
 
     companion object {
-        private val GITHUB_MIRRORS = mapOf(
+        private val GITHUB_MIRRORS = linkedMapOf(
             "Ghfast" to "https://ghfast.top/",
             "GhProxy" to "https://ghproxy.com/",
             "GhProxyNet" to "https://ghproxy.net/",
@@ -45,7 +45,33 @@ class GithubReleaseUtil(private val context: Context) {
             "Gh-Proxy" to "https://gh-proxy.com/",
             "GitMirror" to "https://hub.gitmirror.com/",
             "Moeyy" to "https://github.moeyy.xyz/",
-            "Workers" to "https://github.abskoop.workers.dev/"
+            "Workers" to "https://github.abskoop.workers.dev/",
+            "H233" to "https://gh.h233.eu.org/",
+            "Gh1888866" to "https://ghproxy.1888866.xyz/",
+            "GhProxyCfd" to "https://ghproxy.cfd/",
+            "BokiMoe" to "https://github.boki.moe/",
+            "GhProxyNetHyphen" to "https://gh-proxy.net/",
+            "JasonZeng" to "https://gh.jasonzeng.dev/",
+            "Monlor" to "https://gh.monlor.com/",
+            "FastGitCc" to "https://fastgit.cc/",
+            "Tbedu" to "https://github.tbedu.top/",
+            "FirewallLxstd" to "https://firewall.lxstd.org/",
+            "Ednovas" to "https://github.ednovas.xyz/",
+            "GeekerTao" to "https://ghfile.geekertao.top/",
+            "Chjina" to "https://gh.chjina.com/",
+            "Hwinzniej" to "https://ghpxy.hwinzniej.top/",
+            "CrashMc" to "https://cdn.crashmc.com/",
+            "Yylx" to "https://git.yylx.win/",
+            "Mrhjx" to "https://gitproxy.mrhjx.cn/",
+            "Cxkpro" to "https://ghproxy.cxkpro.top/",
+            "Xxooo" to "https://gh.xxooo.cf/",
+            "Limoruirui" to "https://github.limoruirui.com/",
+            "Llkk" to "https://gh.llkk.cc/",
+            "Npee" to "https://down.npee.cn/?",
+            "Nxnow" to "https://gh.nxnow.top/",
+            "Zwy" to "https://gh.zwy.one/",
+            "Monkeyray" to "https://ghproxy.monkeyray.net/",
+            "Xx9527" to "https://gh.xx9527.cn/"
         )
 
         /**

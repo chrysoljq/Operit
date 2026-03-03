@@ -278,6 +278,46 @@ private fun pickBestMirrorKey(
     return bestKey
 }
 
+private fun sortPatchMirrorNamesForDisplay(
+    names: Collection<String>,
+    results: Map<String, PatchUpdateInstaller.MirrorProbeSummary>
+): List<String> {
+    return names.sortedWith(
+        compareBy<String> { name ->
+            when (val summary = results[name]) {
+                null -> 1
+                else -> if (summary.ok) 0 else 2
+            }
+        }.thenByDescending { name ->
+            results[name]?.speedBytesPerSec ?: Long.MIN_VALUE
+        }.thenBy { name ->
+            results[name]?.latencyMs ?: Long.MAX_VALUE
+        }.thenBy { name ->
+            name.lowercase(Locale.ROOT)
+        }
+    )
+}
+
+private fun sortFullMirrorNamesForDisplay(
+    names: Collection<String>,
+    results: Map<String, GithubReleaseUtil.ProbeResult>
+): List<String> {
+    return names.sortedWith(
+        compareBy<String> { name ->
+            when (val probe = results[name]) {
+                null -> 1
+                else -> if (probe.ok) 0 else 2
+            }
+        }.thenByDescending { name ->
+            results[name]?.bytesPerSec ?: Long.MIN_VALUE
+        }.thenBy { name ->
+            results[name]?.latencyMs ?: Long.MAX_VALUE
+        }.thenBy { name ->
+            name.lowercase(Locale.ROOT)
+        }
+    )
+}
+
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024L) return "${bytes} B"
     val kb = 1024.0
@@ -1128,7 +1168,8 @@ private fun PatchUpdateProgressDialog(
                             )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            state.mirrorResults.toSortedMap().forEach { (name, summary) ->
+                            sortPatchMirrorNamesForDisplay(state.mirrorResults.keys, state.mirrorResults).forEach { name ->
+                                val summary = state.mirrorResults[name] ?: return@forEach
                                 val statusText = if (summary.ok) "可用" else "不可用"
                                 val detail =
                                     if (summary.ok) {
@@ -1466,6 +1507,9 @@ fun DownloadSourceDialog(
     }
 
     val autoEnabled = probeResults.values.any { it.ok }
+    val orderedProbeKeys = remember(probeUrls, probeResults) {
+        sortFullMirrorNamesForDisplay(probeUrls.keys, probeResults)
+    }
 
     @Composable
     fun MirrorSourceRow(
@@ -1538,31 +1582,19 @@ fun DownloadSourceDialog(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 LazyColumn {
-                    items(mirroredUrls.toList()) { (name, url) ->
+                    items(orderedProbeKeys) { name ->
                         val probe = probeResults[name]
+                        val isGitHub = name == "GitHub"
+                        val url = probeUrls[name] ?: return@items
                         val enabled = probe?.ok == true
                         MirrorSourceRow(
-                            title = stringResource(id = R.string.mirror_download, name),
-                            desc = null,
-                            icon = Icons.Default.Storage,
+                            title = if (isGitHub) stringResource(id = R.string.github_source) else stringResource(id = R.string.mirror_download, name),
+                            desc = if (isGitHub) stringResource(id = R.string.github_source_desc) else null,
+                            icon = if (isGitHub) Icons.Default.Language else Icons.Default.Storage,
                             probe = probe,
                             enabled = enabled,
                             onClick = { onDownload(url) }
                         )
-                    }
-                    if (status != null) {
-                        item {
-                            val probe = probeResults["GitHub"]
-                            val enabled = probe?.ok == true
-                            MirrorSourceRow(
-                                title = stringResource(id = R.string.github_source),
-                                desc = stringResource(id = R.string.github_source_desc),
-                                icon = Icons.Default.Language,
-                                probe = probe,
-                                enabled = enabled,
-                                onClick = { onDownload(status.downloadUrl) }
-                            )
-                        }
                     }
                 }
             }
@@ -1664,6 +1696,9 @@ fun PatchDownloadSourceDialog(
     }
 
     val autoEnabled = probeResults.values.any { it.ok }
+    val orderedKeys = remember(keys, probeResults) {
+        sortPatchMirrorNamesForDisplay(keys, probeResults)
+    }
 
     @Composable
     fun MirrorSourceRow(
@@ -1736,7 +1771,7 @@ fun PatchDownloadSourceDialog(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 LazyColumn {
-                    items(keys) { name ->
+                    items(orderedKeys) { name ->
                         val summary = probeResults[name]
                         val title =
                             if (name == "GitHub") {

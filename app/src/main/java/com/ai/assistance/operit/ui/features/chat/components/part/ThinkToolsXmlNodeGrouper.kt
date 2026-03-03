@@ -41,6 +41,7 @@ import com.ai.assistance.operit.ui.common.markdown.XmlContentRenderer
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.markdown.MarkdownNodeStable
 import com.ai.assistance.operit.util.markdown.MarkdownProcessorType
+import com.ai.assistance.operit.util.stream.Stream
 
 class ThinkToolsXmlNodeGrouper(
     private val showThinkingProcess: Boolean,
@@ -172,6 +173,7 @@ class ThinkToolsXmlNodeGrouper(
         textColor: Color,
         onLinkClick: ((String) -> Unit)?,
         xmlRenderer: XmlContentRenderer,
+        xmlStreamResolver: (Int) -> Stream<String>?,
         fillMaxWidth: Boolean
     ) {
         val alpha by animateFloatAsState(
@@ -191,8 +193,9 @@ class ThinkToolsXmlNodeGrouper(
             it.type == MarkdownProcessorType.XML_BLOCK && extractXmlTagName(it.content) == "tool"
         }
 
-        val isInProgress = slice.any {
-            it.type == MarkdownProcessorType.XML_BLOCK && !isXmlFullyClosed(it.content)
+        val hasLiveXmlStream = slice.indices.any { idx ->
+            val absoluteIndex = group.startIndex + idx
+            xmlStreamResolver(absoluteIndex) != null
         }
 
         fun isConformingTailNode(node: MarkdownNodeStable): Boolean {
@@ -224,8 +227,10 @@ class ThinkToolsXmlNodeGrouper(
                 false
             } else {
                 nodes.subList(tailStartIndex, nodes.size).any { !isConformingTailNode(it) }
-            }
-        val shouldAutoExpand = !hasNonConformingAfterGroup
+        }
+        // 仅在该组仍处于流式阶段时自动展开；
+        // 流结束（包括用户取消后落为静态消息）默认自动收起。
+        val shouldAutoExpand = hasLiveXmlStream && !hasNonConformingAfterGroup
 
         var expanded by remember(rendererId, group.stableKey) { mutableStateOf(shouldAutoExpand) }
         var userOverride by remember(rendererId, group.stableKey) { mutableStateOf<Boolean?>(null) }
@@ -320,7 +325,8 @@ class ThinkToolsXmlNodeGrouper(
                                     xmlRenderer.RenderXmlContent(
                                         xmlContent = node.content,
                                         modifier = Modifier.fillMaxWidth().graphicsLayer { this.alpha = itemAlpha },
-                                        textColor = textColor
+                                        textColor = textColor,
+                                        xmlStream = xmlStreamResolver(absoluteIndex)
                                     )
                                 }
                             }

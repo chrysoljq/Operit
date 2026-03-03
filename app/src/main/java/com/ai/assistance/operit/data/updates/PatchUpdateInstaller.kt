@@ -5,10 +5,17 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.ai.assistance.operit.data.api.GitHubApiService
 import com.ai.assistance.operit.util.GithubReleaseUtil
 import com.ai.assistance.operit.util.AppLogger
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,12 +28,16 @@ import java.io.RandomAccessFile
 import java.security.DigestOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipFile
 import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 
 object PatchUpdateInstaller {
     private const val TAG = "PatchUpdateInstaller"
+    private const val MAX_CHAIN_STEPS = 64
+    private const val PATCH_DOWNLOAD_THREAD_COUNT = 6
 
     enum class Stage {
         SELECTING_MIRROR,
@@ -63,6 +74,8 @@ object PatchUpdateInstaller {
     }
 
     private const val PROBE_TIMEOUT_MS = 2500
+    private val releaseAssetUrlRegex =
+        Regex("^https?://github\\.com/([^/]+)/([^/]+)/releases/download/[^/]+/[^?]+(?:\\?.*)?$", RegexOption.IGNORE_CASE)
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -71,6 +84,16 @@ object PatchUpdateInstaller {
         .build()
 
     private const val WORK_DIR_NAME = "patch_update"
+
+    private data class PatchStep(
+        val patchUrl: String,
+        val metaUrl: String,
+        val baseSha256: String,
+        val targetSha256: String,
+        val toVersion: String,
+        val toPatchIndex: Int,
+        val targetVersionLabel: String
+    )
 
     fun installApk(context: Context, apkFile: File) {
         val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -108,13 +131,11 @@ object PatchUpdateInstaller {
         )
         onEvent(ProgressEvent.MirrorSelected(mirrorKey))
 
-        val selectedPatchUrl = selectMirrorUrl(patchUrl, mirrorKey)
-        val selectedMetaUrl = selectMirrorUrl(metaUrl, mirrorKey)
-
         downloadAndPreparePatchUpdateInternal(
             context = context,
-            patchUrl = selectedPatchUrl,
-            metaUrl = selectedMetaUrl,
+            patchUrl = patchUrl,
+            metaUrl = metaUrl,
+            mirrorKey = mirrorKey,
             onEvent = onEvent
         )
     }
@@ -126,13 +147,11 @@ object PatchUpdateInstaller {
         mirrorKey: String,
         onEvent: (ProgressEvent) -> Unit
     ): File = withContext(Dispatchers.IO) {
-        val selectedPatchUrl = selectMirrorUrl(patchUrl, mirrorKey)
-        val selectedMetaUrl = selectMirrorUrl(metaUrl, mirrorKey)
-
         downloadAndPreparePatchUpdateInternal(
             context = context,
-            patchUrl = selectedPatchUrl,
-            metaUrl = selectedMetaUrl,
+            patchUrl = patchUrl,
+            metaUrl = metaUrl,
+            mirrorKey = mirrorKey,
             onEvent = onEvent
         )
     }
@@ -141,68 +160,290 @@ object PatchUpdateInstaller {
         context: Context,
         patchUrl: String,
         metaUrl: String,
+        mirrorKey: String,
         onEvent: (ProgressEvent) -> Unit
     ): File = withContext(Dispatchers.IO) {
         val workDir = prepareCleanWorkDir(context)
-        val metaFile = File(workDir, "patch_meta.json")
-        val patchFile = File(workDir, "patch.zip")
+        val targetMetaFile = File(workDir, "target_patch_meta.json")
+        val currentApk = File(workDir, "current.apk")
+        val nextApk = File(workDir, "next.apk")
         val outApk = File(workDir, "rebuilt.apk")
+        val baseApk = File(context.applicationInfo.sourceDir)
+        baseApk.copyTo(currentApk, overwrite = true)
+
+        val selectedTargetMetaUrl = selectMirrorUrl(metaUrl, mirrorKey)
 
         onEvent(ProgressEvent.StageChanged(Stage.DOWNLOADING_META, "正在下载补丁元信息"))
         downloadToFile(
-            url = metaUrl,
-            out = metaFile,
+            url = selectedTargetMetaUrl,
+            out = targetMetaFile,
             label = "补丁元信息",
             onEvent = onEvent
         )
-        val metaJson = JSONObject(metaFile.readText())
+        val targetMeta = JSONObject(targetMetaFile.readText())
 
-        val format = metaJson.optString("format", "")
+        val format = targetMeta.optString("format", "")
         if (format != "apkraw-1") {
             throw IllegalStateException("Unsupported patch format: $format")
         }
 
-        val baseApk = File(context.applicationInfo.sourceDir)
-        val baseShaExpected = metaJson.optString("baseSha256", "")
-        if (baseShaExpected.isNotBlank()) {
-            val baseShaActual = sha256Hex(baseApk)
-            if (!baseShaActual.equals(baseShaExpected, ignoreCase = true)) {
-                throw IllegalStateException("Base sha256 mismatch")
-            }
-        }
-
-        onEvent(ProgressEvent.StageChanged(Stage.DOWNLOADING_PATCH, "正在下载补丁包"))
-        downloadToFile(
-            url = patchUrl,
-            out = patchFile,
-            label = "补丁包",
-            onEvent = onEvent
+        val baseShaActual = sha256Hex(currentApk)
+        onEvent(ProgressEvent.StageChanged(Stage.VERIFYING_APK, "正在解析补丁链路"))
+        val chain = resolvePatchChain(
+            context = context,
+            patchUrl = patchUrl,
+            metaUrl = metaUrl,
+            mirrorKey = mirrorKey,
+            currentBaseSha = baseShaActual,
+            targetMeta = targetMeta
         )
 
-        val patchShaExpected = metaJson.optString("patchSha256", "")
-        if (patchShaExpected.isNotBlank()) {
-            onEvent(ProgressEvent.StageChanged(Stage.VERIFYING_APK, "正在校验补丁包"))
-            val patchShaActual = sha256Hex(patchFile)
-            if (!patchShaActual.equals(patchShaExpected, ignoreCase = true)) {
-                throw IllegalStateException("Patch sha256 mismatch")
+        if (chain.isEmpty()) {
+            throw IllegalStateException("No applicable patch steps")
+        }
+
+        for ((index, step) in chain.withIndex()) {
+            coroutineContext.ensureActive()
+
+            val stepNo = index + 1
+            val total = chain.size
+            val stepMetaFile = File(workDir, "patch_meta_$stepNo.json")
+            val stepPatchFile = File(workDir, "patch_$stepNo.zip")
+
+            onEvent(ProgressEvent.StageChanged(Stage.DOWNLOADING_META, "正在下载补丁元信息 ($stepNo/$total)"))
+            downloadToFile(
+                url = selectMirrorUrl(step.metaUrl, mirrorKey),
+                out = stepMetaFile,
+                label = "补丁元信息 $stepNo/$total",
+                onEvent = onEvent
+            )
+            val stepMeta = JSONObject(stepMetaFile.readText())
+
+            val stepFormat = stepMeta.optString("format", "")
+            if (stepFormat != "apkraw-1") {
+                throw IllegalStateException("Unsupported patch format: $stepFormat")
+            }
+
+            val stepBaseExpected = stepMeta.optString("baseSha256", "")
+            if (stepBaseExpected.isNotBlank()) {
+                val stepBaseActual = sha256Hex(currentApk)
+                if (!stepBaseActual.equals(stepBaseExpected, ignoreCase = true)) {
+                    throw IllegalStateException("Base sha256 mismatch")
+                }
+            }
+
+            onEvent(ProgressEvent.StageChanged(Stage.DOWNLOADING_PATCH, "正在下载补丁包 ($stepNo/$total)"))
+            downloadToFile(
+                url = selectMirrorUrl(step.patchUrl, mirrorKey),
+                out = stepPatchFile,
+                label = "补丁包 $stepNo/$total",
+                multiThread = true,
+                onEvent = onEvent
+            )
+
+            val patchShaExpected = stepMeta.optString("patchSha256", "")
+            if (patchShaExpected.isNotBlank()) {
+                onEvent(ProgressEvent.StageChanged(Stage.VERIFYING_APK, "正在校验补丁包 ($stepNo/$total)"))
+                val patchShaActual = sha256Hex(stepPatchFile)
+                if (!patchShaActual.equals(patchShaExpected, ignoreCase = true)) {
+                    throw IllegalStateException("Patch sha256 mismatch")
+                }
+            }
+
+            onEvent(ProgressEvent.StageChanged(Stage.APPLYING_PATCH, "正在合并补丁 ($stepNo/$total)"))
+            applyApkrawPatch(currentApk, stepPatchFile, stepMeta, nextApk)
+
+            val targetShaExpected = stepMeta.optString("targetSha256", "")
+            if (targetShaExpected.isNotBlank()) {
+                onEvent(ProgressEvent.StageChanged(Stage.VERIFYING_APK, "正在校验新 APK ($stepNo/$total)"))
+                val targetShaActual = sha256Hex(nextApk)
+                if (!targetShaActual.equals(targetShaExpected, ignoreCase = true)) {
+                    throw IllegalStateException("Target sha256 mismatch")
+                }
+            }
+
+            if (currentApk.exists()) currentApk.delete()
+            if (!nextApk.renameTo(currentApk)) {
+                throw IllegalStateException("Failed to advance patch chain at step $stepNo")
             }
         }
 
-        onEvent(ProgressEvent.StageChanged(Stage.APPLYING_PATCH, "正在合并补丁"))
-        applyApkrawPatch(baseApk, patchFile, metaJson, outApk)
-
-        val targetShaExpected = metaJson.optString("targetSha256", "")
-        if (targetShaExpected.isNotBlank()) {
-            onEvent(ProgressEvent.StageChanged(Stage.VERIFYING_APK, "正在校验新 APK"))
-            val targetShaActual = sha256Hex(outApk)
-            if (!targetShaActual.equals(targetShaExpected, ignoreCase = true)) {
-                throw IllegalStateException("Target sha256 mismatch")
-            }
-        }
+        currentApk.copyTo(outApk, overwrite = true)
 
         cleanupPatchWorkDir(workDir, outApk)
         onEvent(ProgressEvent.StageChanged(Stage.READY_TO_INSTALL, "准备安装"))
         outApk
+    }
+
+    private suspend fun resolvePatchChain(
+        context: Context,
+        patchUrl: String,
+        metaUrl: String,
+        mirrorKey: String,
+        currentBaseSha: String,
+        targetMeta: JSONObject
+    ): List<PatchStep> {
+        val targetFormat = targetMeta.optString("format", "")
+        if (targetFormat != "apkraw-1") {
+            throw IllegalStateException("Unsupported patch format: $targetFormat")
+        }
+
+        val targetSha = targetMeta.optString("targetSha256", "").trim().lowercase()
+        if (targetSha.isBlank()) {
+            throw IllegalStateException("Patch meta missing targetSha256")
+        }
+
+        val targetToVersion = targetMeta.optString("toVersion", "").trim()
+        val targetToPatchIndex = if (targetMeta.has("toPatchIndex")) targetMeta.optInt("toPatchIndex", -1) else -1
+
+        val repo = parseRepoFromReleaseAssetUrl(metaUrl) ?: parseRepoFromReleaseAssetUrl(patchUrl)
+            ?: throw IllegalStateException("Unsupported patch source URL")
+
+        val api = GitHubApiService(context)
+        val releases = api.getRepositoryReleases(
+            owner = repo.first,
+            repo = repo.second,
+            page = 1,
+            perPage = 100
+        ).getOrElse { e ->
+            throw IllegalStateException("Failed to query patch releases: ${e.message ?: e.javaClass.simpleName}")
+        }
+
+        val stepsByEdge = LinkedHashMap<String, PatchStep>()
+
+        val targetCandidate = parsePatchStep(
+            meta = targetMeta,
+            patchUrl = patchUrl,
+            metaUrl = metaUrl,
+            tag = targetMeta.optString("tag", "")
+        )
+        if (targetCandidate != null) {
+            val edge = "${targetCandidate.baseSha256}->${targetCandidate.targetSha256}"
+            stepsByEdge[edge] = targetCandidate
+        }
+
+        for (release in releases) {
+            coroutineContext.ensureActive()
+            if (release.draft) continue
+
+            val metaAsset =
+                release.assets.firstOrNull { it.name.startsWith("patch_") && it.name.endsWith(".json") }
+                    ?: release.assets.firstOrNull { it.name.endsWith(".json") }
+            val patchAsset =
+                release.assets.firstOrNull { it.name.startsWith("apkrawpatch_") && it.name.endsWith(".zip") }
+                    ?: release.assets.firstOrNull { it.name.endsWith(".zip") }
+            if (metaAsset == null || patchAsset == null) continue
+
+            val metaText = downloadText(selectMirrorUrl(metaAsset.browser_download_url, mirrorKey))
+            val meta = JSONObject(metaText)
+            val candidate = parsePatchStep(
+                meta = meta,
+                patchUrl = patchAsset.browser_download_url,
+                metaUrl = metaAsset.browser_download_url,
+                tag = release.tag_name
+            ) ?: continue
+
+            val edge = "${candidate.baseSha256}->${candidate.targetSha256}"
+            val existing = stepsByEdge[edge]
+            if (existing == null) {
+                stepsByEdge[edge] = candidate
+            } else {
+                val replace = candidate.toPatchIndex > existing.toPatchIndex ||
+                    (candidate.toPatchIndex == existing.toPatchIndex &&
+                        UpdateManager.compareVersions(candidate.targetVersionLabel, existing.targetVersionLabel) > 0)
+                if (replace) {
+                    stepsByEdge[edge] = candidate
+                }
+            }
+        }
+
+        var currentSha = currentBaseSha.trim().lowercase()
+        val chain = mutableListOf<PatchStep>()
+        val seenEdges = HashSet<String>()
+
+        while (currentSha != targetSha) {
+            coroutineContext.ensureActive()
+            val candidates = stepsByEdge.values.filter { step ->
+                step.baseSha256 == currentSha &&
+                    (targetToVersion.isBlank() || step.toVersion.isBlank() || step.toVersion == targetToVersion) &&
+                    (targetToPatchIndex < 0 || step.toPatchIndex < 0 || step.toPatchIndex <= targetToPatchIndex)
+            }
+            if (candidates.isEmpty()) {
+                throw IllegalStateException("No applicable next patch for base sha ${currentSha.take(12)}")
+            }
+
+            var selected = candidates.first()
+            for (candidate in candidates.drop(1)) {
+                val betterByIndex = candidate.toPatchIndex > selected.toPatchIndex
+                val betterByVersion =
+                    candidate.toPatchIndex == selected.toPatchIndex &&
+                        UpdateManager.compareVersions(candidate.targetVersionLabel, selected.targetVersionLabel) > 0
+                if (betterByIndex || betterByVersion) {
+                    selected = candidate
+                }
+            }
+
+            val edge = "${selected.baseSha256}->${selected.targetSha256}"
+            if (!seenEdges.add(edge)) {
+                throw IllegalStateException("Patch chain loop detected")
+            }
+
+            chain.add(selected)
+            currentSha = selected.targetSha256
+            if (chain.size > MAX_CHAIN_STEPS) {
+                throw IllegalStateException("Patch chain exceeds $MAX_CHAIN_STEPS steps")
+            }
+        }
+
+        return chain
+    }
+
+    private fun parsePatchStep(
+        meta: JSONObject,
+        patchUrl: String,
+        metaUrl: String,
+        tag: String
+    ): PatchStep? {
+        val format = meta.optString("format", "")
+        if (format != "apkraw-1") return null
+
+        val baseSha = meta.optString("baseSha256", "").trim().lowercase()
+        val targetSha = meta.optString("targetSha256", "").trim().lowercase()
+        if (baseSha.isBlank() || targetSha.isBlank()) return null
+
+        val toVersion = meta.optString("toVersion", "").trim()
+        val toPatchIndex = if (meta.has("toPatchIndex")) meta.optInt("toPatchIndex", -1) else -1
+        val targetVersionLabel = when {
+            tag.isNotBlank() -> tag.removePrefix("v")
+            toVersion.isNotBlank() && toPatchIndex >= 0 -> "$toVersion+$toPatchIndex"
+            else -> toVersion
+        }
+
+        return PatchStep(
+            patchUrl = patchUrl,
+            metaUrl = metaUrl,
+            baseSha256 = baseSha,
+            targetSha256 = targetSha,
+            toVersion = toVersion,
+            toPatchIndex = toPatchIndex,
+            targetVersionLabel = targetVersionLabel
+        )
+    }
+
+    private fun parseRepoFromReleaseAssetUrl(url: String): Pair<String, String>? {
+        val match = releaseAssetUrlRegex.find(url.trim()) ?: return null
+        return match.groupValues[1] to match.groupValues[2]
+    }
+
+    private suspend fun downloadText(url: String): String {
+        val req = Request.Builder().url(url).build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                throw IllegalStateException("HTTP ${resp.code}: ${resp.message}")
+            }
+            val body = resp.body ?: throw IllegalStateException("Empty response body")
+            return body.string()
+        }
     }
 
     private fun cleanupPatchWorkDir(workDir: File, keepFile: File) {
@@ -255,6 +496,16 @@ object PatchUpdateInstaller {
 
         onEvent(ProgressEvent.MirrorProbeStarted(keys.size))
 
+        val patchProbeMap = keys.associateWith { key ->
+            if (key == "GitHub") patchUrl else patchMirrors[key] ?: patchUrl
+        }
+        val metaProbeMap = keys.associateWith { key ->
+            if (key == "GitHub") metaUrl else metaMirrors[key] ?: metaUrl
+        }
+
+        val patchResults = GithubReleaseUtil.probeMirrorUrls(patchProbeMap, timeoutMs = PROBE_TIMEOUT_MS)
+        val metaResults = GithubReleaseUtil.probeMirrorUrls(metaProbeMap, timeoutMs = PROBE_TIMEOUT_MS)
+
         var completed = 0
         var bestKey: String? = null
         var bestSpeed = Long.MIN_VALUE
@@ -262,20 +513,8 @@ object PatchUpdateInstaller {
 
         for (key in keys) {
             coroutineContext.ensureActive()
-
-            val patchProbeUrl = if (key == "GitHub") patchUrl else patchMirrors[key] ?: patchUrl
-            val metaProbeUrl = if (key == "GitHub") metaUrl else metaMirrors[key] ?: metaUrl
-
-            val patchRes =
-                GithubReleaseUtil.probeMirrorUrls(
-                    mapOf(key to patchProbeUrl),
-                    timeoutMs = PROBE_TIMEOUT_MS
-                )[key]
-            val metaRes =
-                GithubReleaseUtil.probeMirrorUrls(
-                    mapOf(key to metaProbeUrl),
-                    timeoutMs = PROBE_TIMEOUT_MS
-                )[key]
+            val patchRes = patchResults[key]
+            val metaRes = metaResults[key]
 
             val ok = patchRes?.ok == true && metaRes?.ok == true
             val speed =
@@ -323,6 +562,20 @@ object PatchUpdateInstaller {
     }
 
     private suspend fun downloadToFile(
+        url: String,
+        out: File,
+        label: String,
+        multiThread: Boolean = false,
+        onEvent: (ProgressEvent) -> Unit
+    ) {
+        if (multiThread) {
+            downloadToFileMultiThread(url = url, out = out, label = label, onEvent = onEvent)
+            return
+        }
+        downloadToFileSingleThread(url = url, out = out, label = label, onEvent = onEvent)
+    }
+
+    private suspend fun downloadToFileSingleThread(
         url: String,
         out: File,
         label: String,
@@ -404,6 +657,167 @@ object PatchUpdateInstaller {
                     speedBytesPerSec = speedBytesPerSec
                 )
             )
+        }
+    }
+
+    private suspend fun downloadToFileMultiThread(
+        url: String,
+        out: File,
+        label: String,
+        onEvent: (ProgressEvent) -> Unit
+    ) {
+        val totalBytes = fetchContentLength(url)
+        verifyRangeDownloadSupported(url)
+
+        out.parentFile?.mkdirs()
+        if (out.exists()) {
+            runCatching { out.delete() }
+        }
+        RandomAccessFile(out, "rw").use { raf ->
+            raf.setLength(totalBytes)
+        }
+
+        val downloadedBytes = AtomicLong(0L)
+        val finished = AtomicBoolean(false)
+
+        onEvent(
+            ProgressEvent.DownloadProgress(
+                label = label,
+                readBytes = 0L,
+                totalBytes = totalBytes,
+                speedBytesPerSec = 0L
+            )
+        )
+
+        coroutineScope {
+            val reporter = launch(Dispatchers.IO) {
+                var lastBytes = 0L
+                var lastAt = System.currentTimeMillis()
+                while (isActive && !finished.get()) {
+                    delay(300)
+                    val now = System.currentTimeMillis()
+                    val currentBytes = downloadedBytes.get()
+                    val delta = (currentBytes - lastBytes).coerceAtLeast(0L)
+                    val elapsed = (now - lastAt).coerceAtLeast(1L)
+                    val speed = (delta * 1000L) / elapsed
+
+                    onEvent(
+                        ProgressEvent.DownloadProgress(
+                            label = label,
+                            readBytes = currentBytes,
+                            totalBytes = totalBytes,
+                            speedBytesPerSec = speed
+                        )
+                    )
+
+                    lastBytes = currentBytes
+                    lastAt = now
+                }
+            }
+
+            try {
+                val ranges = splitRanges(totalBytes, PATCH_DOWNLOAD_THREAD_COUNT)
+                ranges.map { (start, end) ->
+                    async(Dispatchers.IO) {
+                        downloadRangeToFile(
+                            url = url,
+                            out = out,
+                            start = start,
+                            end = end,
+                            downloadedBytes = downloadedBytes
+                        )
+                    }
+                }.awaitAll()
+            } finally {
+                finished.set(true)
+                reporter.cancel()
+            }
+        }
+
+        onEvent(
+            ProgressEvent.DownloadProgress(
+                label = label,
+                readBytes = totalBytes,
+                totalBytes = totalBytes,
+                speedBytesPerSec = 0L
+            )
+        )
+    }
+
+    private fun fetchContentLength(url: String): Long {
+        val req = Request.Builder().url(url).build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                throw IllegalStateException("HTTP ${resp.code}: ${resp.message}")
+            }
+            val body = resp.body ?: throw IllegalStateException("Empty response body")
+            val totalBytes = body.contentLength()
+            if (totalBytes <= 0L) {
+                throw IllegalStateException("Server must provide a valid Content-Length for 6-thread patch download")
+            }
+            return totalBytes
+        }
+    }
+
+    private fun verifyRangeDownloadSupported(url: String) {
+        val req = Request.Builder()
+            .url(url)
+            .addHeader("Range", "bytes=0-0")
+            .build()
+        httpClient.newCall(req).execute().use { resp ->
+            if (resp.code != 206) {
+                throw IllegalStateException("Server does not support HTTP Range (required for 6-thread patch download)")
+            }
+        }
+    }
+
+    private fun splitRanges(totalBytes: Long, threadCount: Int): List<Pair<Long, Long>> {
+        val ranges = ArrayList<Pair<Long, Long>>(threadCount)
+        val baseSize = totalBytes / threadCount
+        val remainder = totalBytes % threadCount
+        var start = 0L
+
+        for (i in 0 until threadCount) {
+            val chunkSize = baseSize + if (i < remainder) 1L else 0L
+            if (chunkSize <= 0L) continue
+            val end = start + chunkSize - 1L
+            ranges.add(start to end)
+            start = end + 1L
+        }
+        return ranges
+    }
+
+    private suspend fun downloadRangeToFile(
+        url: String,
+        out: File,
+        start: Long,
+        end: Long,
+        downloadedBytes: AtomicLong
+    ) {
+        val req = Request.Builder()
+            .url(url)
+            .addHeader("Range", "bytes=$start-$end")
+            .build()
+
+        httpClient.newCall(req).execute().use { resp ->
+            if (resp.code != 206) {
+                throw IllegalStateException("HTTP ${resp.code}: Range request failed for bytes=$start-$end")
+            }
+            val body = resp.body ?: throw IllegalStateException("Empty response body for bytes=$start-$end")
+
+            RandomAccessFile(out, "rw").use { raf ->
+                raf.seek(start)
+                val buffer = ByteArray(128 * 1024)
+                body.byteStream().use { ins ->
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val n = ins.read(buffer)
+                        if (n <= 0) break
+                        raf.write(buffer, 0, n)
+                        downloadedBytes.addAndGet(n.toLong())
+                    }
+                }
+            }
         }
     }
 

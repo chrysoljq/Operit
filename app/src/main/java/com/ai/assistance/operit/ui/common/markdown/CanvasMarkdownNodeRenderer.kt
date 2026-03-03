@@ -60,6 +60,7 @@ import com.ai.assistance.operit.ui.common.displays.LatexCache
 import com.ai.assistance.operit.util.markdown.MarkdownNode
 import com.ai.assistance.operit.util.markdown.MarkdownNodeStable
 import com.ai.assistance.operit.util.markdown.MarkdownProcessorType
+import com.ai.assistance.operit.util.stream.Stream
 import java.util.concurrent.ConcurrentHashMap
 import android.graphics.Typeface
 import android.widget.TextView
@@ -313,6 +314,7 @@ fun CanvasMarkdownNodeRenderer(
     onLinkClick: ((String) -> Unit)? = null,
     index: Int,
     xmlRenderer: XmlContentRenderer,
+    xmlStream: Stream<String>? = null,
     fillMaxWidth: Boolean = true,
     isLastNode: Boolean = false
 ) {
@@ -358,6 +360,7 @@ fun CanvasMarkdownNodeRenderer(
         modifier = modifier,
         onLinkClick = currentOnLinkClick.value,
         xmlRenderer = currentXmlRenderer.value,
+        xmlStream = xmlStream,
         index = index,
         fillMaxWidth = fillMaxWidth,
         isLastNode = isLastNode
@@ -386,6 +389,7 @@ private fun renderNodeContent(
     modifier: Modifier,
     onLinkClick: ((String) -> Unit)?,
     xmlRenderer: XmlContentRenderer,
+    xmlStream: Stream<String>?,
     index: Int,
     fillMaxWidth: Boolean,
     isLastNode: Boolean = false
@@ -497,7 +501,8 @@ private fun renderNodeContent(
             xmlRenderer.RenderXmlContent(
                 xmlContent = content,
                 modifier = Modifier.fillMaxWidth(),
-                textColor = textColor
+                textColor = textColor,
+                xmlStream = xmlStream
             )
         }
         
