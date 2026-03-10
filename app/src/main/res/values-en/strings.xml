@@ -4668,6 +4668,8 @@
     <string name="table_block">Table</string>
     <string name="plan_execution_graph">Execution Plan</string>
     <string name="image_block">Image</string>
+    <string name="audio_block">Audio</string>
+    <string name="video_block">Video</string>
     <string name="image_load_failed">Image failed to load</string>
     <string name="save_image">Save Image</string>
     <string name="image_saved">Image saved to gallery</string>

@@ -4666,6 +4666,8 @@
     <string name="table_block">表格</string>
     <string name="plan_execution_graph">计划执行图</string>
     <string name="image_block">图片</string>
+    <string name="audio_block">音频</string>
+    <string name="video_block">视频</string>
     <string name="image_load_failed">图片加载失败</string>
     <string name="save_image">保存图片</string>
     <string name="image_saved">图片已保存到相册</string>

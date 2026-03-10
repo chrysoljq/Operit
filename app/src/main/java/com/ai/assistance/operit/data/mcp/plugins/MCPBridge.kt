@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
+import com.ai.assistance.operit.util.PortProcessKiller
 import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
@@ -327,13 +328,10 @@ class MCPBridge private constructor(private val context: Context) {
                     }
 
                     try {
-                        // 首先检查桥接器是否已经在运行
-                        val listResult = getInstance(ctx).listMcpServices()
-                        if (listResult != null && listResult.optBoolean("success", false)) {
-                            AppLogger.d(TAG, "桥接器已经在运行，无需重新启动")
-                            deferred.complete(true)
-                            return@withContext true
-                        }
+                        closeCommandConnectionLocked()
+                        PortProcessKiller.killListeners(port)
+                        cachedDetectedPort = null
+                        cachedDetectedPortAtMs = 0L
 
                         // 获取终端管理器
                         val terminal = Terminal.getInstance(ctx)

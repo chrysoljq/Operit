@@ -3,6 +3,7 @@ package com.ai.assistance.operit.ui.features.chat.webview
 import android.content.Context
 import android.os.Environment
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.PortProcessKiller
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.BinaryFileContentData
 import com.ai.assistance.operit.core.tools.DirectoryListingData
@@ -93,6 +94,7 @@ private constructor(
             AppLogger.d(TAG, "服务器已在端口 $port 上运行，跳过启动")
             return
         }
+        PortProcessKiller.killListeners(port)
         super.start(SOCKET_READ_TIMEOUT, false)
         AppLogger.d(TAG, "本地Web服务器已在端口 $port 上启动, 根目录: $rootPath")
         isServerRunning.set(true)

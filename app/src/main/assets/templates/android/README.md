@@ -81,9 +81,9 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ```toml
 [versions]
-agp = "8.6.0"
-kotlin = "1.9.0"
-compose-bom = "2024.04.01"
+agp = "9.0.0"
+kotlin = "2.3.10"
+composeBom = "2026.01.01"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -158,41 +158,26 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 - 完整编译需要安装 Android SDK
 - 推荐使用 Android Studio 进行完整开发
 
-### ⚠️ ARM64 环境 AAPT2 替换（必需）
+### ⚠️ ARM64 环境 AAPT2 替换（模板已内置）
 
-Gradle 会自动从 Google Maven 下载 AAPT2，但官方仅提供 x86_64 版本，
-在 ARM64 环境下会无法运行，必须替换为社区维护的 ARM64 版本。
+Gradle 会自动从 Google Maven 下载 AAPT2，但官方分发在 ARM64 Linux 环境下不可直接使用。
+此模板已经内置 ARM64 `aapt2`，`setup_android_env.sh` 会自动把它替换到 SDK build-tools 和 Gradle 缓存里。
 
-**下载来源**（AndroidIDE 社区移植版）：
-- GitHub: https://github.com/AndroidIDEOfficial/platform-tools
-- Release: https://github.com/AndroidIDEOfficial/platform-tools/releases/tag/v34.0.4
-- ARM64 aapt2: https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a
+**模板内置来源**：
+- Release: https://github.com/ReVanced/aapt2/releases/tag/v1.0.0
+- ARM64 aapt2: https://github.com/ReVanced/aapt2/releases/download/v1.0.0/aapt2-arm64-v8a
+- SHA-256: `e5b5ff7f0d4f6ecd7fa5d05d77fed3f09f6f1bf80f078b8aada82bc578848561`
 
-**步骤 1：替换 SDK build-tools 的 aapt2**
+**你只需要执行**
 ```bash
-cd $ANDROID_SDK/build-tools/34.0.0/
-wget -O aapt2 https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a
-chmod +x aapt2
-./aapt2 version
+chmod +x ./setup_android_env.sh
+./setup_android_env.sh
 ```
 
-**步骤 2：替换 Gradle 缓存中的 aapt2**（最关键）
-```bash
-# 进入 Gradle 缓存的 aapt2 目录（注意 hash 目录因环境不同而变化）
-cd ~/.gradle/caches/modules-2/files-2.1/com.android.tools.build/aapt2/8.6.0-11315950/<hash>/
-cp $ANDROID_SDK/build-tools/34.0.0/aapt2 .
-zip -f aapt2-8.6.0-11315950-linux.jar aapt2
-```
-
-**可选：替换 transforms 缓存中的 aapt2**
-```bash
-find ~/.gradle/caches/transforms-4 -name "aapt2" -type f -exec cp $ANDROID_SDK/build-tools/34.0.0/aapt2 {} \;
-```
-
-**重新编译**
-```bash
-./gradlew clean assembleDebug --no-daemon
-```
+脚本会自动完成：
+- 替换 `$ANDROID_SDK/build-tools/35.0.0/aapt2`
+- 替换 `~/.gradle/caches/modules-2/files-2.1/com.android.tools.build/aapt2` 下的 jar 内二进制
+- 替换 `~/.gradle/caches/transforms-*` 中已经解压出来的 `aapt2`
 
 ⚠️ **关于包名**  
 - 默认包名为 `com.java.myapplication`

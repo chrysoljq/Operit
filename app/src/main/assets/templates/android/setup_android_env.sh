@@ -5,6 +5,11 @@ log() {
   echo "[android-setup] $*" >&2
 }
 
+fail() {
+  log "ERROR: $*"
+  exit 1
+}
+
 command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -22,11 +27,12 @@ speed_to_int() {
   echo "$speed_int"
 }
 
-GRADLE_VERSION="8.7"
+GRADLE_VERSION="9.1.0"
 GRADLE_ROOT="${GRADLE_ROOT:-$HOME/gradle}"
 GRADLE_DIST="gradle-${GRADLE_VERSION}"
 GRADLE_ZIP="${GRADLE_ROOT}/${GRADLE_DIST}-bin.zip"
 GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+SCRIPT_DIR=""
 export GRADLE_USER_HOME
 APT_UPDATED=0
 
@@ -266,7 +272,7 @@ ensure_android_tools() {
   export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
   log "Installing Android SDK packages"
   yes | sdkmanager --licenses >/dev/null || true
-  sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+  sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 }
 
 ensure_gradle() {
@@ -500,7 +506,7 @@ export ANDROID_HOME=$ANDROID_HOME
 export ANDROID_SDK_ROOT=$ANDROID_HOME
 export PATH=\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$JAVA_HOME/bin:\$PATH
 export GRADLE_USER_HOME=$GRADLE_USER_HOME
-export GRADLE_HOME=${GRADLE_HOME:-$HOME/gradle/gradle-8.7}
+export GRADLE_HOME=${GRADLE_HOME:-$HOME/gradle/gradle-9.1.0}
 export PATH=\$GRADLE_HOME/bin:\$PATH
 # <<< operit android env <<<
 EOF
@@ -537,56 +543,27 @@ warmup_gradle_cache_after_aapt2_replace() {
 }
 
 replace_aapt2() {
-  local aapt2_github_url
-  aapt2_github_url="https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a"
+  local bundled_aapt2="$SCRIPT_DIR/tools/aapt2/aapt2-arm64-v8a"
+  local expected_sha256="e5b5ff7f0d4f6ecd7fa5d05d77fed3f09f6f1bf80f078b8aada82bc578848561"
+  if [[ ! -f "$bundled_aapt2" ]]; then
+    fail "Bundled ARM64 aapt2 not found: $bundled_aapt2"
+  fi
 
-  local aapt2_url
-  aapt2_url=$(select_download_url \
-    "ARM64 aapt2" \
-    "$aapt2_github_url" \
-    "github.com" \
-    "ghfast.top" "https://ghfast.top/$aapt2_github_url" \
-    "ghproxy.com" "https://ghproxy.com/$aapt2_github_url" \
-    "mirror.ghproxy.com" "https://mirror.ghproxy.com/$aapt2_github_url" \
-    "ghproxy.net" "https://ghproxy.net/$aapt2_github_url" \
-    "gh-proxy.com" "https://gh-proxy.com/$aapt2_github_url" \
-    "gh.h233.eu.org" "https://gh.h233.eu.org/$aapt2_github_url" \
-    "ghproxy.1888866.xyz" "https://ghproxy.1888866.xyz/$aapt2_github_url" \
-    "ghproxy.cfd" "https://ghproxy.cfd/$aapt2_github_url" \
-    "github.boki.moe" "https://github.boki.moe/$aapt2_github_url" \
-    "gh-proxy.net" "https://gh-proxy.net/$aapt2_github_url" \
-    "gh.jasonzeng.dev" "https://gh.jasonzeng.dev/$aapt2_github_url" \
-    "gh.monlor.com" "https://gh.monlor.com/$aapt2_github_url" \
-    "fastgit.cc" "https://fastgit.cc/$aapt2_github_url" \
-    "github.tbedu.top" "https://github.tbedu.top/$aapt2_github_url" \
-    "firewall.lxstd.org" "https://firewall.lxstd.org/$aapt2_github_url" \
-    "github.ednovas.xyz" "https://github.ednovas.xyz/$aapt2_github_url" \
-    "ghfile.geekertao.top" "https://ghfile.geekertao.top/$aapt2_github_url" \
-    "gh.chjina.com" "https://gh.chjina.com/$aapt2_github_url" \
-    "ghpxy.hwinzniej.top" "https://ghpxy.hwinzniej.top/$aapt2_github_url" \
-    "cdn.crashmc.com" "https://cdn.crashmc.com/$aapt2_github_url" \
-    "git.yylx.win" "https://git.yylx.win/$aapt2_github_url" \
-    "gitproxy.mrhjx.cn" "https://gitproxy.mrhjx.cn/$aapt2_github_url" \
-    "ghproxy.cxkpro.top" "https://ghproxy.cxkpro.top/$aapt2_github_url" \
-    "gh.xxooo.cf" "https://gh.xxooo.cf/$aapt2_github_url" \
-    "github.limoruirui.com" "https://github.limoruirui.com/$aapt2_github_url" \
-    "gh.llkk.cc" "https://gh.llkk.cc/$aapt2_github_url" \
-    "down.npee.cn" "https://down.npee.cn/?$aapt2_github_url" \
-    "hub.gitmirror.com" "https://hub.gitmirror.com/$aapt2_github_url" \
-    "gh.nxnow.top" "https://gh.nxnow.top/$aapt2_github_url" \
-    "gh.zwy.one" "https://gh.zwy.one/$aapt2_github_url" \
-    "ghproxy.monkeyray.net" "https://ghproxy.monkeyray.net/$aapt2_github_url" \
-    "gh.xx9527.cn" "https://gh.xx9527.cn/$aapt2_github_url" \
-    "gitclone.com" "https://gitclone.com/github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a")
+  local actual_sha256
+  actual_sha256=$(sha256sum "$bundled_aapt2" | awk '{print $1}')
+  if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+    fail "Bundled ARM64 aapt2 checksum mismatch: expected $expected_sha256, got $actual_sha256"
+  fi
+
   local tmp_dir
   tmp_dir=$(mktemp -d)
   local aapt2_path="$tmp_dir/aapt2"
-  log "Downloading ARM64 aapt2"
-  download_file "$aapt2_url" "$aapt2_path"
+  log "Using bundled ARM64 aapt2 from template"
+  cp "$bundled_aapt2" "$aapt2_path"
   chmod +x "$aapt2_path"
 
-  if [[ -d "$ANDROID_HOME/build-tools/34.0.0" ]]; then
-    cp "$aapt2_path" "$ANDROID_HOME/build-tools/34.0.0/aapt2"
+  if [[ -d "$ANDROID_HOME/build-tools/35.0.0" ]]; then
+    cp "$aapt2_path" "$ANDROID_HOME/build-tools/35.0.0/aapt2"
     log "Replaced SDK build-tools aapt2"
   fi
 
@@ -623,9 +600,8 @@ replace_aapt2() {
 }
 
 main() {
-  local script_dir
-  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-  cd "$script_dir"
+  SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  cd "$SCRIPT_DIR"
 
   if [[ -f "./gradlew" ]]; then
     chmod +x "./gradlew"
