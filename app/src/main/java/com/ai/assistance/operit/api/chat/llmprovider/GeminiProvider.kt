@@ -61,7 +61,7 @@ class GeminiProvider(
     @Volatile private var isManuallyCancelled = false
 
     /**
-     * 不可重试的异常，通常由客户端错误（如4xx状态码）引起
+     * 由客户端错误（如4xx状态码）触发的API异常，是否重试由统一策略决定
      */
     class NonRetriableException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -636,6 +636,40 @@ class GeminiProvider(
         }
     }
 
+    private suspend fun handleRetryableError(
+        context: Context,
+        exception: Exception,
+        retryCount: Int,
+        maxRetries: Int,
+        errorType: String,
+        errorMessage: String,
+        noRetryMessage: String,
+        enableRetry: Boolean,
+        onNonFatalError: suspend (String) -> Unit,
+        buildRetryMessage: (Int) -> String
+    ): Int {
+        if (isManuallyCancelled) {
+            logError("请求被用户取消，停止重试。", exception)
+            throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), exception)
+        }
+
+        if (!enableRetry) {
+            throw IOException(noRetryMessage, exception)
+        }
+
+        val newRetryCount = retryCount + 1
+        if (newRetryCount > maxRetries) {
+            logError("$errorType 且达到最大重试次数($maxRetries)", exception)
+            throw IOException(errorMessage, exception)
+        }
+
+        val retryDelayMs = LlmRetryPolicy.nextDelayMs(newRetryCount)
+        AppLogger.w(TAG, "$errorType，将在 ${retryDelayMs}ms 后进行第 $newRetryCount 次重试...", exception)
+        onNonFatalError(buildRetryMessage(newRetryCount))
+        delay(retryDelayMs)
+        return newRetryCount
+    }
+
     /** 发送消息到Gemini API */
     override suspend fun sendMessage(
             context: Context,
@@ -647,7 +681,8 @@ class GeminiProvider(
             availableTools: List<ToolPrompt>?,
             preserveThinkInHistory: Boolean,
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
-            onNonFatalError: suspend (error: String) -> Unit
+            onNonFatalError: suspend (error: String) -> Unit,
+            enableRetry: Boolean
     ): Stream<String> = stream {
         isManuallyCancelled = false
         val requestId = System.currentTimeMillis().toString()
@@ -663,7 +698,7 @@ class GeminiProvider(
 
         AppLogger.d(TAG, "发送消息到Gemini API, 模型: $modelName")
 
-        val maxRetries = 3
+        val maxRetries = LlmRetryPolicy.MAX_RETRY_ATTEMPTS
         var retryCount = 0
         var lastException: Exception? = null
 
@@ -681,7 +716,7 @@ class GeminiProvider(
 
         emitConnectionStatus(context.getString(R.string.gemini_connecting))
 
-        while (retryCount < maxRetries) {
+        while (retryCount <= maxRetries) {
             // 在循环开始时检查是否已被取消
             if (isManuallyCancelled) {
                 logError("请求被用户取消，停止重试。")
@@ -730,7 +765,7 @@ class GeminiProvider(
                         if (!response.isSuccessful) {
                             val errorBody = response.body?.string() ?: context.getString(R.string.gemini_error_no_error_details)
                             logError("API请求失败: ${response.code}, $errorBody")
-                            // 对于4xx这类明确的客户端错误，直接抛出，不进行重试
+                            // 4xx错误仍保留单独的异常类型，具体是否重试由统一策略决定
                             if (response.code in 400..499) {
                                 throw NonRetriableException(context.getString(R.string.gemini_error_api_request_failed, response.code, errorBody))
                             }
@@ -757,51 +792,67 @@ class GeminiProvider(
                 activeResponse = null
                 return@stream
             } catch (e: NonRetriableException) {
-                logError("发生不可重试错误", e)
-                throw e // 直接抛出，不重试
+                lastException = e
+                val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    errorText,
+                    errorText,
+                    errorText,
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.provider_error_retry_message, errorText, retryNumber)
+                }
             } catch (e: SocketTimeoutException) {
-                if (isManuallyCancelled) {
-                    logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
-                }
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    logError("连接超时且达到最大重试次数", e)
-                    throw IOException(context.getString(R.string.gemini_error_timeout_max_retries, e.message ?: ""))
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_timeout),
+                    context.getString(R.string.gemini_error_timeout_max_retries, e.message ?: ""),
+                    context.getString(R.string.provider_error_timeout),
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.gemini_network_timeout_retry, retryNumber)
                 }
-                logError("连接超时，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError(context.getString(R.string.gemini_network_timeout_retry, retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: UnknownHostException) {
-                if (isManuallyCancelled) {
-                    logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
-                }
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    logError("无法解析主机且达到最大重试次数", e)
-                    throw IOException(context.getString(R.string.gemini_error_cannot_connect))
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_unknown_host),
+                    context.getString(R.string.gemini_error_cannot_connect),
+                    context.getString(R.string.provider_error_unknown_host),
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.gemini_network_unstable_retry, retryNumber)
                 }
-                logError("无法解析主机，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError(context.getString(R.string.gemini_network_unstable_retry, retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: IOException) {
-                if (isManuallyCancelled) {
-                    logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
-                }
-                // 捕获所有其他IO异常，包括流读取中断
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    logError("达到最大重试次数后仍然失败", e)
-                    throw IOException(context.getString(R.string.gemini_error_max_retries, e.message ?: ""))
+                val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_network_interrupted),
+                    context.getString(R.string.gemini_error_max_retries, e.message ?: ""),
+                    errorText,
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.gemini_network_interrupted_retry, retryNumber)
                 }
-                logError("IO异常，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError(context.getString(R.string.gemini_network_interrupted_retry, retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: Exception) {
                 if (isManuallyCancelled) {
                     logError("请求被用户取消，停止重试。")
@@ -1538,7 +1589,7 @@ class GeminiProvider(
             // 这比getModelsList更可靠，因为它直接命中了聊天API。
             // 提供一个通用的系统提示，以防止某些需要它的模型出现错误。
             val testHistory = listOf("system" to "You are a helpful assistant.")
-            val stream = sendMessage(context, "Hi", testHistory, emptyList(), false, false, null, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {})
+            val stream = sendMessage(context, "Hi", testHistory, emptyList(), false, false, null, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {}, enableRetry = false)
 
             // 消耗流以确保连接有效。
             // 对 "Hi" 的响应应该很短，所以这会很快完成。

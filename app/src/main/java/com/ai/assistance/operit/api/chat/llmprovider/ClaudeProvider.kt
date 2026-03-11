@@ -51,7 +51,7 @@ class ClaudeProvider(
     @Volatile private var isManuallyCancelled = false
 
     /**
-     * 不可重试的异常，通常由客户端错误（如4xx状态码）引起
+     * 由客户端错误（如4xx状态码）触发的API异常，是否重试由统一策略决定
      */
     class NonRetriableException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
@@ -686,6 +686,40 @@ class ClaudeProvider(
         return request
     }
 
+    private suspend fun handleRetryableError(
+        context: Context,
+        exception: Exception,
+        retryCount: Int,
+        maxRetries: Int,
+        errorType: String,
+        errorMessage: String,
+        noRetryMessage: String,
+        enableRetry: Boolean,
+        onNonFatalError: suspend (String) -> Unit,
+        buildRetryMessage: (Int) -> String
+    ): Int {
+        if (isManuallyCancelled) {
+            AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
+            throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), exception)
+        }
+
+        if (!enableRetry) {
+            throw IOException(noRetryMessage, exception)
+        }
+
+        val newRetryCount = retryCount + 1
+        if (newRetryCount > maxRetries) {
+            AppLogger.e("AIService", "【Claude】$errorType 且达到最大重试次数($maxRetries)", exception)
+            throw IOException(errorMessage, exception)
+        }
+
+        val retryDelayMs = LlmRetryPolicy.nextDelayMs(newRetryCount)
+        AppLogger.w("AIService", "【Claude】$errorType，将在 ${retryDelayMs}ms 后进行第 $newRetryCount 次重试...", exception)
+        onNonFatalError(buildRetryMessage(newRetryCount))
+        delay(retryDelayMs)
+        return newRetryCount
+    }
+
     override suspend fun sendMessage(
             context: Context,
             message: String,
@@ -696,12 +730,13 @@ class ClaudeProvider(
             availableTools: List<ToolPrompt>?,
             preserveThinkInHistory: Boolean,
             onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
-            onNonFatalError: suspend (error: String) -> Unit
+            onNonFatalError: suspend (error: String) -> Unit,
+            enableRetry: Boolean
     ): Stream<String> = stream {
         isManuallyCancelled = false
         resetTokenCounts()
 
-        val maxRetries = 3
+        val maxRetries = LlmRetryPolicy.MAX_RETRY_ATTEMPTS
         var retryCount = 0
         var lastException: Exception? = null
         val receivedContent = StringBuilder()
@@ -768,7 +803,7 @@ class ClaudeProvider(
         }
 
         AppLogger.d("AIService", "准备连接到Claude AI服务...")
-        while (retryCount < maxRetries) {
+        while (retryCount <= maxRetries) {
             if (isManuallyCancelled) {
                 AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
                 throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled))
@@ -817,6 +852,7 @@ class ClaudeProvider(
                     try {
                         if (!response.isSuccessful) {
                             val errorBody = response.body?.string() ?: context.getString(R.string.openai_error_no_error_details)
+                            // 4xx错误仍保留单独的异常类型，具体是否重试由统一策略决定
                             if (response.code in 400..499) {
                                 throw NonRetriableException(context.getString(R.string.openai_error_api_request_failed_with_status, response.code, errorBody))
                             }
@@ -1162,50 +1198,67 @@ class ClaudeProvider(
                 AppLogger.d("AIService", "【Claude】请求成功完成")
                 return@stream
             } catch (e: NonRetriableException) {
-                AppLogger.e("AIService", "【Claude】发生不可重试错误", e)
-                throw e
+                lastException = e
+                val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    errorText,
+                    errorText,
+                    errorText,
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.provider_error_retry_message, errorText, retryNumber)
+                }
             } catch (e: SocketTimeoutException) {
-                if (isManuallyCancelled) {
-                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), e)
-                }
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    AppLogger.e("AIService", "【Claude】连接超时且达到最大重试次数", e)
-                    throw IOException(context.getString(R.string.openai_error_timeout_max_retries, e.message ?: ""))
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_timeout),
+                    context.getString(R.string.openai_error_timeout_max_retries, e.message ?: ""),
+                    context.getString(R.string.provider_error_timeout),
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_timeout), retryNumber)
                 }
-                AppLogger.w("AIService", "【Claude】连接超时，正在进行第 $retryCount 次重试...", e)
-                onNonFatalError(context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_timeout), retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: UnknownHostException) {
-                if (isManuallyCancelled) {
-                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), e)
-                }
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    AppLogger.e("AIService", "【Claude】无法解析主机且达到最大重试次数", e)
-                    throw IOException(context.getString(R.string.openai_error_cannot_connect))
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_unknown_host),
+                    context.getString(R.string.openai_error_cannot_connect),
+                    context.getString(R.string.provider_error_unknown_host),
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_unknown_host), retryNumber)
                 }
-                AppLogger.w("AIService", "【Claude】无法解析主机，正在进行第 $retryCount 次重试...", e)
-                onNonFatalError(context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_unknown_host), retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: IOException) {
-                if (isManuallyCancelled) {
-                    AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
-                    throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), e)
-                }
                 lastException = e
-                retryCount++
-                if (retryCount >= maxRetries) {
-                    AppLogger.e("AIService", "【Claude】达到最大重试次数", e)
-                    throw IOException(context.getString(R.string.openai_error_max_retries, e.message ?: ""))
+                val errorText = e.message ?: context.getString(R.string.provider_error_network_interrupted)
+                retryCount = handleRetryableError(
+                    context,
+                    e,
+                    retryCount,
+                    maxRetries,
+                    context.getString(R.string.provider_error_network_interrupted),
+                    context.getString(R.string.openai_error_max_retries, e.message ?: ""),
+                    errorText,
+                    enableRetry,
+                    onNonFatalError
+                ) { retryNumber ->
+                    context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_network_interrupted), retryNumber)
                 }
-                AppLogger.w("AIService", "【Claude】网络中断，正在进行第 $retryCount 次重试...", e)
-                onNonFatalError(context.getString(R.string.provider_error_retry_message, context.getString(R.string.provider_error_network_interrupted), retryCount))
-                delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: Exception) {
                 if (isManuallyCancelled) {
                     AppLogger.d("AIService", "【Claude】请求被用户取消，停止重试。")
@@ -1245,7 +1298,7 @@ class ClaudeProvider(
             // 这比getModelsList更可靠，因为它直接命中了聊天API。
             // 提供一个通用的系统提示，以防止某些需要它的模型出现错误。
             val testHistory = listOf("system" to "You are a helpful assistant.")
-            val stream = sendMessage(context, "Hi", testHistory, emptyList(), false, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {})
+            val stream = sendMessage(context, "Hi", testHistory, emptyList(), false, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {}, enableRetry = false)
 
             // 消耗流以确保连接有效。
             // 对 "Hi" 的响应应该很短，所以这会很快完成。

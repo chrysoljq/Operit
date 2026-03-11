@@ -175,6 +175,9 @@ class SpeechServicesPreferences(private val context: Context) {
                 VoiceServiceFactory.VoiceServiceType.HTTP_TTS -> {
                     httpConfig?.let { prefs[TTS_HTTP_CONFIG] = Json.encodeToString(it) }
                 }
+                VoiceServiceFactory.VoiceServiceType.OPENAI_WS_TTS -> {
+                    httpConfig?.let { prefs[TTS_HTTP_CONFIG] = Json.encodeToString(it) }
+                }
                 VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS -> {
                     // 系统 TTS 不需要额外配置
                 }

@@ -77,6 +77,7 @@ import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import com.ai.assistance.operit.api.voice.SiliconFlowVoiceProvider
+import com.ai.assistance.operit.api.voice.OpenAIRealtimeVoiceProvider
 import com.ai.assistance.operit.api.voice.OpenAIVoiceProvider
 import com.ai.assistance.operit.api.voice.VoiceListFetcher
 import com.ai.assistance.operit.api.voice.VoiceService
@@ -292,6 +293,7 @@ fun SpeechServicesSettingsScreen(
                                 value = when(ttsServiceTypeInput) {
                                     VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS -> stringResource(R.string.speech_services_tts_type_simple)
                                     VoiceServiceFactory.VoiceServiceType.HTTP_TTS -> stringResource(R.string.speech_services_tts_type_http)
+                                    VoiceServiceFactory.VoiceServiceType.OPENAI_WS_TTS -> stringResource(R.string.speech_services_tts_type_openai_ws)
                                     VoiceServiceFactory.VoiceServiceType.SILICONFLOW_TTS -> stringResource(R.string.speech_services_tts_type_siliconflow)
                                     VoiceServiceFactory.VoiceServiceType.OPENAI_TTS -> stringResource(R.string.speech_services_tts_type_openai)
                                 },
@@ -314,6 +316,7 @@ fun SpeechServicesSettingsScreen(
                                                 text = when(type) {
                                                     VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS -> stringResource(R.string.speech_services_tts_type_simple)
                                                     VoiceServiceFactory.VoiceServiceType.HTTP_TTS -> stringResource(R.string.speech_services_tts_type_http)
+                                                    VoiceServiceFactory.VoiceServiceType.OPENAI_WS_TTS -> stringResource(R.string.speech_services_tts_type_openai_ws)
                                                     VoiceServiceFactory.VoiceServiceType.SILICONFLOW_TTS -> stringResource(R.string.speech_services_tts_type_siliconflow)
                                                     VoiceServiceFactory.VoiceServiceType.OPENAI_TTS -> stringResource(R.string.speech_services_tts_type_openai)
                                                 },
@@ -695,6 +698,188 @@ fun SpeechServicesSettingsScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                    }
+                                )
+                            }
+                        }
+
+                        AnimatedVisibility(visible = ttsServiceTypeInput == VoiceServiceFactory.VoiceServiceType.OPENAI_WS_TTS) {
+                            Column(modifier = Modifier.padding(top = 16.dp)) {
+                                Text(
+                                    text = stringResource(R.string.speech_services_openai_ws_config),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = ttsUrlTemplateInput,
+                                    onValueChange = { ttsUrlTemplateInput = it },
+                                    label = { Text(stringResource(R.string.speech_services_openai_ws_url)) },
+                                    placeholder = { Text(stringResource(R.string.speech_services_openai_ws_url_placeholder)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    supportingText = {
+                                        Text(
+                                            text = stringResource(R.string.speech_services_openai_ws_url_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = ttsApiKeyInput,
+                                    onValueChange = { ttsApiKeyInput = it },
+                                    label = { Text(stringResource(R.string.speech_services_openai_api_key)) },
+                                    placeholder = { Text(stringResource(R.string.speech_services_openai_api_key_placeholder)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = ttsModelNameInput,
+                                    onValueChange = { ttsModelNameInput = it },
+                                    label = { Text(stringResource(R.string.speech_services_openai_model)) },
+                                    placeholder = { Text(stringResource(R.string.speech_services_openai_ws_model_placeholder)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    supportingText = {
+                                        Text(
+                                            text = stringResource(R.string.speech_services_openai_ws_model_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    text = stringResource(R.string.speech_services_openai_voice_settings),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                val builtinRealtimeVoices = remember { OpenAIRealtimeVoiceProvider.AVAILABLE_VOICES }
+                                var openAiRealtimeShowVoicesDialog by remember { mutableStateOf(false) }
+                                var openAiRealtimeVoiceSearchQuery by remember { mutableStateOf("") }
+
+                                val filteredRealtimeVoices = remember(builtinRealtimeVoices, openAiRealtimeVoiceSearchQuery) {
+                                    val q = openAiRealtimeVoiceSearchQuery.trim().lowercase()
+                                    if (q.isBlank()) {
+                                        builtinRealtimeVoices
+                                    } else {
+                                        builtinRealtimeVoices.filter { v ->
+                                            v.id.lowercase().contains(q) || v.name.lowercase().contains(q)
+                                        }
+                                    }
+                                }
+
+                                LaunchedEffect(openAiRealtimeShowVoicesDialog) {
+                                    if (openAiRealtimeShowVoicesDialog) {
+                                        openAiRealtimeVoiceSearchQuery = ""
+                                    }
+                                }
+
+                                if (openAiRealtimeShowVoicesDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = { openAiRealtimeShowVoicesDialog = false },
+                                        title = { Text(stringResource(R.string.speech_services_openai_voice_select)) },
+                                        text = {
+                                            Column {
+                                                OutlinedTextField(
+                                                    value = openAiRealtimeVoiceSearchQuery,
+                                                    onValueChange = { openAiRealtimeVoiceSearchQuery = it },
+                                                    label = { Text(stringResource(R.string.search)) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Search,
+                                                            contentDescription = stringResource(R.string.search),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    },
+                                                    trailingIcon = {
+                                                        if (openAiRealtimeVoiceSearchQuery.isNotBlank()) {
+                                                            IconButton(onClick = { openAiRealtimeVoiceSearchQuery = "" }) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Clear,
+                                                                    contentDescription = stringResource(R.string.clear)
+                                                                )
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    singleLine = true
+                                                )
+
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                if (filteredRealtimeVoices.isEmpty()) {
+                                                    Text(
+                                                        text = stringResource(R.string.no_models_found),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                } else {
+                                                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                                                        items(
+                                                            items = filteredRealtimeVoices,
+                                                            key = { it.id }
+                                                        ) { voice ->
+                                                            val displayName = if (voice.name == voice.id) {
+                                                                voice.name
+                                                            } else {
+                                                                "${voice.name} (${voice.id})"
+                                                            }
+                                                            DropdownMenuItem(
+                                                                text = { Text(displayName) },
+                                                                onClick = {
+                                                                    ttsVoiceIdInput = voice.id
+                                                                    openAiRealtimeShowVoicesDialog = false
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        confirmButton = {
+                                            TextButton(onClick = { openAiRealtimeShowVoicesDialog = false }) {
+                                                Text(stringResource(android.R.string.ok))
+                                            }
+                                        }
+                                    )
+                                }
+
+                                OutlinedTextField(
+                                    value = ttsVoiceIdInput,
+                                    onValueChange = { ttsVoiceIdInput = it },
+                                    label = { Text(stringResource(R.string.speech_services_openai_voice_id)) },
+                                    placeholder = { Text(stringResource(R.string.speech_services_openai_ws_voice_id_placeholder)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    supportingText = {
+                                        Text(
+                                            text = stringResource(R.string.speech_services_openai_ws_voice_id_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        IconButton(onClick = { openAiRealtimeShowVoicesDialog = true }) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
+                                                contentDescription = stringResource(R.string.speech_services_openai_voice_select_icon)
+                                            )
+                                        }
                                     }
                                 )
                             }

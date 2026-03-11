@@ -36,6 +36,8 @@ import com.ai.assistance.operit.ui.permissions.PermissionLevel
 import com.ai.assistance.operit.ui.permissions.ToolPermissionSystem
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -56,6 +58,8 @@ import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceBackupManager
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.CommandConfig
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceCommandExecutionState
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.toWorkspaceCommandOutputEntries
 import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.util.TtsCleaner
 import android.net.Uri
@@ -120,6 +124,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     
     // 工作区终端会话映射表：workspacePath -> sessionId
     private val workspaceTerminalSessions = mutableMapOf<String, String>()
+    private var workspaceCommandExecutionJob: Job? = null
+    private var workspaceOpenJob: Job? = null
 
     // 附件管理器 - 使用 services/core 版本
     private val attachmentDelegate = AttachmentDelegate(context, toolHandler)
@@ -386,7 +392,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // 添加WebView显示状态的状态流
     private val _showWebView = MutableStateFlow(false)
-    val showWebView: StateFlow<Boolean> = _showWebView
+    val showWebView: StateFlow<Boolean> = _showWebView.asStateFlow()
+
+    private val _isWorkspacePreparing = MutableStateFlow(false)
+    val isWorkspacePreparing: StateFlow<Boolean> = _isWorkspacePreparing.asStateFlow()
 
     // 添加工作区状态
     val isWorkspaceOpen: StateFlow<Boolean> by lazy {
@@ -410,6 +419,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // 工作区文件搜索词
     private val _workspaceFileSearchQuery = MutableStateFlow("")
     val workspaceFileSearchQuery: StateFlow<String> = _workspaceFileSearchQuery.asStateFlow()
+
+    private val _workspaceCommandExecutionState =
+        MutableStateFlow<WorkspaceCommandExecutionState?>(null)
+    val workspaceCommandExecutionState: StateFlow<WorkspaceCommandExecutionState?> =
+        _workspaceCommandExecutionState.asStateFlow()
 
     // 文件选择相关回调
     private var fileChooserCallback: ((Int, Intent?) -> Unit)? = null
@@ -724,10 +738,16 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
         // 如果当前WebView正在显示，则更新工作区并触发刷新
         if (_showWebView.value) {
-            updateWebServerForCurrentChat(chatId)
-            // 延迟一点时间再触发刷新，等待服务器工作区更新完成
             viewModelScope.launch {
-                refreshWebView()
+                try {
+                    prepareWorkspaceServerForCurrentChat(chatId)
+                    refreshWebView()
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "切换聊天后更新工作区服务失败", e)
+                    uiStateDelegate.showErrorMessage(
+                        context.getString(R.string.chat_update_workspace_server_failed, e.message ?: "")
+                    )
+                }
             }
         }
 
@@ -1652,86 +1672,103 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // WebView控制方法
     fun toggleWebView() {
-        // 如果要显示WebView，先关闭AI电脑
-        if (!_showWebView.value && _showAiComputer.value) {
-            _showAiComputer.value = false
-            AppLogger.d(TAG, "AI电脑已关闭（由于打开工作区）")
-        }
-        
-        // 如果要显示WebView，确保本地Web服务器已启动
-        if (!_showWebView.value) {
-            // Get the WORKSPACE server instance and ensure it's running
-            val workspaceServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
-            if (!workspaceServer.isRunning()) {
-                try {
-                    workspaceServer.start()
-                } catch (e: IOException) {
-                    AppLogger.e(TAG, "Failed to start workspace web server", e)
-                    showErrorMessage(context.getString(R.string.chat_start_workspace_server_failed))
-                    return
-                }
-            }
-
-            // 获取当前聊天ID
-            val chatId = currentChatId.value
-            if (chatId != null) {
-                // 更新Web服务器工作区
-                updateWebServerForCurrentChat(chatId)
-            } else {
-                // 如果没有聊天ID，先创建一个新对话
-                viewModelScope.launch {
-                    createNewChat()
-
-                    // 等待聊天ID创建完成
-                    var waitCount = 0
-                    while (currentChatId.value == null && waitCount < 10) {
-                        delay(100)
-                        waitCount++
-                    }
-
-                    // 使用新创建的聊天ID更新Web服务器
-                    currentChatId.value?.let { newChatId ->
-                        updateWebServerForCurrentChat(newChatId)
-                    }
-                }
-            }
-        }
-
-        // 切换WebView显示状态
-        val newShowState = !_showWebView.value
-        _showWebView.value = newShowState
-
-        // 每次切换时，增加刷新计数器
         if (_showWebView.value) {
-            _webViewRefreshCounter.value += 1
+            workspaceOpenJob?.cancel()
+            _isWorkspacePreparing.value = false
+            _showWebView.value = false
+            return
         }
+
+        if (_isWorkspacePreparing.value) {
+            AppLogger.d(TAG, "工作区正在准备中，忽略重复打开请求")
+            return
+        }
+
+        workspaceOpenJob?.cancel()
+        workspaceOpenJob = viewModelScope.launch {
+            _isWorkspacePreparing.value = true
+            try {
+                if (_showAiComputer.value) {
+                    _showAiComputer.value = false
+                    AppLogger.d(TAG, "AI电脑已关闭（由于打开工作区）")
+                }
+
+                val chatId = awaitWorkspaceChatId()
+                if (chatId != null) {
+                    prepareWorkspaceServerForCurrentChat(chatId)
+                } else {
+                    AppLogger.w(TAG, "打开工作区时未获取到聊天ID，将直接显示工作区页面")
+                }
+
+                _showWebView.value = true
+                _webViewRefreshCounter.value += 1
+            } catch (e: CancellationException) {
+                AppLogger.d(TAG, "工作区打开流程已取消")
+                throw e
+            } catch (e: IOException) {
+                AppLogger.e(TAG, "Failed to start workspace web server", e)
+                showErrorMessage(context.getString(R.string.chat_start_workspace_server_failed))
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "打开工作区失败", e)
+                uiStateDelegate.showErrorMessage(
+                    context.getString(R.string.chat_update_workspace_server_failed, e.message ?: "")
+                )
+            } finally {
+                _isWorkspacePreparing.value = false
+            }
+        }
+    }
+
+    private suspend fun awaitWorkspaceChatId(): String? {
+        currentChatId.value?.let { return it }
+
+        createNewChat()
+
+        var waitCount = 0
+        while (currentChatId.value == null && waitCount < 10) {
+            delay(100)
+            waitCount++
+        }
+
+        return currentChatId.value
+    }
+
+    private suspend fun prepareWorkspaceServer(workspacePath: String, workspaceEnv: String?) {
+        withContext(Dispatchers.IO) {
+            val webServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
+            if (!webServer.isRunning()) {
+                webServer.start()
+            }
+            webServer.updateChatWorkspace(workspacePath, workspaceEnv)
+        }
+    }
+
+    private suspend fun prepareWorkspaceServerForCurrentChat(chatId: String) {
+        val chat = chatHistories.value.find { it.id == chatId }
+        val workspacePath = chat?.workspace
+        val workspaceEnv = chat?.workspaceEnv
+
+        if (workspacePath == null) {
+            AppLogger.w(TAG, "Chat $chatId has no workspace bound. Web server not updated.")
+            return
+        }
+
+        prepareWorkspaceServer(workspacePath, workspaceEnv)
+        AppLogger.d(TAG, "Web服务器工作空间已更新为: $workspacePath env=$workspaceEnv for chat $chatId")
     }
 
 
     // 更新当前聊天ID的Web服务器工作空间
     fun updateWebServerForCurrentChat(chatId: String) {
-        try {
-            // Find the chat and its workspace
-            val chat = chatHistories.value.find { it.id == chatId }
-            val workspacePath = chat?.workspace
-            val workspaceEnv = chat?.workspaceEnv
-
-            if (workspacePath == null) {
-                AppLogger.w(TAG, "Chat $chatId has no workspace bound. Web server not updated.")
-                return
+        viewModelScope.launch {
+            try {
+                prepareWorkspaceServerForCurrentChat(chatId)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "更新Web服务器工作空间失败", e)
+                uiStateDelegate.showErrorMessage(
+                    context.getString(R.string.chat_update_workspace_server_failed, e.message ?: "")
+                )
             }
-
-            // 使用单例模式获取LocalWebServer实例
-            val webServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
-            // 确保服务器已启动
-            if (!webServer.isRunning()) {
-                webServer.start()
-            }
-            webServer.updateChatWorkspace(workspacePath, workspaceEnv)
-            AppLogger.d(TAG, "Web服务器工作空间已更新为: $workspacePath env=$workspaceEnv for chat $chatId")
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "更新Web服务器工作空间失败", e)
-            uiStateDelegate.showErrorMessage(context.getString(R.string.chat_update_workspace_server_failed, e.message ?: ""))
         }
     }
 
@@ -1894,11 +1931,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         // 2. Update the web server with the new path and refresh
         viewModelScope.launch {
             try {
-                val webServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
-                if (!webServer.isRunning()) {
-                    webServer.start()
-                }
-                webServer.updateChatWorkspace(workspace, workspaceEnv)
+                prepareWorkspaceServer(workspace, workspaceEnv)
                 AppLogger.d(TAG, "Web server workspace updated to: $workspace env=$workspaceEnv for chat $chatId")
 
                 // 3. Trigger a refresh of the WebView
@@ -1920,9 +1953,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         // 2. Stop the web server or clear workspace
         viewModelScope.launch {
             try {
-                val webServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
-                if (webServer.isRunning()) {
-                    webServer.stop()
+                withContext(Dispatchers.IO) {
+                    val webServer = LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
+                    if (webServer.isRunning()) {
+                        webServer.stop()
+                    }
                 }
                 AppLogger.d(TAG, "Web server stopped after unbinding workspace for chat $chatId")
 
@@ -1959,17 +1994,16 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             return
         }
 
-        // 立即切换 UI，给用户即时反馈
-        if (_showWebView.value) {
-            _showWebView.value = false
+        if (workspaceCommandExecutionJob?.isActive == true) {
+            uiStateDelegate.showToast(context.getString(R.string.workspace_command_already_running))
+            return
         }
-        _showAiComputer.value = true
 
-        viewModelScope.launch {
+        workspaceCommandExecutionJob = viewModelScope.launch {
+            var sessionId: String? = null
             try {
                 AppLogger.d(TAG, "Executing workspace command: $commandText in $workspacePath")
                 
-                val sessionId: String
                 val workspaceDir = File(workspacePath)
                 
                 if (command.usesDedicatedSession) {
@@ -1983,12 +2017,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         )
                         return@launch
                     }
-                    
-                    // 切换到工作区目录
-                    terminal.executeCommand(dedicatedSessionId, "cd \"${workspaceDir.absolutePath}\"")
                     sessionId = dedicatedSessionId
                     
-                    AppLogger.d(TAG, "Created dedicated terminal session $sessionId for command: ${command.label}")
+                    AppLogger.d(
+                        TAG,
+                        "Created dedicated terminal session $sessionId for command: ${command.label}"
+                    )
                 } else {
                     // 使用工作区的共享会话
                     var sharedSessionId = workspaceTerminalSessions[workspacePath]
@@ -2008,29 +2042,106 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         
                         // 保存会话 ID
                         workspaceTerminalSessions[workspacePath] = sharedSessionId
-                        
-                        // 切换到工作区目录
-                        terminal.executeCommand(sharedSessionId, "cd \"${workspaceDir.absolutePath}\"")
-                        AppLogger.d(TAG, "Created new workspace terminal session $sharedSessionId for $workspacePath")
+
+                        AppLogger.d(
+                            TAG,
+                            "Created new workspace terminal session $sharedSessionId for $workspacePath"
+                        )
                     }
                     
                     sessionId = sharedSessionId
                 }
-                
-                // 切换到该会话
-                terminal.switchToSession(sessionId)
-                
-                // 执行命令（用户可以立即看到输出）
-                terminal.executeCommand(sessionId, commandText)
-                
-                AppLogger.d(TAG, "Switched to computer view and executing command in session $sessionId")
+
+                val activeSessionId = sessionId ?: return@launch
+
+                terminal.executeCommand(activeSessionId, "cd \"${workspaceDir.absolutePath}\"")
+
+                _workspaceCommandExecutionState.value =
+                    WorkspaceCommandExecutionState(
+                        workspacePath = workspacePath,
+                        commandLabel = command.label,
+                        commandText = commandText,
+                        sessionId = activeSessionId,
+                        usesDedicatedSession = command.usesDedicatedSession
+                    )
+
+                terminal.executeCommandFlow(activeSessionId, commandText).collect { event ->
+                    val currentState = _workspaceCommandExecutionState.value
+                    if (currentState?.sessionId != activeSessionId) {
+                        return@collect
+                    }
+
+                    if (event.isCompleted) {
+                        val finalEntries = event.outputChunk.toWorkspaceCommandOutputEntries()
+                        _workspaceCommandExecutionState.value =
+                            currentState.copy(
+                                outputEntries =
+                                    finalEntries.takeIf { it.isNotEmpty() }
+                                        ?: currentState.outputEntries,
+                                isRunning = false,
+                                isCancelling = false
+                            )
+                    } else {
+                        val appendedEntries = event.outputChunk.toWorkspaceCommandOutputEntries()
+                        if (appendedEntries.isEmpty()) {
+                            return@collect
+                        }
+                        _workspaceCommandExecutionState.value =
+                            currentState.copy(
+                                outputEntries = currentState.outputEntries + appendedEntries
+                            )
+                    }
+                }
+
+                val currentState = _workspaceCommandExecutionState.value
+                if (currentState?.sessionId == activeSessionId) {
+                    if (currentState.isVisible) {
+                        delay(1200)
+                    }
+                    _workspaceCommandExecutionState.value = null
+                }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to execute workspace command", e)
+                if (_workspaceCommandExecutionState.value?.sessionId == sessionId) {
+                    _workspaceCommandExecutionState.value = null
+                }
                 uiStateDelegate.showErrorMessage(
                     context.getString(R.string.chat_execute_command_failed, e.message ?: "")
                 )
+            } finally {
+                val dedicatedSessionId = sessionId
+                if (dedicatedSessionId != null && command.usesDedicatedSession) {
+                    runCatching { terminal.closeSession(dedicatedSessionId) }
+                        .onFailure { error ->
+                            AppLogger.w(
+                                TAG,
+                                "Failed to close dedicated terminal session $dedicatedSessionId",
+                                error
+                            )
+                        }
+                }
+                workspaceCommandExecutionJob = null
             }
         }
+    }
+
+    fun hideWorkspaceCommandExecutionDialog(workspacePath: String) {
+        val currentState = _workspaceCommandExecutionState.value ?: return
+        if (currentState.workspacePath != workspacePath || !currentState.isRunning) {
+            return
+        }
+        _workspaceCommandExecutionState.value = currentState.copy(isVisible = false)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun cancelWorkspaceCommandExecution() {
+        val currentState = _workspaceCommandExecutionState.value ?: return
+        if (!currentState.isRunning || currentState.isCancelling || terminal == null) {
+            return
+        }
+
+        _workspaceCommandExecutionState.value = currentState.copy(isCancelling = true)
+        terminal.sendInterruptSignal(currentState.sessionId)
     }
 
     private fun executeWorkspaceTool(command: CommandConfig, workspacePath: String, toolName: String) {
@@ -2123,7 +2234,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun onWorkspaceButtonClick() {
         toggleWebView()
-        refreshWebView()
     }
 
     fun onAiComputerButtonClick() {

@@ -223,6 +223,7 @@ fun StreamMarkdownRenderer(
         xmlRenderer: XmlContentRenderer = remember { DefaultXmlRenderer() },
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
+        enableDialogs: Boolean = true,
         fillMaxWidth: Boolean = true
 ) {
     // 使用传入的state或创建新的state
@@ -427,6 +428,7 @@ fun StreamMarkdownRenderer(
                 xmlRenderer = xmlRenderer,
                 xmlStreamsByIndex = xmlNodeStreams,
                 nodeGrouper = nodeGrouper,
+                enableDialogs = enableDialogs,
                 modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
                 fillMaxWidth = fillMaxWidth
             )
@@ -459,6 +461,7 @@ fun StreamMarkdownRenderer(
         xmlRenderer: XmlContentRenderer = remember { DefaultXmlRenderer() },
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
+        enableDialogs: Boolean = true,
         fillMaxWidth: Boolean = true
 ) {
     // 使用传入的state或创建新的state
@@ -666,6 +669,7 @@ fun StreamMarkdownRenderer(
                 xmlRenderer = xmlRenderer,
                 xmlStreamsByIndex = xmlNodeStreams,
                 nodeGrouper = nodeGrouper,
+                enableDialogs = enableDialogs,
                 modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
                 fillMaxWidth = fillMaxWidth
             )
@@ -701,6 +705,7 @@ private fun AnimatedNode(
     onLinkClick: ((String) -> Unit)?,
     xmlRenderer: XmlContentRenderer,
     xmlStream: Stream<String>?,
+    enableDialogs: Boolean,
     fillMaxWidth: Boolean,
     isLastNode: Boolean = false
 ) {
@@ -726,6 +731,7 @@ private fun AnimatedNode(
             index = index,
             xmlRenderer = xmlRenderer,
             xmlStream = xmlStream,
+            enableDialogs = enableDialogs,
             fillMaxWidth = fillMaxWidth,
             isLastNode = isLastNode
         )
@@ -742,6 +748,7 @@ private fun UnifiedMarkdownCanvas(
     xmlRenderer: XmlContentRenderer,
     xmlStreamsByIndex: Map<Int, Stream<String>>,
     nodeGrouper: MarkdownNodeGrouper,
+    enableDialogs: Boolean,
     modifier: Modifier = Modifier,
     fillMaxWidth: Boolean = true
 ) {
@@ -801,6 +808,7 @@ private fun UnifiedMarkdownCanvas(
                             onLinkClick = onLinkClick,
                             xmlRenderer = xmlRenderer,
                             xmlStream = xmlStreamsByIndex[index],
+                            enableDialogs = enableDialogs,
                             fillMaxWidth = fillMaxWidth,
                             isLastNode = index == lastRenderableIndex
                         )

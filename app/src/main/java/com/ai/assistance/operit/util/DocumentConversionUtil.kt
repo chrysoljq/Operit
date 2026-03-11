@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.text.TextUtils
 import com.ai.assistance.operit.util.AppLogger
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -12,6 +13,8 @@ import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import org.apache.poi.hwpf.HWPFDocument
 import org.apache.poi.hwpf.extractor.WordExtractor
+import org.apache.poi.ss.usermodel.DataFormatter
+import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor
 import org.apache.poi.xwpf.usermodel.XWPFDocument
 import org.apache.poi.xwpf.usermodel.XWPFParagraph
@@ -636,6 +639,135 @@ object DocumentConversionUtil {
         }
     }
 
+    /** Convert XLS/XLSX spreadsheet documents to HTML */
+    fun convertSpreadsheetToHtml(sourceFile: File, targetFile: File): Boolean {
+        return try {
+            FileInputStream(sourceFile).use { fis ->
+                WorkbookFactory.create(fis).use { workbook ->
+                    val dataFormatter = DataFormatter()
+                    val evaluator = workbook.creationHelper.createFormulaEvaluator()
+                    val html =
+                        StringBuilder()
+                            .append("<!DOCTYPE html><html><head><meta charset=\"UTF-8\">")
+                            .append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")
+                            .append("<title>")
+                            .append(TextUtils.htmlEncode(sourceFile.nameWithoutExtension))
+                            .append("</title><style>")
+                            .append(
+                                """
+                                body { font-family: sans-serif; margin: 16px; color: #1f2937; background: #f8fafc; }
+                                h1 { margin: 0 0 16px; font-size: 20px; }
+                                .sheet-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+                                .sheet-tab { border: 1px solid #cbd5e1; background: white; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+                                .sheet-tab.active { background: #111827; color: white; border-color: #111827; }
+                                .sheet-panel { display: none; overflow: auto; background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; }
+                                .sheet-panel.active { display: block; }
+                                table { border-collapse: collapse; min-width: 100%; }
+                                th, td { border: 1px solid #dbe4ee; padding: 8px 10px; text-align: left; vertical-align: top; white-space: pre-wrap; }
+                                th { background: #eef2ff; position: sticky; top: 0; }
+                                .empty { color: #94a3b8; padding: 24px 0; }
+                                """.trimIndent()
+                            )
+                            .append("</style></head><body>")
+                            .append("<h1>")
+                            .append(TextUtils.htmlEncode(sourceFile.name))
+                            .append("</h1>")
+
+                    if (workbook.numberOfSheets > 1) {
+                        html.append("<div class=\"sheet-tabs\">")
+                        for (sheetIndex in 0 until workbook.numberOfSheets) {
+                            html.append("<button class=\"sheet-tab")
+                            if (sheetIndex == 0) {
+                                html.append(" active")
+                            }
+                            html.append("\" onclick=\"showSheet(")
+                            html.append(sheetIndex)
+                            html.append(")\">")
+                            html.append(TextUtils.htmlEncode(workbook.getSheetAt(sheetIndex).sheetName))
+                            html.append("</button>")
+                        }
+                        html.append("</div>")
+                    }
+
+                    for (sheetIndex in 0 until workbook.numberOfSheets) {
+                        val sheet = workbook.getSheetAt(sheetIndex)
+                        val maxColumns =
+                            sheet.asSequence()
+                                .map { row -> row.lastCellNum.toInt().coerceAtLeast(0) }
+                                .maxOrNull()
+                                ?.coerceAtLeast(0)
+                                ?: 0
+
+                        html.append("<section class=\"sheet-panel")
+                        if (sheetIndex == 0) {
+                            html.append(" active")
+                        }
+                        html.append("\" data-sheet-index=\"")
+                        html.append(sheetIndex)
+                        html.append("\">")
+                        html.append("<h2>")
+                        html.append(TextUtils.htmlEncode(sheet.sheetName))
+                        html.append("</h2>")
+
+                        if (sheet.physicalNumberOfRows == 0 || maxColumns == 0) {
+                            html.append("<div class=\"empty\">Empty sheet</div></section>")
+                            continue
+                        }
+
+                        html.append("<table><thead><tr>")
+                        for (columnIndex in 0 until maxColumns) {
+                            html.append("<th>")
+                            html.append(columnName(columnIndex))
+                            html.append("</th>")
+                        }
+                        html.append("</tr></thead><tbody>")
+
+                        sheet.forEach { row ->
+                            html.append("<tr>")
+                            for (columnIndex in 0 until maxColumns) {
+                                val cell = row.getCell(columnIndex)
+                                val formattedValue =
+                                    cell?.let { dataFormatter.formatCellValue(it, evaluator) }.orEmpty()
+                                html.append("<td>")
+                                html.append(TextUtils.htmlEncode(formattedValue).replace("\n", "<br>"))
+                                html.append("</td>")
+                            }
+                            html.append("</tr>")
+                        }
+
+                        html.append("</tbody></table></section>")
+                    }
+
+                    if (workbook.numberOfSheets > 1) {
+                        html.append(
+                            """
+                            <script>
+                            function showSheet(index) {
+                              document.querySelectorAll('.sheet-panel').forEach((panel, panelIndex) => {
+                                panel.classList.toggle('active', panelIndex === index);
+                              });
+                              document.querySelectorAll('.sheet-tab').forEach((tab, tabIndex) => {
+                                tab.classList.toggle('active', tabIndex === index);
+                              });
+                            }
+                            </script>
+                            """.trimIndent()
+                        )
+                    }
+
+                    html.append("</body></html>")
+                    FileOutputStream(targetFile).bufferedWriter().use { writer ->
+                        writer.write(html.toString())
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error converting spreadsheet to HTML", e)
+            false
+        }
+    }
+
     /** Copy text file with format conversion */
     fun copyTextFile(sourceFile: File, targetFile: File): Boolean {
         try {
@@ -812,5 +944,15 @@ object DocumentConversionUtil {
             AppLogger.e(TAG, "Error converting Word to PDF", e)
             false
         }
+    }
+
+    private fun columnName(index: Int): String {
+        var current = index
+        val result = StringBuilder()
+        do {
+            result.insert(0, ('A'.code + (current % 26)).toChar())
+            current = current / 26 - 1
+        } while (current >= 0)
+        return result.toString()
     }
 }

@@ -68,7 +68,8 @@ data class OpenFileInfo(
         val path: String,
         val content: String,
         val lastModified: Long,
-        val name: String = File(path).name
+        val name: String = File(path).name,
+        val mimeType: String = ""
 )
 
 // 快速路径条目
@@ -371,6 +372,21 @@ fun FileBrowser(
         coroutineScope.launch {
             isLoading = true
             try {
+                val mimeType = workspaceMimeTypeForPath(filePath)
+                val lastModified = if (isSafEnv) System.currentTimeMillis() else File(filePath).lastModified()
+
+                if (workspaceShouldOpenAsDirectPreview(filePath)) {
+                    onFileOpen?.invoke(
+                        OpenFileInfo(
+                            path = filePath,
+                            content = "",
+                            lastModified = lastModified,
+                            mimeType = mimeType
+                        )
+                    )
+                    return@launch
+                }
+
                 val tool = AITool("read_file_full", withEnvParams(listOf(ToolParameter("path", filePath))))
                 AppLogger.d("WorkspaceFileBrowser", "execute read_file_full path=$filePath env=$currentEnvironment")
                 val result = toolHandler.executeTool(tool)
@@ -378,8 +394,12 @@ fun FileBrowser(
                 if (result.success && result.result is FileContentData) {
                     val fileContentData = result.result as FileContentData
                     val content = fileContentData.content
-                    val lastModified = if (isSafEnv) 0L else File(filePath).lastModified()
-                    val openFileInfo = OpenFileInfo(path = filePath, content = content, lastModified = lastModified)
+                    val openFileInfo = OpenFileInfo(
+                        path = filePath,
+                        content = content,
+                        lastModified = lastModified,
+                        mimeType = mimeType
+                    )
                     onFileOpen?.invoke(openFileInfo)
                 }
             } catch (e: Exception) {

@@ -111,7 +111,8 @@ private fun isLargeImage(url: String): Boolean {
 fun MarkdownImageRenderer(
         imageMarkdown: String,
         modifier: Modifier = Modifier,
-        maxImageHeight: Int = 160 // 更小的默认最大高度
+        maxImageHeight: Int = 160, // 更小的默认最大高度
+        enableDialogs: Boolean = true
 ) {
     // 只有完整的Markdown图片语法才会被渲染
     if (!isCompleteImageMarkdown(imageMarkdown)) {
@@ -122,6 +123,23 @@ fun MarkdownImageRenderer(
     val imageUrl = extractMarkdownImageUrl(imageMarkdown)
 
     if (imageUrl.isEmpty()) {
+        return
+    }
+
+    if (isLikelyVideoUrl(imageUrl)) {
+        MarkdownVideoRenderer(
+            videoMarkdown = imageMarkdown,
+            modifier = modifier,
+            maxVideoHeight = 220
+        )
+        return
+    }
+
+    if (isLikelyAudioUrl(imageUrl)) {
+        MarkdownAudioRenderer(
+            audioMarkdown = imageMarkdown,
+            modifier = modifier
+        )
         return
     }
 
@@ -147,7 +165,7 @@ fun MarkdownImageRenderer(
                         Modifier.wrapContentHeight()
                             .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp)) // 增加圆角大小为12dp
-                                .clickable { showFullScreen = true }
+                                .clickable(enabled = enableDialogs) { showFullScreen = true }
         ) {
             SubcomposeAsyncImage(
                     model =
@@ -208,7 +226,7 @@ fun MarkdownImageRenderer(
     }
 
     // 全屏预览对话框
-    if (showFullScreen) {
+    if (enableDialogs && showFullScreen) {
         FullScreenImageDialog(
                 imageUrl = imageUrl,
                 imageAlt = imageAlt,

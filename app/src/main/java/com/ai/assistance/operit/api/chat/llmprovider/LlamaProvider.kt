@@ -164,7 +164,8 @@ class LlamaProvider(
         availableTools: List<ToolPrompt>?,
         preserveThinkInHistory: Boolean,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
-        onNonFatalError: suspend (error: String) -> Unit
+        onNonFatalError: suspend (error: String) -> Unit,
+        enableRetry: Boolean
     ): Stream<String> = stream {
         isCancelled = false
 

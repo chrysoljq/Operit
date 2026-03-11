@@ -82,7 +82,8 @@ object ModelConfigConnectionTester {
                     "Hi",
                     emptyList(),
                     parameters,
-                    stream = false
+                    stream = false,
+                    enableRetry = false
                 ).collect { }
             }
 
@@ -121,7 +122,8 @@ object ModelConfigConnectionTester {
                             testHistory,
                             parameters,
                             stream = false,
-                            availableTools = availableTools
+                            availableTools = availableTools,
+                            enableRetry = false
                         ).collect { }
                     }
 
@@ -158,7 +160,8 @@ object ModelConfigConnectionTester {
                             prompt,
                             emptyList(),
                             parameters,
-                            stream = false
+                            stream = false,
+                            enableRetry = false
                         ).collect { }
                     } finally {
                         ImagePoolManager.removeImage(imageId)
@@ -186,7 +189,8 @@ object ModelConfigConnectionTester {
                             prompt,
                             emptyList(),
                             parameters,
-                            stream = false
+                            stream = false,
+                            enableRetry = false
                         ).collect { }
                     } finally {
                         MediaPoolManager.removeMedia(audioId)
@@ -214,7 +218,8 @@ object ModelConfigConnectionTester {
                             prompt,
                             emptyList(),
                             parameters,
-                            stream = false
+                            stream = false,
+                            enableRetry = false
                         ).collect { }
                     } finally {
                         MediaPoolManager.removeMedia(videoId)

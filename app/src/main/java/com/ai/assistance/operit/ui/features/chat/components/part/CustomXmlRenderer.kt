@@ -159,7 +159,7 @@ class CustomXmlRenderer(
             "html" -> renderHtmlContent(trimmedContent, Modifier, textColor)
             "mood" -> renderMoodTag(trimmedContent, Modifier, textColor)
             "font" -> FontTagRenderer.Render(trimmedContent, Modifier, textColor)
-            "details", "detail" -> DetailsTagRenderer.Render(trimmedContent, Modifier, textColor)
+            "details", "detail" -> DetailsTagRenderer.Render(trimmedContent, Modifier, textColor, enableDialogs = enableDialogs)
             else -> fallback.RenderXmlContent(trimmedContent, Modifier, textColor, xmlStream, renderInstanceKey)
         }
     }
@@ -296,7 +296,8 @@ class CustomXmlRenderer(
                         com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable(
                                 text = searchText,
                                 textColor = textColor.copy(alpha = 0.8f),
-                                modifier = Modifier
+                                modifier = Modifier,
+                                enableDialogs = enableDialogs
                         )
                     }
                 }
@@ -566,6 +567,7 @@ class CustomXmlRenderer(
                                         modifier = Modifier.fillMaxWidth(),
                                         textColor = textColor.copy(alpha = 0.6f),
                                         backgroundColor = Color.Transparent,
+                                        enableDialogs = enableDialogs,
                                         fillMaxWidth = true
                                     )
                                 }
@@ -587,6 +589,7 @@ class CustomXmlRenderer(
                                         modifier = Modifier.fillMaxWidth(),
                                         textColor = textColor.copy(alpha = 0.6f),
                                         backgroundColor = Color.Transparent,
+                                        enableDialogs = enableDialogs,
                                         fillMaxWidth = true
                                     )
                                 }

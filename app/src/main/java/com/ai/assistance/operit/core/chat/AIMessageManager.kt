@@ -24,6 +24,7 @@ import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
+import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
 import kotlinx.coroutines.CoroutineScope
@@ -75,6 +76,11 @@ object AIMessageManager {
     private val activeMessageProcessingControllerByChatId = ConcurrentHashMap<String, MessageProcessingController>()
 
     @Volatile private var lastActiveChatKey: String = DEFAULT_CHAT_KEY
+
+    private data class PackageUsageStat(
+        val packageName: String,
+        val count: Int
+    )
 
     private lateinit var toolHandler: AIToolHandler
     private lateinit var context: Context
@@ -806,6 +812,8 @@ object AIMessageManager {
             } else {
                 // 如果是自动续写，在总结消息尾部添加续写提示
                 val trimmedSummary = summary.trim()
+                val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
+                val packageWarmupBlock = buildPackageWarmupBlock(messagesToSummarize, useEnglish)
                 val summaryWithQuotes = buildString {
                     append(trimmedSummary)
                     if (conversationReviewEntries.isNotEmpty()) {
@@ -817,6 +825,10 @@ object AIMessageManager {
                             append(content)
                             append("\n")
                         }
+                    }
+                    if (packageWarmupBlock.isNotBlank()) {
+                        append("\n\n")
+                        append(packageWarmupBlock)
                     }
                 }.trimEnd()
 
@@ -840,6 +852,159 @@ object AIMessageManager {
             AppLogger.e(TAG, "AI生成总结过程中发生异常", e)
             throw e
         }
+    }
+
+    private fun buildPackageWarmupBlock(
+        messagesToSummarize: List<ChatMessage>,
+        useEnglish: Boolean
+    ): String {
+        val title = if (useEnglish) "[Package Warmup]" else "【工具包预热】"
+        val topPackages = extractTopPackageUsages(messagesToSummarize, limit = 2)
+
+        if (topPackages.isEmpty()) {
+            val emptyMessage =
+                if (useEnglish) {
+                    "No package-prefixed tool usage was detected in this summary window, so no package was preheated."
+                } else {
+                    "本次摘要范围内未检测到包工具调用，因此未进行工具包预热。"
+                }
+            return "$title\n$emptyMessage"
+        }
+
+        val packageManager = toolHandler.getOrCreatePackageManager()
+        val intro =
+            if (useEnglish) {
+                "The following high-frequency packages were automatically activated from the summarized tool usage, and their use_package results are attached for the next-turn warmup."
+            } else {
+                "以下根据本次摘要范围内的工具使用频次，自动激活了最高频的工具包，并附上 use_package 的返回结果，供下一轮预热。"
+            }
+
+        val body = buildString {
+            appendLine(intro)
+            appendLine()
+            topPackages.forEachIndexed { index, stat ->
+                val resultText =
+                    runCatching { packageManager.usePackage(stat.packageName).trim() }
+                        .getOrElse { throwable ->
+                            if (useEnglish) {
+                                "use_package failed: ${throwable.message ?: "unknown error"}"
+                            } else {
+                                "use_package 调用失败: ${throwable.message ?: "未知错误"}"
+                            }
+                        }
+                        .ifBlank {
+                            if (useEnglish) {
+                                "use_package returned empty content."
+                            } else {
+                                "use_package 返回为空。"
+                            }
+                        }
+
+                if (useEnglish) {
+                    appendLine("${index + 1}. Package ${stat.packageName} (${stat.count} hits)")
+                } else {
+                    appendLine("${index + 1}. 包 ${stat.packageName}（命中 ${stat.count} 次）")
+                }
+                appendLine(indentBlock(resultText, "   "))
+                if (index != topPackages.lastIndex) {
+                    appendLine()
+                }
+            }
+        }.trimEnd()
+
+        return buildString {
+            appendLine(title)
+            append(body)
+        }.trimEnd()
+    }
+
+    private fun extractTopPackageUsages(
+        messagesToSummarize: List<ChatMessage>,
+        limit: Int
+    ): List<PackageUsageStat> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+
+        data class PackageUsageCounter(
+            var count: Int,
+            val firstSeenOrder: Int
+        )
+
+        val packageUsage = linkedMapOf<String, PackageUsageCounter>()
+        var nextOrder = 0
+
+        fun recordPackageUsage(toolName: String) {
+            val normalizedToolName = toolName.trim()
+            if (normalizedToolName.isBlank() || !normalizedToolName.contains(':')) {
+                return
+            }
+
+            val packageName = normalizedToolName.substringBefore(':').trim()
+            if (packageName.isBlank()) {
+                return
+            }
+
+            val existing = packageUsage[packageName]
+            if (existing == null) {
+                packageUsage[packageName] = PackageUsageCounter(count = 1, firstSeenOrder = nextOrder)
+                nextOrder += 1
+            } else {
+                existing.count += 1
+            }
+        }
+
+        messagesToSummarize
+            .asSequence()
+            .filter { it.sender == "ai" }
+            .forEach { message ->
+                val content = ChatUtils.removeThinkingContent(message.content)
+                ChatMarkupRegex.toolCallPattern.findAll(content).forEach { match ->
+                    val toolName = match.groupValues.getOrNull(1).orEmpty().trim()
+                    val toolBody = match.groupValues.getOrNull(2).orEmpty()
+
+                    when {
+                        toolName == "package_proxy" -> {
+                            val proxiedToolName =
+                                ChatMarkupRegex.toolParamPattern
+                                    .findAll(toolBody)
+                                    .firstOrNull { it.groupValues.getOrNull(1)?.trim() == "tool_name" }
+                                    ?.groupValues
+                                    ?.getOrNull(2)
+                                    ?.trim()
+                                    .orEmpty()
+                            recordPackageUsage(proxiedToolName)
+                        }
+                        toolName == "use_package" -> Unit
+                        else -> recordPackageUsage(toolName)
+                    }
+                }
+            }
+
+        return packageUsage.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, PackageUsageCounter>> { it.value.count }
+                    .thenBy { it.value.firstSeenOrder }
+            )
+            .take(limit)
+            .map { entry ->
+                PackageUsageStat(
+                    packageName = entry.key,
+                    count = entry.value.count
+                )
+            }
+    }
+
+    private fun indentBlock(text: String, prefix: String): String {
+        return text
+            .lines()
+            .joinToString("\n") { line ->
+                if (line.isBlank()) {
+                    line
+                } else {
+                    prefix + line
+                }
+            }
     }
 
     /**

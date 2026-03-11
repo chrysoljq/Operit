@@ -10,6 +10,7 @@ import com.ai.assistance.operit.core.tools.DirectoryListingData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.workspaceMimeTypeForPath
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -466,21 +467,6 @@ private constructor(
      * 根据文件路径获取MIME类型
      */
     private fun getCustomMimeType(uri: String): String {
-        val extension = uri.substringAfterLast('.', "")
-        return when (extension.lowercase()) {
-            "html", "htm" -> "text/html"
-            "css" -> "text/css"
-            "js" -> "application/javascript"
-            "json" -> "application/json"
-            "png" -> "image/png"
-            "jpg", "jpeg" -> "image/jpeg"
-            "gif" -> "image/gif"
-            "svg" -> "image/svg+xml"
-            "ico" -> "image/x-icon"
-            "txt" -> "text/plain"
-            "xml" -> "application/xml"
-            "pdf" -> "application/pdf"
-            else -> "application/octet-stream"
-        }
+        return workspaceMimeTypeForPath(uri)
     }
 }

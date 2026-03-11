@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.ui.theme.getTextColorForBackground
@@ -316,6 +317,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // 从ViewModel收集新的状态
     val shouldShowConfigDialog by actualViewModel.shouldShowConfigDialog.collectAsState()
     val isWorkspaceOpen by actualViewModel.isWorkspaceOpen.collectAsState()
+    val isWorkspacePreparing by actualViewModel.isWorkspacePreparing.collectAsState()
     val showWorkspaceFileSelector by actualViewModel.showWorkspaceFileSelector.collectAsState()
 
     // 添加模型建议对话框状态
@@ -711,8 +713,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     }
 
     var hasEverShownWebView by remember { mutableStateOf(false) }
-    LaunchedEffect(showWebView) {
-        if (showWebView) {
+    LaunchedEffect(showWebView, isWorkspacePreparing) {
+        if (showWebView || isWorkspacePreparing) {
             hasEverShownWebView = true
         }
     }
@@ -751,11 +753,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // 当showWebView或showAiComputer状态改变时，更新TopAppBar的actions
     // 使用DisposableEffect确保当AIChatScreen离开组合时，actions被清空
-    LaunchedEffect(isCurrentScreen, showWebView, showAiComputer, appBarContentColor) {
+    LaunchedEffect(isCurrentScreen, showWebView, showAiComputer, isWorkspacePreparing, appBarContentColor) {
         if (isCurrentScreen) {
             setTopBarActions {
                 // AI电脑模式切换按钮
                 IconButton(
+                        enabled = !isWorkspacePreparing,
                         onClick = {
                             actualViewModel.onAiComputerButtonClick()
                         }
@@ -771,17 +774,26 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
                 // Web开发模式切换按钮
                 IconButton(
+                        enabled = !isWorkspacePreparing,
                         onClick = {
                             actualViewModel.onWorkspaceButtonClick()
                         }
                 ) {
-                    Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = stringResource(R.string.code_editor),
-                            tint =
-                            if (showWebView) MaterialTheme.colorScheme.primaryContainer
-                            else appBarContentColor
-                    )
+                    if (isWorkspacePreparing) {
+                        CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = appBarContentColor
+                        )
+                    } else {
+                        Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = stringResource(R.string.code_editor),
+                                tint =
+                                if (showWebView) MaterialTheme.colorScheme.primaryContainer
+                                else appBarContentColor
+                        )
+                    }
                 }
             }
         }
@@ -1374,6 +1386,42 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     .clipToBounds()
             ) {
                 ComputerScreen()
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isWorkspacePreparing,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(120))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {},
+                contentAlignment = Alignment.Center
+            ) {
+                ElevatedCard {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = stringResource(R.string.workspace_opening),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.workspace_opening_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 

@@ -295,6 +295,7 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
                                     modifier =
                                         Modifier.padding(
                                             start = bubbleContentPaddingLeft.dp,
@@ -313,6 +314,7 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
                                     modifier =
                                         Modifier.padding(
                                             start = bubbleContentPaddingLeft.dp,
@@ -470,6 +472,7 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
                                     modifier =
                                         Modifier.padding(
                                             start = bubbleContentPaddingLeft.dp,
@@ -490,6 +493,7 @@ fun BubbleAiMessageComposable(
                                     onLinkClick = rememberedOnLinkClick,
                                     xmlRenderer = xmlRenderer,
                                     nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
                                     modifier =
                                         Modifier.padding(
                                             start = bubbleContentPaddingLeft.dp,

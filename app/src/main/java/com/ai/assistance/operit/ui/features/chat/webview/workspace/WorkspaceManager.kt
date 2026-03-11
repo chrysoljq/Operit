@@ -14,13 +14,18 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,20 +34,30 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
+import coil.compose.SubcomposeAsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.FileContentData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.ui.common.rememberLocal
+import com.ai.assistance.operit.ui.features.chat.components.attachments.AudioAttachmentPlayer
+import com.ai.assistance.operit.ui.features.chat.components.attachments.VideoAttachmentPlayer
+import com.ai.assistance.operit.ui.features.chat.webview.LocalWebServer
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.features.chat.webview.WebViewHandler
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.CodeEditor
@@ -58,16 +73,23 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class FabPosition(val x: Float = 0f, val y: Float = 0f)
 
-/** 为[OpenFileInfo]添加扩展属性，用于判断是否为HTML文件 */
-val OpenFileInfo.isHtml: Boolean
-    get() = name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
-
-/** 为[OpenFileInfo]添加扩展属性，用于判断是否为图片文件 */
-val OpenFileInfo.isImage: Boolean
-    get() {
-        val extension = name.substringAfterLast('.', "").lowercase()
-        return extension in listOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "svg")
+private fun WebView.installWorkspaceTouchInterceptor() {
+    setOnTouchListener { view, event ->
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> view.parent?.requestDisallowInterceptTouchEvent(true)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                view.parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        false
     }
+}
+
+private fun WebView.releaseWorkspaceWebView() {
+    stopLoading()
+    removeAllViews()
+    destroy()
+}
 
 /** VSCode风格的工作区管理器组件 集成了WebView预览和文件管理功能 */
 @SuppressLint("ClickableViewAccessibility")
@@ -83,8 +105,12 @@ fun WorkspaceManager(
 ) {
     val context = LocalContext.current
     val webViewRefreshCounter by actualViewModel.webViewRefreshCounter.collectAsState()
+    val workspaceCommandExecutionState by actualViewModel.workspaceCommandExecutionState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val workspaceServer = remember(context) {
+        LocalWebServer.getInstance(context, LocalWebServer.ServerType.WORKSPACE)
+    }
     
     val isSafEnv = remember(workspaceEnv) { workspaceEnv?.startsWith("repo:", ignoreCase = true) == true }
 
@@ -96,6 +122,21 @@ fun WorkspaceManager(
     LaunchedEffect(isVisible, workspacePath, workspaceEnv) {
         if (isVisible && !isSafEnv) {
             workspaceConfig = WorkspaceConfigReader.readConfig(workspacePath)
+        }
+    }
+
+    LaunchedEffect(isVisible, workspacePath, workspaceEnv, workspaceServer) {
+        if (!isVisible) return@LaunchedEffect
+
+        runCatching {
+            withContext(Dispatchers.IO) {
+                if (!workspaceServer.isRunning()) {
+                    workspaceServer.start()
+                }
+                workspaceServer.updateChatWorkspace(workspacePath, workspaceEnv)
+            }
+        }.onFailure { error ->
+            AppLogger.e("WorkspaceManager", "Failed to prepare workspace preview server", error)
         }
     }
 
@@ -115,23 +156,11 @@ fun WorkspaceManager(
                     }
                 }
             }
-
-    val webView =
-            remember(context) {
-                WebView(context).apply {
-                    setOnTouchListener { v, event ->
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN ->
-                                    v.parent.requestDisallowInterceptTouchEvent(true)
-                            MotionEvent.ACTION_UP ->
-                                    v.parent.requestDisallowInterceptTouchEvent(false)
-                        }
-                        false
-                    }
-                    webViewHandler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_preview_webview")
-                    loadUrl(workspaceConfig.preview.url.ifEmpty { "http://localhost:8093" })
-                }
-            }
+    var workspaceWebView by remember { mutableStateOf<WebView?>(null) }
+    var lastLoadedWorkspacePreviewUrl by remember(workspacePath, workspaceEnv) {
+        mutableStateOf<String?>(null)
+    }
+    val workspacePreviewUrl = workspaceConfig.preview.url.ifEmpty { "http://localhost:8093" }
 
     var canWebViewGoBack by remember { mutableStateOf(false) }
 
@@ -167,7 +196,7 @@ fun WorkspaceManager(
             AppLogger.d("WorkspaceManager", "WebView refresh triggered, counter: $webViewRefreshCounter")
             // 确保webView已经加载完成后再刷新
             kotlinx.coroutines.delay(100) // 短暂延迟确保webView准备就绪
-            webView.reload()
+            workspaceWebView?.reload()
         }
     }
 
@@ -180,14 +209,18 @@ fun WorkspaceManager(
             val updatedFiles = openFiles.map { fileInfo ->
                 val currentFile = File(fileInfo.path)
                 if (currentFile.exists() && currentFile.lastModified() > fileInfo.lastModified) {
+                    if (fileInfo.isReadOnlyPreview) {
+                        return@map fileInfo.copy(lastModified = currentFile.lastModified())
+                    }
+
                     // 文件已在外部被修改，重新加载内容
                     val tool = AITool(
                         "read_file_full",
                         withWorkspaceEnvParams(listOf(ToolParameter("path", fileInfo.path)))
                     )
                     val result = toolHandler.executeTool(tool)
-                    if (result.success && result.result is com.ai.assistance.operit.core.tools.FileContentData) {
-                        val newContent = (result.result as com.ai.assistance.operit.core.tools.FileContentData).content
+                    if (result.success && result.result is FileContentData) {
+                        val newContent = (result.result as FileContentData).content
                         
                         // 如果当前文件就是这个被修改的文件，则更新编辑器内容
                         if (openFiles.getOrNull(currentFileIndex)?.path == fileInfo.path) {
@@ -212,6 +245,8 @@ fun WorkspaceManager(
     
     // 保存文件函数
     fun saveFile(fileInfo: OpenFileInfo) {
+        if (fileInfo.isReadOnlyPreview) return
+
         coroutineScope.launch {
             val tool =
                 AITool(
@@ -310,7 +345,7 @@ fun WorkspaceManager(
         BackHandler(enabled = isBrowserPreviewVisible && canWebViewGoBack) {
             if (canWebViewGoBack) {
                 try {
-                    webView.goBack()
+                    workspaceWebView?.goBack()
                 } catch (e: Exception) {
                     AppLogger.e("WorkspaceManager", "Failed to navigate WebView back", e)
                 }
@@ -397,13 +432,40 @@ fun WorkspaceManager(
                 when {
                     // 显示WebView预览（仅当preview类型为browser时）
                     currentFileIndex == -1 && workspaceConfig.preview.type == "browser" -> {
-                        AndroidView(
-                                factory = { webView }, // 使用 remember 的实例
-                                update = { webView ->
-                                    webViewHandler.currentWebView = webView
-                                },
-                                modifier = Modifier.fillMaxSize()
-                        )
+                        key(workspacePath, workspaceEnv) {
+                            AndroidView(
+                                    factory = { androidContext ->
+                                        WebView(androidContext).apply {
+                                            installWorkspaceTouchInterceptor()
+                                            webViewHandler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_preview_webview")
+                                            loadUrl(workspacePreviewUrl)
+                                            workspaceWebView = this
+                                            webViewHandler.currentWebView = this
+                                            lastLoadedWorkspacePreviewUrl = workspacePreviewUrl
+                                        }
+                                    },
+                                    update = { view ->
+                                        workspaceWebView = view
+                                        webViewHandler.currentWebView = view
+                                        if (lastLoadedWorkspacePreviewUrl != workspacePreviewUrl) {
+                                            view.loadUrl(workspacePreviewUrl)
+                                            lastLoadedWorkspacePreviewUrl = workspacePreviewUrl
+                                        }
+                                    },
+                                    onRelease = { view ->
+                                        if (workspaceWebView === view) {
+                                            workspaceWebView = null
+                                        }
+                                        if (webViewHandler.currentWebView === view) {
+                                            webViewHandler.currentWebView = null
+                                        }
+                                        canWebViewGoBack = false
+                                        lastLoadedWorkspacePreviewUrl = null
+                                        view.releaseWorkspaceWebView()
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                     // 显示命令按钮界面（当preview类型不是browser时）
                     currentFileIndex == -1 && workspaceConfig.preview.type != "browser" -> {
@@ -429,44 +491,55 @@ fun WorkspaceManager(
                         when {
                             // 图片文件：显示图片预览
                             fileInfo.isImage -> {
-                                // Decode bitmap in background thread
-                                var bitmap by remember(fileInfo.path) { mutableStateOf<android.graphics.Bitmap?>(null) }
-                                var isLoading by remember(fileInfo.path) { mutableStateOf(true) }
-                                
-                                LaunchedEffect(fileInfo.path) {
-                                    bitmap = withContext(Dispatchers.IO) {
-                                        try {
-                                            android.graphics.BitmapFactory.decodeFile(fileInfo.path)
-                                        } catch (e: Exception) {
-                                            AppLogger.e("WorkspaceManager", "Failed to decode bitmap: ${fileInfo.path}", e)
-                                            null
-                                        }
-                                    }
-                                    isLoading = false
+                                val previewFileState by rememberWorkspacePreviewFileState(
+                                    fileInfo = fileInfo,
+                                    workspaceEnv = workspaceEnv,
+                                    toolHandler = toolHandler
+                                )
+                                val previewUri = remember(previewFileState.file?.absolutePath) {
+                                    workspacePreviewUriFromFile(previewFileState.file)
                                 }
-                                
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(Color.Black),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (isLoading) {
-                                        CircularProgressIndicator(color = Color.White)
-                                    } else {
-                                        bitmap?.let { decodedBitmap ->
-                                            AndroidView(
-                                                factory = { context ->
-                                                    android.widget.ImageView(context).apply {
-                                                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-                                                        setImageBitmap(decodedBitmap)
-                                                    }
+                                    when {
+                                        previewFileState.loading -> {
+                                            CircularProgressIndicator(color = Color.White)
+                                        }
+
+                                        previewUri != null -> {
+                                            SubcomposeAsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(previewUri)
+                                                    .memoryCachePolicy(CachePolicy.DISABLED)
+                                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                                    .crossfade(false)
+                                                    .build(),
+                                                contentDescription = fileInfo.name,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Fit,
+                                                loading = {
+                                                    CircularProgressIndicator(color = Color.White)
                                                 },
-                                                modifier = Modifier.fillMaxSize()
+                                                error = {
+                                                    Text(
+                                                        text = previewFileState.errorMessage
+                                                            ?: context.getString(R.string.cannot_open_file, fileInfo.name),
+                                                        color = Color.White,
+                                                        style = MaterialTheme.typography.bodyMedium
+                                                    )
+                                                }
                                             )
-                                        } ?: run {
+                                        }
+
+                                        else -> {
                                             Text(
-                                                text = "Failed to load image",
+                                                text = previewFileState.errorMessage
+                                                    ?: context.getString(R.string.cannot_open_file, fileInfo.name),
                                                 color = Color.White,
                                                 style = MaterialTheme.typography.bodyMedium
                                             )
@@ -490,20 +563,92 @@ fun WorkspaceManager(
                                     }
                                 }
                             }
+                            fileInfo.isAudio -> {
+                                val previewFileState by rememberWorkspacePreviewFileState(
+                                    fileInfo = fileInfo,
+                                    workspaceEnv = workspaceEnv,
+                                    toolHandler = toolHandler
+                                )
+                                val previewUri = remember(previewFileState.file?.absolutePath) {
+                                    workspacePreviewUriFromFile(previewFileState.file)
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (previewFileState.loading) {
+                                        CircularProgressIndicator()
+                                    } else if (previewUri != null) {
+                                        AudioAttachmentPlayer(
+                                            uri = previewUri,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            autoPlay = false
+                                        )
+                                    } else {
+                                        Text(
+                                            text = previewFileState.errorMessage
+                                                ?: context.getString(R.string.cannot_open_file, fileInfo.name),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                            fileInfo.isVideo -> {
+                                val previewFileState by rememberWorkspacePreviewFileState(
+                                    fileInfo = fileInfo,
+                                    workspaceEnv = workspaceEnv,
+                                    toolHandler = toolHandler
+                                )
+                                val previewUri = remember(previewFileState.file?.absolutePath) {
+                                    workspacePreviewUriFromFile(previewFileState.file)
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black)
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (previewFileState.loading) {
+                                        CircularProgressIndicator(color = Color.White)
+                                    } else if (previewUri != null) {
+                                        VideoAttachmentPlayer(
+                                            uri = previewUri,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 180.dp, max = 420.dp),
+                                            autoPlay = false
+                                        )
+                                    } else {
+                                        Text(
+                                            text = previewFileState.errorMessage
+                                                ?: context.getString(R.string.cannot_open_file, fileInfo.name),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                            fileInfo.isReadOnlyDocumentPreviewable -> {
+                                WorkspaceReadOnlyDocumentPreview(
+                                    fileInfo = fileInfo,
+                                    workspaceEnv = workspaceEnv,
+                                    toolHandler = toolHandler,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                             // HTML文件的预览模式：使用WebView
                             fileInfo.isHtml && isPreviewMode -> {
                                 AndroidView(
                                         factory = { context ->
                                             WebView(context).apply {
-                                                setOnTouchListener { v, event ->
-                                                    when (event.action) {
-                                                        MotionEvent.ACTION_DOWN ->
-                                                            v.parent.requestDisallowInterceptTouchEvent(true)
-                                                        MotionEvent.ACTION_UP ->
-                                                            v.parent.requestDisallowInterceptTouchEvent(false)
-                                                    }
-                                                    false
-                                                }
+                                                installWorkspaceTouchInterceptor()
                                                 webViewHandler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_file_preview_${fileInfo.path}")
                                             }
                                          },
@@ -516,6 +661,9 @@ fun WorkspaceManager(
                                                     "UTF-8",
                                                     null
                                             )
+                                        },
+                                        onRelease = { webView ->
+                                            webView.releaseWorkspaceWebView()
                                         },
                                         modifier = Modifier.fillMaxSize()
                                 )
@@ -700,6 +848,154 @@ fun WorkspaceManager(
                         }
                     }
                 )
+            }
+        }
+
+        val commandDialogState = workspaceCommandExecutionState
+        if (commandDialogState != null &&
+            commandDialogState.workspacePath == workspacePath &&
+            commandDialogState.isVisible
+        ) {
+            WorkspaceCommandExecutionDialog(
+                state = commandDialogState,
+                onHide = { actualViewModel.hideWorkspaceCommandExecutionDialog(workspacePath) },
+                onCancel = {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        actualViewModel.cancelWorkspaceCommandExecution()
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceCommandExecutionDialog(
+    state: WorkspaceCommandExecutionState,
+    onHide: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(state.outputEntries.size) {
+        if (state.outputEntries.isNotEmpty()) {
+            listState.animateScrollToItem(state.outputEntries.lastIndex)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onHide,
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = state.commandLabel,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = state.commandText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(
+                        if (!state.isRunning) {
+                            R.string.workspace_command_finished
+                        } else if (state.isCancelling) {
+                            R.string.workspace_command_cancelling
+                        } else {
+                            R.string.workspace_command_running
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (state.isRunning) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = 360.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ) {
+                    if (state.outputEntries.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (state.isRunning) {
+                                        R.string.workspace_command_waiting_output
+                                    } else {
+                                        R.string.workspace_command_no_output
+                                    }
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        SelectionContainer {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                itemsIndexed(
+                                    items = state.outputEntries,
+                                    key = { index, _ -> index }
+                                ) { _, line ->
+                                    Text(
+                                        text = line.ifEmpty { " " },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (state.isRunning) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = onHide) {
+                            Text(stringResource(R.string.workspace_command_hide))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(
+                            onClick = onCancel,
+                            enabled = !state.isCancelling
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                }
             }
         }
     }
@@ -927,48 +1223,47 @@ fun CommandButtonsView(
     val context = LocalContext.current
     var showBrowserPreview by remember { mutableStateOf(false) }
     var refreshCounter by remember { mutableStateOf(0) }
+    var browserPreviewWebView by remember { mutableStateOf<WebView?>(null) }
+    var lastLoadedBrowserPreviewUrl by remember(workspacePath, config.preview.url) {
+        mutableStateOf<String?>(null)
+    }
     
     // 如果用户切换到浏览器预览，显示 WebView
     if (showBrowserPreview && config.preview.url.isNotEmpty()) {
-        // 使用 remember 保存 WebView 实例以便清理
-        val tempWebView = remember {
-            WebView(context).apply {
-                setOnTouchListener { v, event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN ->
-                            v.parent.requestDisallowInterceptTouchEvent(true)
-                        MotionEvent.ACTION_UP,
-                        MotionEvent.ACTION_CANCEL ->
-                            v.parent.requestDisallowInterceptTouchEvent(false)
-                    }
-                    false
-                }
-                val handler = WebViewHandler(context)
-                handler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_preview_${workspacePath.hashCode()}")
-            }
-        }
+        val handler = remember(context) { WebViewHandler(context) }
         
         // 每次刷新计数器改变时重新加载页面
         LaunchedEffect(refreshCounter) {
-            tempWebView.loadUrl(config.preview.url)
-        }
-        
-        // 清理 WebView
-        DisposableEffect(Unit) {
-            onDispose {
-                tempWebView.stopLoading()
-                tempWebView.clearHistory()
-                tempWebView.removeAllViews()
-                tempWebView.destroy()
-            }
+            browserPreviewWebView?.loadUrl(config.preview.url)
+            lastLoadedBrowserPreviewUrl = config.preview.url
         }
         
         val nestedScrollInterop = rememberNestedScrollInteropConnection()
         Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
-                factory = { tempWebView },
+                factory = { androidContext ->
+                    WebView(androidContext).apply {
+                        installWorkspaceTouchInterceptor()
+                        handler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_preview_${workspacePath.hashCode()}")
+                        loadUrl(config.preview.url)
+                        browserPreviewWebView = this
+                        lastLoadedBrowserPreviewUrl = config.preview.url
+                    }
+                },
                 update = { webView ->
+                    browserPreviewWebView = webView
+                    if (lastLoadedBrowserPreviewUrl != config.preview.url) {
+                        webView.loadUrl(config.preview.url)
+                        lastLoadedBrowserPreviewUrl = config.preview.url
+                    }
                     webView.requestFocus()
+                },
+                onRelease = { webView ->
+                    if (browserPreviewWebView === webView) {
+                        browserPreviewWebView = null
+                    }
+                    lastLoadedBrowserPreviewUrl = null
+                    webView.releaseWorkspaceWebView()
                 },
                 modifier = Modifier
                     .fillMaxSize()

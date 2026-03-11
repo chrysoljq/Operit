@@ -13,6 +13,8 @@ object VoiceServiceFactory {
         SIMPLE_TTS,
         /** 基于HTTP请求的TTS实现 */
         HTTP_TTS,
+        /** 基于 OpenAI Realtime WebSocket 的 TTS 实现 */
+        OPENAI_WS_TTS,
         /** 硅基流动TTS服务 */
         SILICONFLOW_TTS,
         OPENAI_TTS,
@@ -39,6 +41,16 @@ object VoiceServiceFactory {
                     HttpVoiceProvider(context).apply {
                         setConfiguration(httpConfig)
                     }
+                }
+                VoiceServiceType.OPENAI_WS_TTS -> {
+                    val httpConfig = prefs.ttsHttpConfigFlow.first()
+                    OpenAIRealtimeVoiceProvider(
+                        context = context,
+                        endpointUrl = httpConfig.urlTemplate,
+                        apiKey = httpConfig.apiKey,
+                        model = httpConfig.modelName,
+                        initialVoiceId = httpConfig.voiceId
+                    )
                 }
                 VoiceServiceType.SILICONFLOW_TTS -> {
                     val httpConfig = prefs.ttsHttpConfigFlow.first()

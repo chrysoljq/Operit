@@ -2410,7 +2410,8 @@
     <string name="speech_services_tts_type_simple">系统 TTS (简单)</string>
     <string name="speech_services_tts_type_http">HTTP API (远程)</string>
     <string name="speech_services_tts_type_siliconflow">硅基流动 TTS</string>
-    <string name="speech_services_tts_type_openai">OpenAI 语音</string>
+    <string name="speech_services_tts_type_openai_ws">OpenAI Realtime (WebSocket)</string>
+    <string name="speech_services_tts_type_openai">OpenAI 语音 (HTTP)</string>
     
     <!-- STT Service Types -->
     <string name="speech_services_stt_type_sherpa">Sherpa NCNN (本地)</string>
@@ -2462,6 +2463,15 @@
     <string name="speech_services_siliconflow_voice_id">音色 ID</string>
     <string name="speech_services_siliconflow_voice_id_placeholder">例如：charles 或 speech:kll:32w2b3aj5b:orvmnmpjkqchqalegwvi</string>
     <string name="speech_services_siliconflow_voice_id_hint">预设音色（alex/benjamin/charles等）或自定义音色（speech:开头的URI）</string>
+
+    <string name="speech_services_openai_ws_config">OpenAI Realtime 配置</string>
+    <string name="speech_services_openai_ws_url">Realtime WebSocket URL</string>
+    <string name="speech_services_openai_ws_url_placeholder">例如：wss://api.openai.com/v1/realtime</string>
+    <string name="speech_services_openai_ws_url_hint">填写 Realtime WebSocket 地址；模型会通过下方 model 字段自动拼到连接 URL 中。</string>
+    <string name="speech_services_openai_ws_model_placeholder">例如：gpt-realtime</string>
+    <string name="speech_services_openai_ws_model_hint">推荐使用 gpt-realtime；当前实现按 OpenAI Realtime 语音输出事件协议接收 PCM 音频。</string>
+    <string name="speech_services_openai_ws_voice_id_placeholder">例如：alloy 或 voice_1234</string>
+    <string name="speech_services_openai_ws_voice_id_hint">支持官方预设音色，也支持填写自定义 voice_id（例如 voice_1234）。</string>
 
     <string name="speech_services_openai_config">OpenAI 语音 配置</string>
     <string name="speech_services_openai_url">URL</string>
@@ -2516,7 +2526,7 @@
     <!-- Info Card -->
     <string name="speech_services_info_title">关于语音服务</string>
     <string name="speech_services_info_tts_title">文本转语音 (TTS)</string>
-    <string name="speech_services_info_tts_desc">TTS 服务将文本转换为语音。您可以使用内置的系统 TTS 引擎或连接到远程 HTTP API。</string>
+    <string name="speech_services_info_tts_desc">TTS 服务将文本转换为语音。您可以使用内置系统 TTS，或连接远程 HTTP / WebSocket 语音接口。</string>
     <string name="speech_services_info_stt_title">语音转文本 (STT)</string>
     <string name="speech_services_info_stt_desc">STT 服务将语音转换为文本。支持内置的 Sherpa NCNN 和 Sherpa MNN 引擎，均可在本地设备上运行，不需要网络连接。Sherpa MNN 集成了 VAD（语音活动检测）功能，可提升识别准确性和资源利用效率。</string>
     
@@ -2981,12 +2991,21 @@
     <string name="chat_please_create_new_chat">请新建对话</string>
     <string name="chat_processing_shared_files">正在处理分享文件...</string>
     <string name="chat_start_workspace_server_failed">启动工作区服务失败</string>
+    <string name="workspace_opening">正在打开工作区...</string>
+    <string name="workspace_opening_hint">正在启动本地预览服务，请稍候</string>
     <string name="chat_update_workspace_server_failed">更新Web工作空间失败: %1$s</string>
     <string name="chat_stop_workspace_server_failed">停止Web工作空间失败: %1$s</string>
     <string name="chat_terminal_requires_android_8">终端功能需要 Android 8.0 或更高版本</string>
     <string name="chat_create_dedicated_terminal_session_failed">无法创建独立终端会话</string>
     <string name="chat_create_workspace_terminal_session_failed">无法创建工作区终端会话</string>
     <string name="chat_execute_command_failed">命令执行失败: %1$s</string>
+    <string name="workspace_command_already_running">已有工作区命令正在运行</string>
+    <string name="workspace_command_running">命令运行中</string>
+    <string name="workspace_command_cancelling">正在取消命令...</string>
+    <string name="workspace_command_finished">命令已完成</string>
+    <string name="workspace_command_waiting_output">正在等待命令输出...</string>
+    <string name="workspace_command_no_output">命令没有输出</string>
+    <string name="workspace_command_hide">隐藏</string>
     <string name="chat_start_ai_computer_failed">启动AI电脑失败: %1$s</string>
     <string name="chat_ai_computer_closed_due_to_workspace">AI电脑已关闭（由于打开工作区）</string>
     <string name="thinking_mode">思考模式</string>
@@ -6524,6 +6543,15 @@
     <string name="openai_tts_error_voice_not_set">OpenAI TTS voice 未设置，请在设置中填写（例如 alloy）。</string>
     <string name="openai_tts_error_init_failed">初始化 OpenAI TTS 服务时发生意外错误</string>
     <string name="openai_tts_error_request_failed">请求 OpenAI TTS 失败</string>
+    <string name="openai_realtime_tts_error_url_not_set">OpenAI Realtime WebSocket URL 未设置，请填写完整接口地址（例如 wss://api.openai.com/v1/realtime）。</string>
+    <string name="openai_realtime_tts_error_url_invalid_scheme">OpenAI Realtime WebSocket URL 必须以 ws:// 或 wss:// 开头。</string>
+    <string name="openai_realtime_tts_error_api_key_not_set">OpenAI Realtime API Key 未设置，请在设置中填写。</string>
+    <string name="openai_realtime_tts_error_model_not_set">OpenAI Realtime model 未设置，请在设置中填写（例如 gpt-realtime）。</string>
+    <string name="openai_realtime_tts_error_voice_not_set">OpenAI Realtime voice 未设置，请在设置中填写（例如 alloy）。</string>
+    <string name="openai_realtime_tts_error_init_failed">初始化 OpenAI Realtime TTS 服务时发生意外错误</string>
+    <string name="openai_realtime_tts_error_request_failed">请求 OpenAI Realtime TTS 失败</string>
+    <string name="openai_realtime_tts_error_send_failed">向 OpenAI Realtime WebSocket 发送消息失败</string>
+    <string name="openai_realtime_tts_error_empty_audio">OpenAI Realtime 未返回可播放音频</string>
 
     <!-- ConversationService -->
     <string name="conversation_language_chinese">中文</string>

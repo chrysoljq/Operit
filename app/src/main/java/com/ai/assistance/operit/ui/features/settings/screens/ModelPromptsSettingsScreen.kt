@@ -273,6 +273,28 @@ fun ModelPromptsSettingsScreen(
         }
     }
 
+    suspend fun importTavernCharacterCardPng(fileUri: Uri): Result<String> {
+        val result = context.contentResolver.openInputStream(fileUri).use { inputStream ->
+            requireNotNull(inputStream) { context.getString(R.string.file_read_error_message) }
+            characterCardManager.createCharacterCardFromTavernPng(inputStream)
+        }
+
+        val characterCardId = result.getOrNull() ?: return result
+        runCatching {
+            val internalUri = FileUtils.copyFileToInternalStorage(context, fileUri, "avatar_${characterCardId}")
+                ?: throw IllegalStateException(context.getString(R.string.theme_copy_failed))
+            userPreferencesManager.saveAiAvatarForCharacterCard(characterCardId, internalUri.toString())
+        }.onFailure { error ->
+            AppLogger.w(
+                "ModelPromptsSettingsScreen",
+                "导入酒馆角色卡 PNG 后自动设置头像失败: characterCardId=$characterCardId, uri=$fileUri, error=${error.message}",
+                error
+            )
+        }
+
+        return result
+    }
+
     // 文件选择器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -285,10 +307,7 @@ fun ModelPromptsSettingsScreen(
 
                     val result = when {
                         mimeType == "image/png" || fileName.lowercase().endsWith(".png") -> {
-                            context.contentResolver.openInputStream(fileUri).use { inputStream ->
-                                requireNotNull(inputStream) { context.getString(R.string.file_read_error_message) }
-                                characterCardManager.createCharacterCardFromTavernPng(inputStream)
-                            }
+                            importTavernCharacterCardPng(fileUri)
                         }
                         mimeType == "application/json" || fileName.lowercase().endsWith(".json") -> {
                             context.contentResolver.openInputStream(fileUri).use { inputStream ->
@@ -308,10 +327,7 @@ fun ModelPromptsSettingsScreen(
                                 }
                             } catch (e: Exception) {
                                 // If JSON fails, try PNG
-                                context.contentResolver.openInputStream(fileUri).use { inputStream ->
-                                    requireNotNull(inputStream) { context.getString(R.string.file_read_error_message) }
-                                    characterCardManager.createCharacterCardFromTavernPng(inputStream)
-                                }
+                                importTavernCharacterCardPng(fileUri)
                             }
                         }
                     }

@@ -346,6 +346,7 @@ fun CanvasMarkdownNodeRenderer(
     index: Int,
     xmlRenderer: XmlContentRenderer,
     xmlStream: Stream<String>? = null,
+    enableDialogs: Boolean = true,
     fillMaxWidth: Boolean = true,
     isLastNode: Boolean = false
 ) {
@@ -393,6 +394,7 @@ fun CanvasMarkdownNodeRenderer(
         xmlRenderer = currentXmlRenderer.value,
         xmlStream = xmlStream,
         index = index,
+        enableDialogs = enableDialogs,
         fillMaxWidth = fillMaxWidth,
         isLastNode = isLastNode
     )
@@ -422,12 +424,12 @@ private fun renderNodeContent(
     xmlRenderer: XmlContentRenderer,
     xmlStream: Stream<String>?,
     index: Int,
+    enableDialogs: Boolean,
     fillMaxWidth: Boolean,
     isLastNode: Boolean = false
 ) {
     // 【关键优化】只要节点内容不变，就记住原始节点实例，防止不必要的重组
     val stableNode = remember(content) { node }
-    val standaloneMediaMarkdown = remember(stableNode) { extractStandaloneMediaMarkdown(stableNode) }
 
     when (stableNode.type) {
         // ========== 简单文本类型：使用单个大 Canvas 绘制 ==========
@@ -454,32 +456,23 @@ private fun renderNodeContent(
         }
 
         MarkdownProcessorType.PLAIN_TEXT -> {
-            if (standaloneMediaMarkdown != null) {
-                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
-                    RenderMarkdownMedia(
-                        mediaMarkdown = standaloneMediaMarkdown,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                UnifiedCanvasRenderer(
-                    nodeKey = nodeKey,
-                    node = stableNode,
-                    textColor = textColor,
-                    bodyMediumSize = fontSizes.bodyMedium,
-                    headlineLargeSize = fontSizes.headlineLarge,
-                    headlineMediumSize = fontSizes.headlineMedium,
-                    headlineSmallSize = fontSizes.headlineSmall,
-                    titleLargeSize = fontSizes.titleLarge,
-                    titleMediumSize = fontSizes.titleMedium,
-                    titleSmallSize = fontSizes.titleSmall,
-                    density = density,
-                    modifier = modifier,
-                    onLinkClick = onLinkClick,
-                    fillMaxWidth = fillMaxWidth,
-                    isLastNode = isLastNode
-                )
-            }
+            UnifiedCanvasRenderer(
+                nodeKey = nodeKey,
+                node = stableNode,
+                textColor = textColor,
+                bodyMediumSize = fontSizes.bodyMedium,
+                headlineLargeSize = fontSizes.headlineLarge,
+                headlineMediumSize = fontSizes.headlineMedium,
+                headlineSmallSize = fontSizes.headlineSmall,
+                titleLargeSize = fontSizes.titleLarge,
+                titleMediumSize = fontSizes.titleMedium,
+                titleSmallSize = fontSizes.titleSmall,
+                density = density,
+                modifier = modifier,
+                onLinkClick = onLinkClick,
+                fillMaxWidth = fillMaxWidth,
+                isLastNode = isLastNode
+            )
         }
         
         // ========== 代码块：保留原组件 ==========
@@ -575,19 +568,12 @@ private fun renderNodeContent(
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)
                 ) {
-                    val mediaUrl = extractMarkdownImageUrl(imageContent)
-                    if (isLikelyVideoUrl(mediaUrl) || isLikelyAudioUrl(mediaUrl)) {
-                        RenderMarkdownMedia(
-                            mediaMarkdown = imageContent,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        MarkdownImageRenderer(
-                            imageMarkdown = imageContent,
-                            modifier = Modifier.fillMaxWidth(),
-                            maxImageHeight = 140
-                        )
-                    }
+                    MarkdownImageRenderer(
+                        imageMarkdown = imageContent,
+                        modifier = Modifier.fillMaxWidth(),
+                        maxImageHeight = 140,
+                        enableDialogs = enableDialogs
+                    )
                 }
             } else {
                 SingleTextCanvas(
@@ -1484,60 +1470,6 @@ private fun buildSpannableFromChildren(
         }
     }
     return builder
-}
-
-@Composable
-private fun RenderMarkdownMedia(
-    mediaMarkdown: String,
-    modifier: Modifier = Modifier
-) {
-    val mediaUrl = extractMarkdownImageUrl(mediaMarkdown).trim()
-    when {
-        isLikelyVideoUrl(mediaUrl) -> {
-            MarkdownVideoRenderer(
-                videoMarkdown = mediaMarkdown,
-                modifier = modifier,
-                maxVideoHeight = 220
-            )
-        }
-        isLikelyAudioUrl(mediaUrl) -> {
-            MarkdownAudioRenderer(
-                audioMarkdown = mediaMarkdown,
-                modifier = modifier
-            )
-        }
-    }
-}
-
-private fun extractStandaloneMediaMarkdown(node: MarkdownNodeStable): String? {
-    val trimmedContent = node.content.trimAll()
-    val children = node.children.filter { it.content.isNotBlank() }
-    if (children.size != 1) {
-        return null
-    }
-
-    val child = children.first()
-    if (child.type != MarkdownProcessorType.LINK) {
-        return null
-    }
-
-    val linkMarkdown = child.content.trimAll()
-    val linkUrl = extractLinkUrl(linkMarkdown).trim()
-    if (linkUrl.isBlank() || (!isLikelyVideoUrl(linkUrl) && !isLikelyAudioUrl(linkUrl))) {
-        return null
-    }
-
-    val linkText = extractLinkText(linkMarkdown).trim()
-    val matchesStandaloneLink =
-        trimmedContent == linkMarkdown ||
-            trimmedContent == linkText ||
-            trimmedContent == linkUrl
-    if (!matchesStandaloneLink) {
-        return null
-    }
-
-    val alt = if (linkText == linkUrl) "" else linkText
-    return "![$alt]($linkUrl)"
 }
 
 /**

@@ -2359,7 +2359,8 @@
     <string name="speech_services_tts_type_simple">System TTS (Simple)</string>
     <string name="speech_services_tts_type_http">HTTP API (Remote)</string>
     <string name="speech_services_tts_type_siliconflow">SiliconFlow TTS</string>
-    <string name="speech_services_tts_type_openai">OpenAI Voice</string>
+    <string name="speech_services_tts_type_openai_ws">OpenAI Realtime (WebSocket)</string>
+    <string name="speech_services_tts_type_openai">OpenAI Voice (HTTP)</string>
     
     <!-- STT Service Types -->
     <string name="speech_services_stt_type_sherpa">Sherpa NCNN (Local)</string>
@@ -2411,6 +2412,15 @@
     <string name="speech_services_siliconflow_voice_id">Voice ID</string>
     <string name="speech_services_siliconflow_voice_id_placeholder">e.g.: charles or speech:kll:32w2b3aj5b:orvmnmpjkqchqalegwvi</string>
     <string name="speech_services_siliconflow_voice_id_hint">Enter voice name (e.g. charles) or full voice ID (e.g. custom voice starting with speech:)</string>
+
+    <string name="speech_services_openai_ws_config">OpenAI Realtime Configuration</string>
+    <string name="speech_services_openai_ws_url">Realtime WebSocket URL</string>
+    <string name="speech_services_openai_ws_url_placeholder">e.g.: wss://api.openai.com/v1/realtime</string>
+    <string name="speech_services_openai_ws_url_hint">Enter the Realtime WebSocket endpoint; the model below will be appended to the connection URL automatically.</string>
+    <string name="speech_services_openai_ws_model_placeholder">e.g.: gpt-realtime</string>
+    <string name="speech_services_openai_ws_model_hint">Recommended: gpt-realtime. This implementation consumes PCM audio from the OpenAI Realtime audio output events.</string>
+    <string name="speech_services_openai_ws_voice_id_placeholder">e.g.: alloy or voice_1234</string>
+    <string name="speech_services_openai_ws_voice_id_hint">Supports built-in voices and custom voice IDs such as voice_1234.</string>
 
     <string name="speech_services_openai_config">OpenAI Voice Configuration</string>
     <string name="speech_services_openai_url">URL</string>
@@ -2465,7 +2475,7 @@
     <!-- Info Card -->
     <string name="speech_services_info_title">About Speech Services</string>
     <string name="speech_services_info_tts_title">Text-to-Speech (TTS)</string>
-    <string name="speech_services_info_tts_desc">TTS service converts text to speech. You can use the built-in system TTS engine or connect to a remote HTTP API.</string>
+    <string name="speech_services_info_tts_desc">TTS service converts text to speech. You can use the built-in system TTS engine or connect to remote HTTP / WebSocket speech APIs.</string>
     <string name="speech_services_info_stt_title">Speech-to-Text (STT)</string>
     <string name="speech_services_info_stt_desc">STT service converts speech to text. Supports built-in Sherpa NCNN and Sherpa MNN engines, both run on local device without network connection. Sherpa MNN integrates VAD (Voice Activity Detection) capability for improved recognition accuracy and resource efficiency.</string>
     
@@ -3075,12 +3085,21 @@
     <string name="chat_please_create_new_chat">Please create a new chat</string>
     <string name="chat_processing_shared_files">Processing shared files...</string>
     <string name="chat_start_workspace_server_failed">Failed to start workspace service</string>
+    <string name="workspace_opening">Opening workspace...</string>
+    <string name="workspace_opening_hint">Starting the local preview service, please wait</string>
     <string name="chat_update_workspace_server_failed">Failed to update web workspace: %1$s</string>
     <string name="chat_stop_workspace_server_failed">Failed to stop web workspace: %1$s</string>
     <string name="chat_terminal_requires_android_8">Terminal features require Android 8.0 or higher</string>
     <string name="chat_create_dedicated_terminal_session_failed">Failed to create dedicated terminal session</string>
     <string name="chat_create_workspace_terminal_session_failed">Failed to create workspace terminal session</string>
     <string name="chat_execute_command_failed">Command execution failed: %1$s</string>
+    <string name="workspace_command_already_running">A workspace command is already running</string>
+    <string name="workspace_command_running">Command running</string>
+    <string name="workspace_command_cancelling">Cancelling command...</string>
+    <string name="workspace_command_finished">Command finished</string>
+    <string name="workspace_command_waiting_output">Waiting for command output...</string>
+    <string name="workspace_command_no_output">Command produced no output</string>
+    <string name="workspace_command_hide">Hide</string>
     <string name="chat_start_ai_computer_failed">Failed to start AI computer: %1$s</string>
     <string name="chat_ai_computer_closed_due_to_workspace">AI computer closed (workspace opened)</string>
     <string name="ai_planning_desc">Will perform task decomposition and trigger multiple sub-agents to collect information, then summarize. Sub-agents have the same tool-calling capabilities as the chat agent. This can be very time-consuming, only recommended when collecting information.</string>
@@ -6507,6 +6526,15 @@
     <string name="openai_tts_error_voice_not_set">OpenAI TTS voice not set, please fill in settings (e.g., alloy).</string>
     <string name="openai_tts_error_init_failed">Unexpected error while initializing OpenAI TTS service</string>
     <string name="openai_tts_error_request_failed">OpenAI TTS request failed</string>
+    <string name="openai_realtime_tts_error_url_not_set">OpenAI Realtime WebSocket URL not set. Please enter the full endpoint address (for example, wss://api.openai.com/v1/realtime).</string>
+    <string name="openai_realtime_tts_error_url_invalid_scheme">OpenAI Realtime WebSocket URL must start with ws:// or wss://.</string>
+    <string name="openai_realtime_tts_error_api_key_not_set">OpenAI Realtime API Key not set. Please fill in settings.</string>
+    <string name="openai_realtime_tts_error_model_not_set">OpenAI Realtime model not set. Please fill in settings (for example, gpt-realtime).</string>
+    <string name="openai_realtime_tts_error_voice_not_set">OpenAI Realtime voice not set. Please fill in settings (for example, alloy).</string>
+    <string name="openai_realtime_tts_error_init_failed">Unexpected error while initializing OpenAI Realtime TTS service</string>
+    <string name="openai_realtime_tts_error_request_failed">OpenAI Realtime TTS request failed</string>
+    <string name="openai_realtime_tts_error_send_failed">Failed to send a message to the OpenAI Realtime WebSocket</string>
+    <string name="openai_realtime_tts_error_empty_audio">OpenAI Realtime returned no playable audio</string>
 
     <!-- ConversationService -->
     <string name="conversation_language_chinese">Chinese</string>

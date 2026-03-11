@@ -56,9 +56,11 @@ import com.ai.assistance.operit.data.repository.MemoryRepository
 import com.ai.assistance.operit.ui.features.settings.components.CharacterCardAssignDialog
 import com.ai.assistance.operit.ui.features.settings.components.CharacterGroupAssignDialog
 import java.util.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /**
@@ -129,32 +131,34 @@ fun ChatHistorySettingsScreen() {
     // 获取无绑定的工作区文件夹
     var unboundWorkspaces by remember { mutableStateOf<List<UnboundWorkspaceInfo>>(emptyList()) }
     LaunchedEffect(chatHistories) {
-        scope.launch {
-            try {
-                val result = mutableListOf<UnboundWorkspaceInfo>()
-                
+        try {
+            val internalStorageLabel = context.getString(R.string.chathistory_internal_storage)
+            val externalStorageLabel = context.getString(R.string.chathistory_external_storage)
+            val result = withContext(Dispatchers.IO) {
+                val workspaces = mutableListOf<UnboundWorkspaceInfo>()
+
                 // 获取已绑定的工作区路径集合
                 val boundWorkspacePaths = chatHistories
                     .mapNotNull { it.workspace }
                     .toSet()
-                
+
                 // 1. 检查内部存储工作区 (/data/data/files/workspace)
                 val internalWorkspaceDir = File(context.filesDir, "workspace")
                 if (internalWorkspaceDir.exists() && internalWorkspaceDir.isDirectory) {
                     internalWorkspaceDir.listFiles { file -> file.isDirectory }?.forEach { dir ->
                         val fullPath = dir.absolutePath
                         if (fullPath !in boundWorkspacePaths) {
-                            result.add(
+                            workspaces.add(
                                 UnboundWorkspaceInfo(
                                     name = dir.name,
                                     fullPath = fullPath,
-                                    location = context.getString(R.string.chathistory_internal_storage)
+                                    location = internalStorageLabel
                                 )
                             )
                         }
                     }
                 }
-                
+
                 // 2. 检查外部存储工作区（旧位置）
                 val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 val externalWorkspaceDir = File(downloadDir, "Operit/workspace")
@@ -162,22 +166,24 @@ fun ChatHistorySettingsScreen() {
                     externalWorkspaceDir.listFiles { file -> file.isDirectory }?.forEach { dir ->
                         val fullPath = dir.absolutePath
                         if (fullPath !in boundWorkspacePaths) {
-                            result.add(
+                            workspaces.add(
                                 UnboundWorkspaceInfo(
                                     name = dir.name,
                                     fullPath = fullPath,
-                                    location = context.getString(R.string.chathistory_external_storage)
+                                    location = externalStorageLabel
                                 )
                             )
                         }
                     }
                 }
-                
-                unboundWorkspaces = result
-            } catch (e: Exception) {
-                AppLogger.e("ChatHistorySettings", "获取无绑定工作区失败", e)
-                unboundWorkspaces = emptyList()
+
+                workspaces
             }
+
+            unboundWorkspaces = result
+        } catch (e: Exception) {
+            AppLogger.e("ChatHistorySettings", "获取无绑定工作区失败", e)
+            unboundWorkspaces = emptyList()
         }
     }
 
@@ -339,24 +345,25 @@ fun ChatHistorySettingsScreen() {
                 UnboundWorkspaceCard(
                     unboundWorkspaces = unboundWorkspaces,
                     onDelete = { selectedWorkspacePaths ->
-                        scope.launch {
-                            try {
-                                var deletedCount = 0
+                        try {
+                            val deletedCount = withContext(Dispatchers.IO) {
+                                var count = 0
                                 selectedWorkspacePaths.forEach { workspacePath ->
                                     val workspaceDir = File(workspacePath)
                                     if (workspaceDir.exists() && workspaceDir.deleteRecursively()) {
-                                        deletedCount++
+                                        count++
                                     }
                                 }
-                                
-                                Toast.makeText(context, context.getString(R.string.deleted_unbound_workspaces, deletedCount), Toast.LENGTH_SHORT).show()
-                                
-                                // 刷新列表
-                                unboundWorkspaces = unboundWorkspaces.filter { it.fullPath !in selectedWorkspacePaths }
-                            } catch (e: Exception) {
-                                AppLogger.e("ChatHistorySettings", "删除工作区失败", e)
-                                Toast.makeText(context, context.getString(R.string.delete_failed, e.localizedMessage ?: ""), Toast.LENGTH_LONG).show()
+                                count
                             }
+
+                            Toast.makeText(context, context.getString(R.string.deleted_unbound_workspaces, deletedCount), Toast.LENGTH_SHORT).show()
+
+                            // 刷新列表
+                            unboundWorkspaces = unboundWorkspaces.filter { it.fullPath !in selectedWorkspacePaths }
+                        } catch (e: Exception) {
+                            AppLogger.e("ChatHistorySettings", "删除工作区失败", e)
+                            Toast.makeText(context, context.getString(R.string.delete_failed, e.localizedMessage ?: ""), Toast.LENGTH_LONG).show()
                         }
                     }
                 )
@@ -1620,11 +1627,13 @@ private fun SectionHeader(
 @Composable
 private fun UnboundWorkspaceCard(
     unboundWorkspaces: List<UnboundWorkspaceInfo>,
-    onDelete: (Set<String>) -> Unit
+    onDelete: suspend (Set<String>) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedWorkspaces by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var deleteInProgress by remember { mutableStateOf(false) }
     
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -1658,13 +1667,13 @@ private fun UnboundWorkspaceCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = { selectedWorkspaces = unboundWorkspaces.map { it.fullPath }.toSet() },
-                            enabled = unboundWorkspaces.isNotEmpty()
+                            enabled = unboundWorkspaces.isNotEmpty() && !deleteInProgress
                         ) {
                             Text(context.getString(R.string.select_all_current_list))
                         }
                         TextButton(
                             onClick = { selectedWorkspaces = emptySet() },
-                            enabled = selectedWorkspaces.isNotEmpty()
+                            enabled = selectedWorkspaces.isNotEmpty() && !deleteInProgress
                         ) {
                             Text(context.getString(R.string.clear_all))
                         }
@@ -1684,10 +1693,12 @@ private fun UnboundWorkspaceCard(
                             workspaceInfo = workspace,
                             selected = selectedWorkspaces.contains(workspace.fullPath),
                             onSelectionChange = { selected ->
-                                selectedWorkspaces = if (selected) {
-                                    selectedWorkspaces + workspace.fullPath
-                                } else {
-                                    selectedWorkspaces - workspace.fullPath
+                                if (!deleteInProgress) {
+                                    selectedWorkspaces = if (selected) {
+                                        selectedWorkspaces + workspace.fullPath
+                                    } else {
+                                        selectedWorkspaces - workspace.fullPath
+                                    }
                                 }
                             }
                         )
@@ -1700,14 +1711,22 @@ private fun UnboundWorkspaceCard(
                 // 删除按钮
                 Button(
                     onClick = { showDeleteConfirmDialog = true },
-                    enabled = selectedWorkspaces.isNotEmpty(),
+                    enabled = selectedWorkspaces.isNotEmpty() && !deleteInProgress,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    if (deleteInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onError
+                        )
+                    } else {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(context.getString(R.string.delete_selected_workspaces, selectedWorkspaces.size))
                 }
@@ -1718,7 +1737,11 @@ private fun UnboundWorkspaceCard(
     // 删除确认对话框
     if (showDeleteConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
+            onDismissRequest = {
+                if (!deleteInProgress) {
+                    showDeleteConfirmDialog = false
+                }
+            },
             title = { Text(context.getString(R.string.confirm_delete)) },
             text = { 
                 Text(context.getString(R.string.delete_workspaces_confirmation, selectedWorkspaces.size)) 
@@ -1726,19 +1749,39 @@ private fun UnboundWorkspaceCard(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onDelete(selectedWorkspaces)
-                        selectedWorkspaces = emptySet()
-                        showDeleteConfirmDialog = false
+                        val targets = selectedWorkspaces
+                        scope.launch {
+                            deleteInProgress = true
+                            try {
+                                onDelete(targets)
+                                selectedWorkspaces = emptySet()
+                                showDeleteConfirmDialog = false
+                            } finally {
+                                deleteInProgress = false
+                            }
+                        }
                     },
+                    enabled = !deleteInProgress,
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text(context.getString(R.string.delete))
+                    if (deleteInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(context.getString(R.string.delete))
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false },
+                    enabled = !deleteInProgress
+                ) {
                     Text(context.getString(R.string.cancel))
                 }
             }

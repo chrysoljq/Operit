@@ -183,6 +183,7 @@ fun AiMessageComposable(
                     onLinkClick = rememberedOnLinkClick,
                     xmlRenderer = xmlRenderer,
                     nodeGrouper = nodeGrouper,
+                    enableDialogs = enableDialogs,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     state = rendererState
                 )
@@ -196,6 +197,7 @@ fun AiMessageComposable(
                     onLinkClick = rememberedOnLinkClick,
                     xmlRenderer = xmlRenderer,
                     nodeGrouper = nodeGrouper,
+                    enableDialogs = enableDialogs,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     state = rendererState
                 )

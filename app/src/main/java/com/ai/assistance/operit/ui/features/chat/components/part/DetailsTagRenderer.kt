@@ -32,7 +32,12 @@ import com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable
 object DetailsTagRenderer {
 
     @Composable
-    fun Render(xmlContent: String, modifier: Modifier, textColor: Color) {
+    fun Render(
+        xmlContent: String,
+        modifier: Modifier,
+        textColor: Color,
+        enableDialogs: Boolean = true
+    ) {
         val tagName = extractTagName(xmlContent) ?: "details"
         val inner = extractContentFromXml(xmlContent, tagName)
         val summary = extractSummary(inner)
@@ -87,7 +92,8 @@ object DetailsTagRenderer {
                         MarkdownTextComposable(
                             text = body,
                             textColor = textColor.copy(alpha = 0.85f),
-                            modifier = Modifier
+                            modifier = Modifier,
+                            enableDialogs = enableDialogs
                         )
                     }
                 }

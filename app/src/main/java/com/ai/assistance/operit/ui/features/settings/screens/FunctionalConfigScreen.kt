@@ -517,7 +517,7 @@ fun FunctionConfigCard(
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -540,7 +540,7 @@ fun FunctionConfigCard(
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -563,7 +563,7 @@ fun FunctionConfigCard(
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -579,7 +579,7 @@ fun FunctionConfigCard(
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -595,7 +595,8 @@ fun FunctionConfigCard(
                                                         userPrompt,
                                                         listOf("system" to systemPrompt),
                                                         parameters,
-                                                        stream = false
+                                                        stream = false,
+                                                        enableRetry = false
                                                     ).collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -622,7 +623,8 @@ fun FunctionConfigCard(
                                                         userPrompt,
                                                         listOf("system" to systemPrompt),
                                                         parameters,
-                                                        stream = false
+                                                        stream = false,
+                                                        enableRetry = false
                                                     ).collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -630,7 +632,7 @@ fun FunctionConfigCard(
                                                     val parameters =
                                                         modelConfigManager.getModelParametersForConfig(configWithSelectedModel.id)
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, "Hi", emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, "Hi", emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
@@ -640,7 +642,7 @@ fun FunctionConfigCard(
                                                     val prompt =
                                                         "Connection test: return {\"order\":[{\"id\":\"test\",\"speak\":true}]} only."
                                                     val buffer = StringBuilder()
-                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false)
+                                                    service.sendMessage(context, prompt, emptyList(), parameters, stream = false, enableRetry = false)
                                                         .collect { chunk -> buffer.append(chunk) }
                                                     buffer.toString()
                                                 }
