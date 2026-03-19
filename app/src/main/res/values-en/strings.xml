@@ -1354,6 +1354,12 @@
     <string name="search_chat_history_hint">Search</string>
     <string name="new_chat">New Chat</string>
     <string name="new_conversation">New Conversation</string>
+    <string name="chat_shared_file_target_dialog_title">Choose a conversation</string>
+    <string name="chat_shared_file_target_dialog_message">Detected %1$d file(s) to attach. Choose one of the 5 most recent conversations, or create a new one.</string>
+    <string name="chat_shared_file_target_new_chat_hint">Create a new conversation and attach these files there</string>
+    <string name="chat_shared_file_target_recent_section">Recent 5 conversations</string>
+    <string name="chat_shared_file_target_current_badge">Current conversation</string>
+    <string name="chat_shared_file_target_no_recent">No recent conversations are available yet. You can create a new one directly.</string>
     
     <!-- Chat Screen Header -->
     <string name="exit_edit_mode">Exit Edit Mode</string>
@@ -3145,6 +3151,7 @@
     <string name="chat_processing_attachment">Processing attachment...</string>
     <string name="chat_attachment_processing_failed">Failed to process attachment: %1$s</string>
     <string name="chat_create_failed">Failed to create a new chat</string>
+    <string name="chat_prepare_shared_target_failed">Failed to prepare the target conversation for attachments</string>
     <string name="chat_please_create_new_chat">Please create a new chat</string>
     <string name="chat_processing_shared_files">Processing shared files...</string>
     <string name="chat_start_workspace_server_failed">Failed to start workspace service</string>

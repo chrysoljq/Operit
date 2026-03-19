@@ -1307,6 +1307,12 @@
     <string name="search_chat_history_hint">搜索</string>
     <string name="new_chat">新建对话</string>
     <string name="new_conversation">新对话</string>
+    <string name="chat_shared_file_target_dialog_title">选择要附加到的对话</string>
+    <string name="chat_shared_file_target_dialog_message">检测到 %1$d 个待附加文件，请选择最近的 5 个对话之一，或新建对话。</string>
+    <string name="chat_shared_file_target_new_chat_hint">创建一个新对话并把这些附件放进去</string>
+    <string name="chat_shared_file_target_recent_section">最近的 5 个对话</string>
+    <string name="chat_shared_file_target_current_badge">当前对话</string>
+    <string name="chat_shared_file_target_no_recent">暂无可选的最近对话，可以直接新建对话。</string>
     
     <!-- 聊天屏幕头部 -->
     <string name="exit_edit_mode">退出编辑模式</string>
@@ -3046,6 +3052,7 @@
     <string name="chat_processing_attachment">正在处理附件...</string>
     <string name="chat_attachment_processing_failed">处理附件失败: %1$s</string>
     <string name="chat_create_failed">创建新对话失败</string>
+    <string name="chat_prepare_shared_target_failed">准备附件目标对话失败</string>
     <string name="chat_please_create_new_chat">请新建对话</string>
     <string name="chat_processing_shared_files">正在处理分享文件...</string>
     <string name="chat_start_workspace_server_failed">启动工作区服务失败</string>

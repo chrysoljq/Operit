@@ -5,11 +5,9 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.coroutineScope
 
 /** 共享Stream接口，类似于SharedFlow */
 interface SharedStream<T> : Stream<T> {
@@ -54,7 +52,7 @@ interface MutableStateStream<T> : StateStream<T>, MutableSharedStream<T> {
 internal fun <T> SharedStream<T>.getInternalSubscriptionCountFlow():
         kotlinx.coroutines.flow.StateFlow<Int>? {
     return when (this) {
-        is MutableSharedStreamImpl<T> -> this.internalFlow.subscriptionCount
+        is MutableSharedStreamImpl<T> -> this.internalSubscriptionCountFlow
         is MutableStateStreamImpl<T> -> this.internalFlow.subscriptionCount
         else -> null
     }
@@ -66,8 +64,20 @@ class MutableSharedStreamImpl<T>(
         extraBufferCapacity: Int = 0,
         onBufferOverflow: BufferOverflow = BufferOverflow.SUSPEND
 ) : MutableSharedStream<T> {
-    internal val internalFlow = MutableSharedFlow<T>(replay, extraBufferCapacity, onBufferOverflow)
-    private val completion = CompletableDeferred<Throwable?>()
+    private sealed interface SharedEvent<out T> {
+        data class Value<T>(val payload: T) : SharedEvent<T>
+        data class Completion(val cause: Throwable?) : SharedEvent<Nothing>
+    }
+
+    private val replayLimit = replay.coerceAtLeast(0)
+    private val replayBuffer = ArrayDeque<T>()
+    private val subscribers = linkedMapOf<Long, Channel<SharedEvent<T>>>()
+    private val stateLock = Any()
+    private var nextSubscriberId = 0L
+    private var closeCause: Throwable? = null
+    private var isClosed = false
+
+    internal val internalSubscriptionCountFlow = MutableStateFlow(0)
 
     // 热流不需要锁定机制，所以这里提供默认实现
     override val isLocked: Boolean = false
@@ -89,39 +99,131 @@ class MutableSharedStreamImpl<T>(
     }
 
     override val subscriptionCount: Int
-        get() = internalFlow.subscriptionCount.value
+        get() = internalSubscriptionCountFlow.value
 
     override val replayCache: List<T>
-        get() = internalFlow.replayCache
+        get() = synchronized(stateLock) { replayBuffer.toList() }
 
     override suspend fun emit(value: T) {
-        internalFlow.emit(value)
+        val subscriberChannels =
+            synchronized(stateLock) {
+                if (isClosed) {
+                    emptyList()
+                } else {
+                    appendToReplayBufferLocked(value)
+                    subscribers.values.toList()
+                }
+            }
+
+        for (channel in subscriberChannels) {
+            channel.send(SharedEvent.Value(value))
+        }
     }
 
     override fun tryEmit(value: T): Boolean {
-        return internalFlow.tryEmit(value)
+        val subscriberChannels =
+            synchronized(stateLock) {
+                if (isClosed) {
+                    return false
+                }
+                appendToReplayBufferLocked(value)
+                subscribers.values.toList()
+            }
+
+        subscriberChannels.forEach { channel ->
+            channel.trySend(SharedEvent.Value(value))
+        }
+        return true
     }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun resetReplayCache() {
-        internalFlow.resetReplayCache()
+        synchronized(stateLock) {
+            replayBuffer.clear()
+        }
     }
 
     fun close(cause: Throwable? = null) {
-        completion.complete(cause)
+        val subscriberChannels =
+            synchronized(stateLock) {
+                if (isClosed) {
+                    return
+                }
+                isClosed = true
+                closeCause = cause
+                subscribers.values.toList()
+            }
+
+        subscriberChannels.forEach { channel ->
+            channel.trySend(SharedEvent.Completion(cause))
+            channel.close()
+        }
     }
 
     override suspend fun collect(collector: StreamCollector<T>) {
-        coroutineScope {
-            val collectJob = launch {
-                internalFlow.collect { value -> collector.emit(value) }
+        val replaySnapshot: List<T>
+        val subscriberId: Long?
+        val subscriberChannel: Channel<SharedEvent<T>>?
+        val closedSnapshot: Throwable?
+
+        synchronized(stateLock) {
+            replaySnapshot = replayBuffer.toList()
+            closedSnapshot = if (isClosed) closeCause else null
+            if (isClosed) {
+                subscriberId = null
+                subscriberChannel = null
+            } else {
+                subscriberId = nextSubscriberId++
+                subscriberChannel = Channel(Channel.UNLIMITED)
+                subscribers[subscriberId] = subscriberChannel
+                internalSubscriptionCountFlow.value = subscribers.size
+            }
+        }
+
+        try {
+            replaySnapshot.forEach { value ->
+                collector.emit(value)
             }
 
-            val cause = completion.await()
-            collectJob.cancel()
-            if (cause != null) {
-                throw cause
+            if (subscriberChannel == null) {
+                if (closedSnapshot != null) {
+                    throw closedSnapshot
+                }
+                return
             }
+
+            for (event in subscriberChannel) {
+                when (event) {
+                    is SharedEvent.Value -> collector.emit(event.payload)
+                    is SharedEvent.Completion -> {
+                        if (event.cause != null) {
+                            throw event.cause
+                        }
+                        return
+                    }
+                }
+            }
+
+            if (closedSnapshot != null) {
+                throw closedSnapshot
+            }
+        } finally {
+            subscriberChannel?.cancel()
+            if (subscriberId != null) {
+                synchronized(stateLock) {
+                    subscribers.remove(subscriberId)
+                    internalSubscriptionCountFlow.value = subscribers.size
+                }
+            }
+        }
+    }
+
+    private fun appendToReplayBufferLocked(value: T) {
+        if (replayLimit <= 0) {
+            return
+        }
+        replayBuffer.addLast(value)
+        while (replayBuffer.size > replayLimit) {
+            replayBuffer.removeFirst()
         }
     }
 }

@@ -128,25 +128,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // Monitor shared files from external apps
     val sharedFiles by SharedFileHandler.sharedFiles.collectAsState()
     val sharedLinks by SharedFileHandler.sharedLinks.collectAsState()
-    LaunchedEffect(sharedFiles) {
-        sharedFiles?.let { uris ->
-            if (uris.isNotEmpty()) {
-                // Process the shared files
-                actualViewModel.handleSharedFiles(uris)
-                // Clear the shared files
-                SharedFileHandler.clearSharedFiles()
-            }
-        }
-    }
-
-    LaunchedEffect(sharedLinks) {
-        sharedLinks?.let { urls ->
-            if (urls.isNotEmpty()) {
-                actualViewModel.handleSharedLinks(urls)
-                SharedFileHandler.clearSharedLinks()
-            }
-        }
-    }
 
     // 添加麦克风权限请求启动器
     val requestMicrophonePermissionLauncher =
@@ -367,6 +348,17 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             }
         )
     }
+
+    SharedIncomingContentHandler(
+        sharedFiles = sharedFiles,
+        sharedLinks = sharedLinks,
+        chatHistories = chatHistories,
+        currentChatId = currentChatId,
+        onHandleSharedFiles = actualViewModel::handleSharedFiles,
+        onHandleSharedLinks = actualViewModel::handleSharedLinks,
+        onClearSharedFiles = SharedFileHandler::clearSharedFiles,
+        onClearSharedLinks = SharedFileHandler::clearSharedLinks
+    )
 
 
     // 添加WebView刷新相关状态

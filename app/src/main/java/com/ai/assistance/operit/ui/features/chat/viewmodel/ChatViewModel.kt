@@ -301,7 +301,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    fun handleSharedLinks(urls: List<String>) {
+    fun handleSharedLinks(urls: List<String>, targetChatId: String? = null) {
         AppLogger.d(TAG, "handleSharedLinks called with ${urls.size} link(s)")
         urls.forEachIndexed { index, url ->
             AppLogger.d(TAG, "  [$index] URL: $url")
@@ -309,27 +309,19 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
         viewModelScope.launch {
             try {
-                createNewChat()
-
-                var waitCount = 0
-                while (currentChatId.value == null && waitCount < 20) {
-                    delay(50)
-                    waitCount++
-                }
-
-                if (currentChatId.value == null) {
-                    AppLogger.e(TAG, "Failed to create chat after waiting")
-                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_create_failed))
+                val chatId = resolveTargetChatIdForSharedContent(targetChatId)
+                if (chatId == null) {
+                    AppLogger.e(TAG, "Failed to prepare target chat for shared links")
+                    uiStateDelegate.showErrorMessage(
+                        context.getString(R.string.chat_prepare_shared_target_failed)
+                    )
                     return@launch
                 }
 
-                val chatId = currentChatId.value
-                if (chatId != null) {
-                    messageProcessingDelegate.setInputProcessingStateForChat(
-                        chatId,
-                        InputProcessingState.Processing(context.getString(R.string.chat_processing_shared_files))
-                    )
-                }
+                messageProcessingDelegate.setInputProcessingStateForChat(
+                    chatId,
+                    InputProcessingState.Processing(context.getString(R.string.chat_processing_shared_files))
+                )
 
                 val now = System.currentTimeMillis()
                 val attachmentsToAdd = urls
@@ -354,10 +346,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     TextFieldValue(context.getString(R.string.chat_prefill_check_file))
                 )
 
-                val chatIdForClear = currentChatId.value
-                if (chatIdForClear != null) {
-                    messageProcessingDelegate.setInputProcessingStateForChat(chatIdForClear, InputProcessingState.Idle)
-                }
+                messageProcessingDelegate.setInputProcessingStateForChat(
+                    chatId,
+                    InputProcessingState.Idle
+                )
 
                 uiStateDelegate.showToast(context.getString(R.string.chat_added_files_count, attachmentsToAdd.size))
             } catch (e: Exception) {
@@ -1478,11 +1470,64 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    private suspend fun awaitCurrentChat(chatId: String, maxWaitCount: Int = 40): Boolean {
+        var waitCount = 0
+        while (currentChatId.value != chatId && waitCount < maxWaitCount) {
+            delay(50)
+            waitCount++
+        }
+        return currentChatId.value == chatId
+    }
+
+    private suspend fun resolveTargetChatIdForSharedContent(targetChatId: String?): String? {
+        if (!targetChatId.isNullOrBlank()) {
+            if (currentChatId.value != targetChatId) {
+                switchChat(targetChatId)
+                if (!awaitCurrentChat(targetChatId)) {
+                    AppLogger.e(TAG, "Failed to switch to target chat: $targetChatId")
+                    return null
+                }
+            }
+            return targetChatId
+        }
+
+        val existingChatIds = chatHistories.value.mapTo(mutableSetOf()) { it.id }
+        val previousCurrentChatId = currentChatId.value
+        createNewChat()
+
+        var waitCount = 0
+        var createdChatId: String? = null
+        while (createdChatId.isNullOrBlank() && waitCount < 40) {
+            createdChatId = chatHistories.value.firstOrNull { it.id !in existingChatIds }?.id
+                ?: currentChatId.value
+                    ?.takeIf { it != previousCurrentChatId && it !in existingChatIds }
+            if (createdChatId.isNullOrBlank()) {
+                delay(50)
+                waitCount++
+            }
+        }
+
+        if (createdChatId.isNullOrBlank()) {
+            AppLogger.e(TAG, "Failed to detect newly created chat")
+            return null
+        }
+
+        if (currentChatId.value != createdChatId) {
+            switchChat(createdChatId)
+            if (!awaitCurrentChat(createdChatId)) {
+                AppLogger.e(TAG, "Failed to activate newly created chat: $createdChatId")
+                return null
+            }
+        }
+
+        return createdChatId
+    }
+
     /**
      * Handles shared files from external apps
-     * Creates a new chat, attaches files, and pre-fills message
+     * Attaches files to the selected chat or a newly created chat, then pre-fills the message
      */
-    fun handleSharedFiles(uris: List<Uri>) {
+    fun handleSharedFiles(uris: List<Uri>, targetChatId: String? = null) {
         AppLogger.d(TAG, "handleSharedFiles called with ${uris.size} file(s)")
         uris.forEachIndexed { index, uri ->
             AppLogger.d(TAG, "  [$index] URI: $uri")
@@ -1490,34 +1535,23 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         
         viewModelScope.launch {
             try {
-                AppLogger.d(TAG, "Creating new chat for shared files...")
-                // Create a new chat for the shared file(s)
-                createNewChat()
-                
-                // Wait for chat to be created
-                var waitCount = 0
-                while (currentChatId.value == null && waitCount < 20) {
-                    delay(50)
-                    waitCount++
-                }
-                
-                if (currentChatId.value == null) {
-                    AppLogger.e(TAG, "Failed to create chat after waiting")
-                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_create_failed))
+                val chatId = resolveTargetChatIdForSharedContent(targetChatId)
+                if (chatId == null) {
+                    AppLogger.e(TAG, "Failed to prepare target chat for shared files")
+                    uiStateDelegate.showErrorMessage(
+                        context.getString(R.string.chat_prepare_shared_target_failed)
+                    )
                     return@launch
                 }
-                
-                AppLogger.d(TAG, "Chat created successfully: ${currentChatId.value}")
-                
+
+                AppLogger.d(TAG, "Target chat prepared successfully: $chatId")
+
                 // Show processing state
-                val chatId = currentChatId.value
-                if (chatId != null) {
-                    messageProcessingDelegate.setInputProcessingStateForChat(
-                        chatId,
-                        InputProcessingState.Processing(context.getString(R.string.chat_processing_shared_files))
-                    )
-                }
-                
+                messageProcessingDelegate.setInputProcessingStateForChat(
+                    chatId,
+                    InputProcessingState.Processing(context.getString(R.string.chat_processing_shared_files))
+                )
+
                 // Attach each file
                 AppLogger.d(TAG, "Starting to attach ${uris.size} file(s)...")
                 uris.forEachIndexed { index, uri ->
@@ -1533,10 +1567,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 messageProcessingDelegate.updateUserMessage(TextFieldValue(context.getString(R.string.chat_prefill_check_file)))
 
                 // Clear processing state
-                val chatIdForClear = currentChatId.value
-                if (chatIdForClear != null) {
-                    messageProcessingDelegate.setInputProcessingStateForChat(chatIdForClear, InputProcessingState.Idle)
-                }
+                messageProcessingDelegate.setInputProcessingStateForChat(chatId, InputProcessingState.Idle)
                 
                 AppLogger.d(TAG, "Successfully processed shared files")
                 uiStateDelegate.showToast(context.getString(R.string.chat_added_files_count, uris.size))
