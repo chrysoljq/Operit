@@ -150,6 +150,26 @@ class JsEngine(private val context: Context) {
         }
     }
 
+    private fun disposeQuickJsForReinit(reason: String) {
+        synchronized(quickJsInitLock) {
+            val engine = quickJs
+            if (engine == null) {
+                jsEnvironmentInitialized = false
+                return
+            }
+            try {
+                runOnQuickJsThreadBlocking {
+                    engine.close()
+                }
+            } catch (closeError: Exception) {
+                AppLogger.e(TAG, "Error closing QuickJS for reinit: $reason, ${closeError.message}", closeError)
+            } finally {
+                quickJs = null
+                jsEnvironmentInitialized = false
+            }
+        }
+    }
+
     private fun <T> evaluateQuickJsBlocking(script: String, fileName: String = "<eval>"): T? {
         ensureQuickJs()
         val engine = quickJs ?: return null
@@ -511,20 +531,22 @@ class JsEngine(private val context: Context) {
 
     /** 初始化 JavaScript 环境，加上 QuickJS 兼容层、核心运行时与工具桥 */
     private fun initJavaScriptEnvironment() {
-        if (jsEnvironmentInitialized) {
-            return
-        }
+        synchronized(quickJsInitLock) {
+            if (jsEnvironmentInitialized) {
+                return
+            }
 
-        ensureQuickJs()
-        try {
-            runtimeBootstrapModules().forEach(::evaluateBootstrapModule)
-            jsEnvironmentInitialized = true
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to initialize JS environment: ${e.message}", e)
-            jsEnvironmentInitialized = false
-        }
-        if (!jsEnvironmentInitialized) {
-            AppLogger.e(TAG, "QuickJS init script failed to produce runtime bridge")
+            ensureQuickJs()
+            try {
+                runtimeBootstrapModules().forEach(::evaluateBootstrapModule)
+                jsEnvironmentInitialized = true
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to initialize JS environment: ${e.message}", e)
+                disposeQuickJsForReinit("bootstrap initialization failure")
+            }
+            if (!jsEnvironmentInitialized) {
+                AppLogger.e(TAG, "QuickJS init script failed to produce runtime bridge")
+            }
         }
     }
 
@@ -579,6 +601,17 @@ class JsEngine(private val context: Context) {
                     startTimeMs = initJavaScriptEnvironmentStartTime,
                     details = "function=$functionName, plugin=$timingPluginId"
                 )
+            }
+            if (!jsEnvironmentInitialized) {
+                val failureReason = "QuickJS runtime initialization failed"
+                if (shouldLogTiming) {
+                    logMessageTiming(
+                        stage = "toolpkg.jsEngine.total",
+                        startTimeMs = totalStartTime,
+                        details = "function=$functionName, plugin=$timingPluginId, success=false, reason=$failureReason"
+                    )
+                }
+                return "Error: $failureReason"
             }
         }
 

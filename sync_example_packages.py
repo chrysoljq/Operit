@@ -169,6 +169,14 @@ def _resolve_plan_item(examples_dir: Path, item: str) -> SyncPlanItem | None:
     return None
 
 
+def _resolve_plan_item_from_roots(source_roots: list[Path], item: str) -> SyncPlanItem | None:
+    for source_root in source_roots:
+        plan = _resolve_plan_item(source_root, item)
+        if plan is not None:
+            return plan
+    return None
+
+
 def _iter_files_for_pack(repo_root: Path, folder: Path) -> list[Path]:
     folder_rel = folder.relative_to(repo_root).as_posix()
     completed = subprocess.run(
@@ -214,6 +222,7 @@ def main() -> int:
     examples_dir = repo_root / "examples"
     packages_dir = repo_root / "app" / "src" / "main" / "assets" / "packages"
     default_whitelist_file = repo_root / "packages_whitelist.txt"
+    source_roots = [examples_dir, repo_root]
 
     parser = argparse.ArgumentParser(
         description=(
@@ -300,9 +309,9 @@ def main() -> int:
     seen_dest_names: set[str] = set()
 
     for item in final_items:
-        plan = _resolve_plan_item(examples_dir, item)
+        plan = _resolve_plan_item_from_roots(source_roots, item)
         if plan is None:
-            print(f"MISSING: {examples_dir / item}")
+            print(f"MISSING: {item}")
             missing += 1
             continue
 

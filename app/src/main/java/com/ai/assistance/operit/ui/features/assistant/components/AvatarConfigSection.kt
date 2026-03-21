@@ -139,6 +139,7 @@ fun AvatarConfigSection(
 
             if (currentAvatarModel != null) {
                 MoodTriggerMappingSection(
+                    sectionStateKey = currentAvatarModel.id,
                     avatarController = avatarController,
                     availableAnimations = availableAnimations,
                     moodAnimationMapping = uiState.moodAnimationMapping,
@@ -511,6 +512,7 @@ fun AvatarConfigSection(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoodTriggerMappingSection(
+    sectionStateKey: String,
     avatarController: AvatarController?,
     availableAnimations: List<String>,
     moodAnimationMapping: Map<String, String>,
@@ -522,6 +524,7 @@ private fun MoodTriggerMappingSection(
     val coroutineScope = rememberCoroutineScope()
     var showCreateDialog by remember { mutableStateOf(false) }
     var editingCustomMood by remember { mutableStateOf<AvatarCustomMoodDefinition?>(null) }
+    var expanded by remember(sectionStateKey) { mutableStateOf(false) }
 
     if (showCreateDialog) {
         MoodTypeEditorDialog(
@@ -547,17 +550,36 @@ private fun MoodTriggerMappingSection(
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    Text(
-        text = stringResource(R.string.avatar_mood_trigger_mapping_title),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.avatar_mood_trigger_mapping_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+        TextButton(onClick = { expanded = !expanded }) {
+            Text(
+                text = if (expanded) {
+                    stringResource(R.string.collapse)
+                } else {
+                    stringResource(R.string.expand)
+                }
+            )
+        }
+    }
     Text(
         text = stringResource(R.string.avatar_mood_trigger_mapping_desc),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 4.dp)
     )
+
+    if (!expanded) {
+        return
+    }
 
     if (availableAnimations.isEmpty()) {
         Text(
