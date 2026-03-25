@@ -176,7 +176,8 @@ object DefaultModelPricingCollect {
         "LMSTUDIO" to zeroPricing(PricingCurrency.CNY),
         "OLLAMA" to zeroPricing(PricingCurrency.CNY),
         "MNN" to zeroPricing(PricingCurrency.CNY),
-        "LLAMA_CPP" to zeroPricing(PricingCurrency.CNY)
+        "LLAMA_CPP" to zeroPricing(PricingCurrency.CNY),
+        "NOVITA" to zeroPricing(PricingCurrency.USD)
     )
 
     private fun splitProviderModel(providerModel: String): Pair<String, String> {

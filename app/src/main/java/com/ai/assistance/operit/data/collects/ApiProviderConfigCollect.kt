@@ -201,6 +201,21 @@ object ApiProviderConfigs {
             defaultApiEndpoint = "https://api.ppinfra.com/openai/v1/chat/completions"
         ),
         ProviderApiConfig(
+            providerType = ApiProviderType.NOVITA,
+            defaultModelName = "moonshotai/kimi-k2.5",
+            defaultApiEndpoint = "https://api.novita.ai/openai/v1/chat/completions",
+            endpointOptions = listOf(
+                ProviderEndpointOption(
+                    endpoint = "https://api.novita.ai/openai/v1/chat/completions",
+                    label = "OpenAI-compatible"
+                ),
+                ProviderEndpointOption(
+                    endpoint = "https://api.novita.ai/anthropic/v1/messages",
+                    label = "Anthropic-compatible"
+                )
+            )
+        ),
+        ProviderApiConfig(
             providerType = ApiProviderType.OTHER,
             defaultModelName = "",
             defaultApiEndpoint = ""
