@@ -174,7 +174,7 @@
 - 该页面会自动保存；改完后语音服务实例会自动重建。
 2) TTS（文本转语音）可选引擎：
 - `SIMPLE_TTS`：系统 TTS，基本无需填网络参数。
-- `HTTP_TTS`：需重点填写 `url_template`、`headers`、`http_method`、`content_type`、`request_body`。
+- `HTTP_TTS`：需重点填写 `url_template`、`headers`、`http_method`、`content_type`、`request_body`；若服务先返回 JSON / 字段 / 下载链接，再额外填写 `response_pipeline`。
 - `OPENAI_WS_TTS`：需填写 `url_template`、`api_key`、`model_name`、`voice_id`。其中 `url_template` 应为 Realtime WebSocket 地址（例如 `wss://api.openai.com/v1/realtime`）。
 - `SILICONFLOW_TTS`：需填写 `api_key`、`model_name`、`voice_id`。
 - `OPENAI_TTS`：需填写 `url_template`、`api_key`、`model_name`、`voice_id`。
@@ -185,6 +185,7 @@
 4) 最常见填错点（优先检查）：
 - `HTTP_TTS` 的 `headers` 不是合法 JSON（必须是对象）。
 - `HTTP_TTS` 的模板没放 `{text}` 占位符（GET 通常在 URL，POST 通常在 body）。
+- `HTTP_TTS` 的 `response_pipeline` 不是合法 JSON 数组，或步骤名 / `path` 填错。
 - `OPENAI_WS_TTS` 把 HTTP 地址填成了 WebSocket 地址，或把 WebSocket 地址误填成 HTTP 地址。
 - TTS/STT 的 endpoint 路径写错（比如把 chat/completions 写成 audio 接口）。
 - `model_name` 填了不存在的模型或与接口不匹配。
@@ -195,7 +196,15 @@
   - 当 `http_method=POST` 时，`{text}` 必须在 `request_body` 里。
 - 可选占位符：`{rate}`、`{pitch}`、`{voice}`。
 - 当前对外可稳定使用的占位符只有：`{text}`、`{rate}`、`{pitch}`、`{voice}`。
-6) 可直接参考的最小模板：
+6) HTTP_TTS 响应处理说明（已发布版本兼容）：
+- `response_pipeline` 留空或传 `[]`：保持旧行为，直接把首个响应体当音频。
+- 当服务端先返回 JSON、字段或下载链接时，再填写 `response_pipeline`，按步骤解析。
+- 当前可用步骤：`parse_json`、`pick`、`parse_json_string`、`http_get`、`http_request_from_object`、`base64_decode`。
+- 常见 JSON 下载链接场景：
+  - `response_pipeline`: `[{"type":"parse_json"},{"type":"pick","path":"audio_uri"},{"type":"http_get"}]`
+- 若字段里还是 JSON 字符串：
+  - `response_pipeline`: `[{"type":"parse_json"},{"type":"pick","path":"data.payload"},{"type":"parse_json_string"},{"type":"pick","path":"audio.url"},{"type":"http_get"}]`
+7) 可直接参考的最小模板：
 - HTTP TTS（GET）：
   - `url_template`: `https://example.com/tts?text={text}`
   - `headers`: `{}`
@@ -210,12 +219,12 @@
 - OpenAI STT（默认常见）：
   - `endpoint_url`: `https://api.openai.com/v1/audio/transcriptions`
   - `model_name`: `whisper-1`
-7) 排查顺序（建议）：
+8) 排查顺序（建议）：
 - 先确认选中的引擎类型是否正确（TTS 与 STT 分开看）。
 - 再检查 endpoint / key / model 三件套是否完整。
-- 再检查 HTTP 模板字段（headers JSON、method、body、占位符）。
+- 再检查 HTTP 模板字段（headers JSON、method、body、占位符、response_pipeline）。
 - 至少做一次真实 TTS 播报测试；若还要排查 STT，再另外走语音识别链路。
-8) 对应工具（可直接用）：
+9) 对应工具（可直接用）：
 - `get_speech_services_config`：获取当前 TTS/STT 配置快照（含引擎类型与关键字段）。
 - `set_speech_services_config`：按字段修改 TTS/STT 配置（支持只改部分字段）。
 - `test_tts_playback`：按当前 TTS 配置播放一次测试文本（支持临时覆盖语速/音调）。
@@ -399,7 +408,7 @@
 - The page auto-saves; after changes, speech-service instances are rebuilt automatically.
 2) TTS (text-to-speech) engines:
 - `SIMPLE_TTS`: system TTS, usually no network fields required.
-- `HTTP_TTS`: mainly fill `url_template`, `headers`, `http_method`, `content_type`, `request_body`.
+- `HTTP_TTS`: mainly fill `url_template`, `headers`, `http_method`, `content_type`, `request_body`; if the service first returns JSON / fields / a download link, also fill `response_pipeline`.
 - `OPENAI_WS_TTS`: fill `url_template`, `api_key`, `model_name`, `voice_id`. `url_template` should be a Realtime WebSocket endpoint such as `wss://api.openai.com/v1/realtime`.
 - `SILICONFLOW_TTS`: fill `api_key`, `model_name`, `voice_id`.
 - `OPENAI_TTS`: fill `url_template`, `api_key`, `model_name`, `voice_id`.
@@ -410,6 +419,7 @@
 4) Most common mistakes (check first):
 - `headers` in `HTTP_TTS` is not valid JSON (must be an object).
 - Missing `{text}` placeholder in HTTP TTS template (typically in URL for GET, in body for POST).
+- `response_pipeline` in `HTTP_TTS` is not a valid JSON array, or a step name / `path` is incorrect.
 - `OPENAI_WS_TTS` is configured with an HTTP URL instead of a WebSocket URL, or vice versa.
 - Wrong endpoint path for TTS/STT (for example using chat/completions instead of audio endpoints).
 - `model_name` does not exist or does not match the API.
@@ -420,7 +430,15 @@
   - When `http_method=POST`, `{text}` must appear in `request_body`.
 - Optional placeholders: `{rate}`, `{pitch}`, `{voice}`.
 - Only these placeholders are stably supported for external configuration: `{text}`, `{rate}`, `{pitch}`, `{voice}`.
-6) Minimal templates you can copy:
+6) HTTP_TTS response handling notes (forward-compatible with released configs):
+- Leave `response_pipeline` empty or use `[]` to keep the old behavior: the first response body is treated as audio directly.
+- Only fill `response_pipeline` when the service returns JSON, nested fields, or a follow-up download URL before audio is available.
+- Currently supported steps: `parse_json`, `pick`, `parse_json_string`, `http_get`, `http_request_from_object`, `base64_decode`.
+- Common JSON download-link case:
+  - `response_pipeline`: `[{"type":"parse_json"},{"type":"pick","path":"audio_uri"},{"type":"http_get"}]`
+- If the picked field is itself a JSON string:
+  - `response_pipeline`: `[{"type":"parse_json"},{"type":"pick","path":"data.payload"},{"type":"parse_json_string"},{"type":"pick","path":"audio.url"},{"type":"http_get"}]`
+7) Minimal templates you can copy:
 - HTTP TTS (GET):
   - `url_template`: `https://example.com/tts?text={text}`
   - `headers`: `{}`
@@ -435,12 +453,12 @@
 - OpenAI STT (common default):
   - `endpoint_url`: `https://api.openai.com/v1/audio/transcriptions`
   - `model_name`: `whisper-1`
-7) Recommended troubleshooting order:
+8) Recommended troubleshooting order:
 - Confirm the selected engine type first (TTS and STT separately).
 - Check endpoint/key/model as a bundle.
-- Then verify HTTP template fields (headers JSON, method, body, placeholder).
+- Then verify HTTP template fields (headers JSON, method, body, placeholder, response_pipeline).
 - Run at least one real TTS playback test; if STT also needs troubleshooting, verify recognition in a separate speech flow.
-8) Related tools:
+9) Related tools:
 - `get_speech_services_config`: fetch current TTS/STT config snapshot (engine types + key fields).
 - `set_speech_services_config`: update TTS/STT config fields (partial update supported).
 - `test_tts_playback`: play one test utterance with the current TTS config (supports temporary rate/pitch overrides).
@@ -750,6 +768,15 @@
           description: {
             zh: "可选，TTS 模型名"
             en: "Optional TTS model name"
+          }
+          type: string
+          required: false
+        },
+        {
+          name: "tts_response_pipeline"
+          description: {
+            zh: "可选，HTTP TTS 响应处理管线 JSON 数组字符串。留空或 `[]` 时保持旧行为，直接把响应体当音频"
+            en: "Optional HTTP TTS response pipeline JSON array string. Leave empty or use `[]` to keep the old direct-audio behavior"
           }
           type: string
           required: false
@@ -2409,6 +2436,9 @@ async function get_speech_services_config() {
 async function set_speech_services_config(params) {
     try {
         const updates = { ...(params ?? {}) };
+        if (Array.isArray(updates.tts_response_pipeline)) {
+            updates.tts_response_pipeline = JSON.stringify(updates.tts_response_pipeline);
+        }
         const result = await Tools.SoftwareSettings.setSpeechServicesConfig(updates);
         const parsed = result;
         complete({
