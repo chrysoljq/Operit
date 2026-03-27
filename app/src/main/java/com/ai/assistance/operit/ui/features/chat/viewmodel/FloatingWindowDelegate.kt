@@ -16,8 +16,11 @@ import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -34,6 +37,8 @@ class FloatingWindowDelegate(
     // 悬浮窗状态
     private val _isFloatingMode = MutableStateFlow(false)
     val isFloatingMode: StateFlow<Boolean> = _isFloatingMode.asStateFlow()
+    private val _moveTaskToBackEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val moveTaskToBackEvents: SharedFlow<Unit> = _moveTaskToBackEvents.asSharedFlow()
 
     // 悬浮窗服务
     private var floatingService: FloatingChatService? = null
@@ -41,6 +46,7 @@ class FloatingWindowDelegate(
     private var floatingBinder: FloatingChatService.LocalBinder? = null
 
     private var isBoundToService: Boolean = false
+    private var moveTaskToBackOnWindowShownPending: Boolean = false
 
     private val serviceLifecycleReceiver =
         object : BroadcastReceiver() {
@@ -50,7 +56,17 @@ class FloatingWindowDelegate(
                         tryBindToRunningService()
                     }
                     FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STOPPED -> {
+                        moveTaskToBackOnWindowShownPending = false
                         disconnectFromService(updateFloatingMode = false)
+                    }
+                    FloatingChatService.ACTION_FLOATING_CHAT_WINDOW_SHOWN -> {
+                        if (moveTaskToBackOnWindowShownPending) {
+                            moveTaskToBackOnWindowShownPending = false
+                            _moveTaskToBackEvents.tryEmit(Unit)
+                        }
+                    }
+                    FloatingChatService.ACTION_FLOATING_CHAT_WINDOW_SHOW_FAILED -> {
+                        moveTaskToBackOnWindowShownPending = false
                     }
                 }
             }
@@ -85,6 +101,8 @@ class FloatingWindowDelegate(
             val filter = IntentFilter().apply {
                 addAction(FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STARTED)
                 addAction(FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STOPPED)
+                addAction(FloatingChatService.ACTION_FLOATING_CHAT_WINDOW_SHOWN)
+                addAction(FloatingChatService.ACTION_FLOATING_CHAT_WINDOW_SHOW_FAILED)
             }
             if (Build.VERSION.SDK_INT >= 33) {
                 context.registerReceiver(serviceLifecycleReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -122,6 +140,7 @@ class FloatingWindowDelegate(
 
         if (newMode) {
             _isFloatingMode.value = true
+            moveTaskToBackOnWindowShownPending = false
 
             // 先启动并绑定服务
             val intent = Intent(context, FloatingChatService::class.java)
@@ -138,6 +157,7 @@ class FloatingWindowDelegate(
             }
             context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         } else {
+            moveTaskToBackOnWindowShownPending = false
             // 统一调用关闭逻辑，确保服务被正确关闭
             floatingService?.onClose()
         }
@@ -149,16 +169,21 @@ class FloatingWindowDelegate(
     fun launchInMode(
         mode: FloatingMode,
         colorScheme: ColorScheme? = null,
-        typography: Typography? = null
+        typography: Typography? = null,
+        moveTaskToBackOnReady: Boolean = false
     ) {
         if (_isFloatingMode.value && floatingService != null) {
             // 如果服务已在运行，直接切换模式
             floatingService?.switchToMode(mode)
+            if (moveTaskToBackOnReady) {
+                _moveTaskToBackEvents.tryEmit(Unit)
+            }
             AppLogger.d(TAG, "悬浮窗已在运行，直接切换到模式: $mode")
             return
         }
 
         _isFloatingMode.value = true
+        moveTaskToBackOnWindowShownPending = moveTaskToBackOnReady
 
         // 先启动并绑定服务
         val intent = Intent(context, FloatingChatService::class.java)
@@ -190,6 +215,7 @@ class FloatingWindowDelegate(
         if (updateFloatingMode && _isFloatingMode.value) {
             _isFloatingMode.value = false
         }
+        moveTaskToBackOnWindowShownPending = false
         if (isBoundToService) {
             try {
                 context.unbindService(serviceConnection)

@@ -408,29 +408,18 @@ object ProblemLibrary {
                         }
                     }
 
-                    // If it's not an alias, or if the original for the alias wasn't found, try local deduplication before creating.
+                    // If it's not an alias, or if the original for the alias wasn't found, create a new memory.
                     if (memory == null) {
-                        // Conservative Strategy: Before creating a new entity, perform a high-similarity local search.
-                        val similarMemories = memoryRepository.searchMemoriesPrecise(entity.title, similarityThreshold = 0.92f)
-                        val bestMatch = similarMemories.firstOrNull()
-
-                        if (bestMatch != null) {
-                            // If a very similar memory is found locally, treat it as an alias and reuse it.
-                            AppLogger.d(TAG, "   -> 本地查重：发现与 '${bestMatch.title}' 高度相似的记忆。复用现有记忆节点。")
-                            memory = bestMatch
-                        } else {
-                            // Only create a new memory if no close match is found.
-                            AppLogger.d(TAG, "   -> 本地查重未发现相似项。创建新的记忆节点。")
-                            memory = Memory(
-                                title = entity.title,
-                                content = entity.content,
-                                source = "problem_library_analysis",
-                                folderPath = entity.folderPath ?: analysis.mainProblem.folderPath ?: ""
-                            )
-                            memoryRepository.saveMemory(memory)
-                            entity.tags.forEach { tagName ->
-                                memoryRepository.addTagToMemory(memory, tagName)
-                            }
+                        AppLogger.d(TAG, "   -> 创建新的记忆节点。")
+                        memory = Memory(
+                            title = entity.title,
+                            content = entity.content,
+                            source = "problem_library_analysis",
+                            folderPath = entity.folderPath ?: analysis.mainProblem.folderPath ?: ""
+                        )
+                        memoryRepository.saveMemory(memory)
+                        entity.tags.forEach { tagName ->
+                            memoryRepository.addTagToMemory(memory, tagName)
                         }
                     }
 
@@ -496,7 +485,6 @@ object ProblemLibrary {
             val searchConfig = MemorySearchSettingsPreferences(context, profileId).load()
             val candidateMemories = memoryRepository.searchMemories(
                 query = contextQuery,
-                semanticThreshold = searchConfig.semanticThreshold,
                 scoreMode = searchConfig.scoreMode,
                 keywordWeight = searchConfig.keywordWeight,
                 semanticWeight = searchConfig.vectorWeight,
@@ -506,7 +494,7 @@ object ProblemLibrary {
             AppLogger.d(
                 TAG,
                 "候选记忆检索完成: count=${candidateMemories.size}, " +
-                    "threshold=${searchConfig.semanticThreshold}, mode=${searchConfig.scoreMode}, " +
+                    "mode=${searchConfig.scoreMode}, " +
                     "keywordWeight=${searchConfig.keywordWeight}, vectorWeight=${searchConfig.vectorWeight}, edgeWeight=${searchConfig.edgeWeight}, " +
                     "searchQueryLen=${contextQuery.length}"
             )

@@ -473,7 +473,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
                 val repo = getRepository(ref.profileId)
                 val memory = runBlocking { repo.findMemoryByUuid(ref.uuid) }
                     ?: throw FileNotFoundException("Memory not found: ${ref.uuid}")
-                val ok = runBlocking { repo.deleteMemoryAndIndex(memory.id) }
+                val ok = runBlocking { repo.deleteMemory(memory.id) }
                 if (!ok) {
                     throw IllegalStateException("Failed to delete memory: ${ref.uuid}")
                 }
@@ -938,7 +938,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
 
     private fun loadAllMemories(repo: MemoryRepository): List<Memory> {
         return runBlocking {
-            repo.searchMemories(query = "*", folderPath = null, semanticThreshold = 0.0f)
+            repo.searchMemories(query = "*", folderPath = null)
         }
     }
 

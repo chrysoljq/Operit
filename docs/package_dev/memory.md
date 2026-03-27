@@ -21,13 +21,12 @@ Tools.Memory
 
 ### 记忆查询与读取
 
-#### `query(query, folderPath?, threshold?, limit?, startTime?, endTime?, snapshotId?)`
+#### `query(query, folderPath?, limit?, startTime?, endTime?, snapshotId?)`
 
 ```ts
 query(
   query: string,
   folderPath?: string,
-  threshold?: number,
   limit?: number,
   startTime?: string,
   endTime?: string,
@@ -37,8 +36,8 @@ query(
 
 说明：
 
-- `threshold` 为语义相似度阈值，默认注释值为 `0.35`。
-- `limit` 范围注释为 `1-20`，默认 `5`。
+- `query` 支持自然语言问题、空格分隔短语，或使用 `|` 分隔多个关键词；在单个关键词内部，`*` 可作为模糊通配占位符，例如 `error*timeout`；传 `*` 时返回所有记忆。
+- `limit` 为可选结果上限，取值 `>=1`，默认 `20`；当 `limit > 20` 时会进入截断结果模式。
 - `startTime` / `endTime` 是本地时间字符串过滤条件，只支持 `YYYY-MM-DD` 和 `YYYY-MM-DD HH:mm` 两种格式。
 - `startTime` 使用起始边界：按天时会从 `00:00:00.000` 开始，按分钟时会从该分钟的 `00` 秒开始。
 - `endTime` 使用包含式结束边界：按天时会到 `23:59:59.999`，按分钟时会到该分钟的 `59.999` 秒。
@@ -47,13 +46,14 @@ query(
 - 返回结构体中包含 `memories[]`，每项有 `title`、`content`、`source`、`tags`、`createdAt`，文档型记忆还可能带 `chunkInfo` 与 `chunkIndices`。
 - 返回结构体还包含 `snapshotId`、`snapshotCreated`、`excludedBySnapshotCount`，用于分页式去重检索。
 
-#### `getByTitle(title, chunkIndex?, chunkRange?, query?)`
+#### `getByTitle(title, chunkIndex?, chunkRange?, query?, limit?)`
 
 通过精确标题读取记忆；当目标是文档型记忆时，可结合：
 
 - `chunkIndex?`
 - `chunkRange?`，例如 `"3-7"`
-- `query?`，用于在文档内部进一步检索
+- `query?`，用于在文档内部进一步检索，支持自然语言、空格分隔短语、`|` 分隔多个关键词，以及在单个关键词内部使用 `*` 做模糊通配
+- `limit?`，仅在使用 `query` 检索文档分块时生效，表示最多返回多少个分块，默认 `20`
 
 返回值是 `Promise<string>`。
 
@@ -132,8 +132,7 @@ update(oldTitle: string, updates?: {
 const result = await Tools.Memory.query(
   '最近关于网络请求的笔记',
   'dev/network',
-  0.4,
-  5
+  20
 );
 console.log(result.snapshotId);
 console.log(result.memories.map(item => item.title));
@@ -145,7 +144,6 @@ console.log(result.memories.map(item => item.title));
 const result = await Tools.Memory.query(
   '最近关于网络请求的笔记',
   'dev/network',
-  0.4,
   5,
   '2026-03-01',
   '2026-03-27 18:30'
@@ -159,7 +157,6 @@ console.log(result.memories.length);
 const firstPage = await Tools.Memory.query('最近关于网络请求的笔记');
 const secondPage = await Tools.Memory.query(
   '最近关于网络请求的笔记',
-  undefined,
   undefined,
   5,
   undefined,

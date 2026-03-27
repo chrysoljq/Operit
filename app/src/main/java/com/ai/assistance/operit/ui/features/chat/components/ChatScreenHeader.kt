@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material3.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -31,6 +32,7 @@ import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
 
 @Composable
@@ -38,22 +40,17 @@ fun useFloatingWindowLauncher(
     actualViewModel: ChatViewModel,
     permissionLauncher: ActivityResultLauncher<String>
 ): () -> Unit {
-    val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
     return {
-        val isCurrentlyFloating = actualViewModel.isFloatingMode.value
         actualViewModel.onFloatingButtonClick(
             FloatingMode.WINDOW,
             permissionLauncher,
             colorScheme,
-            typography
+            typography,
+            moveTaskToBackOnReady = true
         )
-        // 如果当前不是悬浮模式，说明是要启动悬浮窗，则最小化应用
-        if (!isCurrentlyFloating) {
-            (context as? android.app.Activity)?.moveTaskToBack(true)
-        }
     }
 }
 
@@ -71,6 +68,12 @@ fun ChatScreenHeader(
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
+
+    LaunchedEffect(actualViewModel, context) {
+        actualViewModel.moveTaskToBackEvents.collect {
+            (context as? android.app.Activity)?.moveTaskToBack(true)
+        }
+    }
 
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
@@ -120,9 +123,11 @@ fun ChatScreenHeader(
             contract = ActivityResultContracts.RequestPermission()
         ) { isGranted ->
             if (isGranted) {
-                actualViewModel.launchFloatingModeIn(FloatingMode.WINDOW, colorScheme, typography)
-                // WINDOW模式启动后最小化应用
-                (context as? android.app.Activity)?.moveTaskToBack(true)
+                actualViewModel.launchWindowFloatingModeAfterMicPermissionGranted(
+                    colorScheme = colorScheme,
+                    typography = typography,
+                    moveTaskToBackOnReady = true
+                )
             } else {
                 actualViewModel.showToast(context.getString(R.string.microphone_permission_denied))
             }

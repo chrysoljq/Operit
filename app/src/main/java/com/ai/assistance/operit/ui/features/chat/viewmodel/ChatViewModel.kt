@@ -256,6 +256,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // 悬浮窗相关
     val isFloatingMode: StateFlow<Boolean> by lazy { floatingWindowDelegate.isFloatingMode }
+    val moveTaskToBackEvents: SharedFlow<Unit> by lazy { floatingWindowDelegate.moveTaskToBackEvents }
 
     // 附件相关
     val attachments: StateFlow<List<AttachmentInfo>> by lazy { attachmentDelegate.attachments }
@@ -1248,7 +1249,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun clearToastEvent() = uiStateDelegate.clearToastEvent()
 
     // 悬浮窗相关方法
-    fun onFloatingButtonClick(mode: FloatingMode, permissionLauncher: ActivityResultLauncher<String>, colorScheme: ColorScheme, typography: Typography) {
+    fun onFloatingButtonClick(
+        mode: FloatingMode,
+        permissionLauncher: ActivityResultLauncher<String>,
+        colorScheme: ColorScheme,
+        typography: Typography,
+        moveTaskToBackOnReady: Boolean = false
+    ) {
         viewModelScope.launch {
             // 如果悬浮窗已经开启，则关闭它
             if (isFloatingMode.value) {
@@ -1258,11 +1265,21 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
             when(mode) {
                 FloatingMode.WINDOW -> launchFloatingWindowWithPermissionCheck(permissionLauncher) {
-                    launchFloatingModeIn(FloatingMode.WINDOW, colorScheme, typography)
+                    launchFloatingModeIn(
+                        mode = FloatingMode.WINDOW,
+                        colorScheme = colorScheme,
+                        typography = typography,
+                        moveTaskToBackOnReady = moveTaskToBackOnReady
+                    )
                 }
                 FloatingMode.FULLSCREEN -> launchFullscreenVoiceModeWithPermissionCheck(permissionLauncher, colorScheme, typography)
                 FloatingMode.SCREEN_OCR -> launchFloatingWindowWithPermissionCheck(permissionLauncher) {
-                    launchFloatingModeIn(FloatingMode.WINDOW, colorScheme, typography)
+                    launchFloatingModeIn(
+                        mode = FloatingMode.WINDOW,
+                        colorScheme = colorScheme,
+                        typography = typography,
+                        moveTaskToBackOnReady = moveTaskToBackOnReady
+                    )
                 }
                 FloatingMode.BALL,
                 FloatingMode.VOICE_BALL,
@@ -1763,9 +1780,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun launchFloatingModeIn(
             mode: FloatingMode,
             colorScheme: ColorScheme? = null,
-            typography: Typography? = null
+            typography: Typography? = null,
+            moveTaskToBackOnReady: Boolean = false
     ) {
-        floatingWindowDelegate.launchInMode(mode, colorScheme, typography)
+        floatingWindowDelegate.launchInMode(mode, colorScheme, typography, moveTaskToBackOnReady)
     }
     
     /**
@@ -1773,6 +1791,24 @@ class ChatViewModel(private val context: Context) : ViewModel() {
      */
     fun launchFloatingWindowInMode(mode: FloatingMode) {
         launchFloatingModeIn(mode, null, null)
+    }
+
+    fun launchWindowFloatingModeAfterMicPermissionGranted(
+            colorScheme: ColorScheme? = null,
+            typography: Typography? = null,
+            moveTaskToBackOnReady: Boolean = false
+    ) {
+        if (!Settings.canDrawOverlays(context)) {
+            openOverlayPermissionSettings()
+            return
+        }
+
+        launchFloatingModeIn(
+            mode = FloatingMode.WINDOW,
+            colorScheme = colorScheme,
+            typography = typography,
+            moveTaskToBackOnReady = moveTaskToBackOnReady
+        )
     }
 
     fun launchFloatingWindowWithPermissionCheck(
@@ -1787,14 +1823,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         if (!hasMicPermission) {
             launcher.launch(Manifest.permission.RECORD_AUDIO)
         } else if (!canDrawOverlays) {
-            val intent =
-                    Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                    )
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            showToast(context.getString(R.string.chat_need_overlay_permission_start_voice_assistant))
+            openOverlayPermissionSettings()
         } else {
             onPermissionGranted()
         }
@@ -1813,18 +1842,22 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         if (!hasMicPermission) {
             launcher.launch(Manifest.permission.RECORD_AUDIO)
         } else if (!canDrawOverlays) {
-            val intent =
-                    Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:${context.packageName}")
-                    )
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            showToast(context.getString(R.string.chat_need_overlay_permission_start_voice_assistant))
+            openOverlayPermissionSettings()
         } else {
             // Directly launch fullscreen voice mode
             launchFloatingModeIn(FloatingMode.FULLSCREEN, colorScheme, typography)
         }
+    }
+
+    private fun openOverlayPermissionSettings() {
+        val intent =
+                Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                )
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        showToast(context.getString(R.string.chat_need_overlay_permission_start_voice_assistant))
     }
 
     override fun onCleared() {

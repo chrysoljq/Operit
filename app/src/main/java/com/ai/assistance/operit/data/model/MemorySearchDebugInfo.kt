@@ -5,7 +5,6 @@ data class MemorySearchDebugInfo(
     val keywords: List<String>,
     val lexicalTokens: List<String>,
     val scoreMode: MemoryScoreMode,
-    val semanticThreshold: Float,
     val relevanceThreshold: Double,
     val effectiveKeywordWeight: Double,
     val effectiveSemanticWeight: Float,

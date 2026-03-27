@@ -5323,9 +5323,8 @@
     <string name="memory_test_tool_hint">输入查询内容，模拟AI从知识库中检索并附着相关记忆：</string>
     <string name="memory_test_results">结果</string>
     <string name="memory_search_settings_title">记忆搜索设置</string>
-    <string name="memory_search_threshold">语义阈值</string>
     <string name="memory_search_calc_mode">计算方式</string>
-    <string name="memory_search_weight_section">阈值与权重</string>
+    <string name="memory_search_weight_section">权重</string>
     <string name="memory_search_mode_balanced">平衡模式</string>
     <string name="memory_search_mode_keyword_first">关键词优先</string>
     <string name="memory_search_mode_semantic_first">向量优先</string>
@@ -5362,8 +5361,8 @@
     <string name="memory_embedding_rebuild_action">重建向量索引</string>
     <string name="memory_embedding_rebuild_progress">进度 %1$d/%2$d，失败 %3$d，阶段：%4$s</string>
     <string name="memory_embedding_stage_preparing">准备中</string>
-    <string name="memory_embedding_stage_memory">重建记忆向量</string>
-    <string name="memory_embedding_stage_chunk">重建文档块向量</string>
+    <string name="memory_embedding_stage_memory_index">重建记忆索引</string>
+    <string name="memory_embedding_stage_chunk_index">重建文档块索引</string>
     <string name="memory_embedding_stage_done">完成</string>
     <string name="memory_embedding_rebuild_failed">重建向量索引失败: %1$s</string>
     <string name="memory_document_title">文档标题</string>

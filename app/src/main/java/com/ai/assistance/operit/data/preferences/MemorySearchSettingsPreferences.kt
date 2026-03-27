@@ -17,7 +17,6 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
 
     fun load(): MemorySearchConfig {
         val config = MemorySearchConfig(
-            semanticThreshold = searchPrefs.getFloat(KEY_SEMANTIC_THRESHOLD, 0.6f),
             scoreMode = MemoryScoreMode.entries[searchPrefs.getInt(KEY_SCORE_MODE, MemoryScoreMode.BALANCED.ordinal)],
             keywordWeight = searchPrefs.getFloat(KEY_KEYWORD_WEIGHT, 10.0f),
             vectorWeight = searchPrefs.getFloat(KEY_VECTOR_WEIGHT, 0.0f),
@@ -29,7 +28,6 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
     fun save(config: MemorySearchConfig) {
         val normalized = config.normalized()
         searchPrefs.edit()
-            .putFloat(KEY_SEMANTIC_THRESHOLD, normalized.semanticThreshold)
             .putInt(KEY_SCORE_MODE, normalized.scoreMode.ordinal)
             .putFloat(KEY_KEYWORD_WEIGHT, normalized.keywordWeight)
             .putFloat(KEY_VECTOR_WEIGHT, normalized.vectorWeight)
@@ -65,7 +63,6 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
     }
 
     companion object {
-        private const val KEY_SEMANTIC_THRESHOLD = "semantic_threshold"
         private const val KEY_SCORE_MODE = "score_mode"
         private const val KEY_KEYWORD_WEIGHT = "keyword_weight"
         private const val KEY_VECTOR_WEIGHT = "vector_weight"

@@ -60,7 +60,6 @@ fun MemorySearchSettingsDialog(
     onRebuild: () -> Unit,
     onSimulateSearch: () -> Unit
 ) {
-    var semanticThreshold by remember(currentConfig) { mutableFloatStateOf(currentConfig.semanticThreshold) }
     var keywordWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.keywordWeight) }
     var vectorWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.vectorWeight) }
     var edgeWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.edgeWeight) }
@@ -98,14 +97,6 @@ fun MemorySearchSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SettingsSection(title = stringResource(R.string.memory_search_weight_section)) {
-                    SliderSettingItem(
-                        title = stringResource(R.string.memory_search_threshold),
-                        value = semanticThreshold,
-                        valueText = String.format("%.2f", semanticThreshold),
-                        valueRange = 0.0f..1.0f,
-                        onValueChange = { semanticThreshold = it }
-                    )
-
                     SliderSettingItem(
                         title = stringResource(R.string.memory_search_keyword_weight),
                         value = keywordWeight,
@@ -260,7 +251,6 @@ fun MemorySearchSettingsDialog(
                 onClick = {
                     onSave(
                         MemorySearchConfig(
-                            semanticThreshold = semanticThreshold,
                             scoreMode = scoreMode,
                             keywordWeight = keywordWeight,
                             vectorWeight = vectorWeight,
@@ -277,7 +267,6 @@ fun MemorySearchSettingsDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = {
-                        semanticThreshold = 0.6f
                         scoreMode = MemoryScoreMode.BALANCED
                         keywordWeight = 10.0f
                         vectorWeight = 0.0f
@@ -390,8 +379,8 @@ private fun SliderSettingItem(
 private fun stageText(stage: String): String {
     return when (stage) {
         "preparing" -> stringResource(R.string.memory_embedding_stage_preparing)
-        "memory" -> stringResource(R.string.memory_embedding_stage_memory)
-        "chunk" -> stringResource(R.string.memory_embedding_stage_chunk)
+        "memory_index" -> stringResource(R.string.memory_embedding_stage_memory_index)
+        "chunk_index" -> stringResource(R.string.memory_embedding_stage_chunk_index)
         "done" -> stringResource(R.string.memory_embedding_stage_done)
         else -> stage
     }

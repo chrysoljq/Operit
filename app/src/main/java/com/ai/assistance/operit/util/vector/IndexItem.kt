@@ -8,20 +8,22 @@ import com.github.jelmerk.hnswlib.core.Item
  *
  * @param T The type of the object being indexed.
  */
-data class IndexItem<T>(
-    private val id: String,
+data class IndexItem<Id : Any, T>(
+    private val id: Id,
     private val vector: FloatArray,
+    private val version: Long = 0L,
     val value: T // Generic reference to the original object (e.g., Memory or DocumentChunk)
-) : Item<String, FloatArray> {
+) : Item<Id, FloatArray> {
 
-    override fun id(): String = id
+    override fun id(): Id = id
     override fun vector(): FloatArray = vector
     override fun dimensions(): Int = vector.size
+    override fun version(): Long = version
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
-        other as IndexItem<*>
+        other as IndexItem<*, *>
         if (id != other.id) return false
         return true
     }

@@ -159,8 +159,11 @@ class FloatingWindowManager(
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    fun show() {
-        if (isViewAdded) return
+    fun show(): Boolean {
+        if (isViewAdded) {
+            AppLogger.d(TAG, "Floating view already added")
+            return true
+        }
 
         try {
             ensureFocusDismissView()
@@ -183,8 +186,10 @@ class FloatingWindowManager(
             windowManager.addView(composeView, params)
             isViewAdded = true
             AppLogger.d(TAG, "Floating view added at (${params.x}, ${params.y})")
+            return true
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error creating floating view", e)
+            return false
         }
     }
 

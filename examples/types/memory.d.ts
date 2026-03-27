@@ -9,10 +9,9 @@
 export namespace Memory {
     /**
      * Query the memory library
-     * @param query - Search query
+     * @param query - Search query. Supports a natural-language question, a space-separated phrase, or `|`-separated keywords. Inside a keyword, `*` works as a fuzzy wildcard placeholder such as `error*timeout`; use only `*` to return all memories
      * @param folderPath - Optional folder path to search within
-     * @param threshold - Optional semantic similarity threshold (0.0-1.0, default 0.35)
-     * @param limit - Optional maximum number of results (1-20, default 5)
+     * @param limit - Optional maximum number of results (>=1, default 20)
      * @param startTime - Optional local-time start time in `YYYY-MM-DD` or `YYYY-MM-DD HH:mm` format, filters memories by createdAt >= startTime
      * @param endTime - Optional local-time end time in `YYYY-MM-DD` or `YYYY-MM-DD HH:mm` format, filters memories by createdAt <= endTime
      * @param snapshotId - Optional snapshot id. Omit or pass empty to create a new snapshot; reuse it to exclude already returned memories
@@ -21,7 +20,6 @@ export namespace Memory {
     function query(
         query: string,
         folderPath?: string,
-        threshold?: number,
         limit?: number,
         startTime?: string,
         endTime?: string,
@@ -33,10 +31,11 @@ export namespace Memory {
      * @param title - The exact title of the memory
      * @param chunkIndex - Optional chunk index for document nodes
      * @param chunkRange - Optional chunk range for document nodes (e.g., "3-7")
-     * @param query - Optional query to search within the document
+     * @param query - Optional query to search within the document. Supports natural language, space-separated phrases, `|`-separated keywords, and `*` as a fuzzy wildcard inside a keyword
+     * @param limit - Optional maximum number of matched chunks when using query (>=1, default 20)
      * @returns Memory content as a string
      */
-    function getByTitle(title: string, chunkIndex?: number, chunkRange?: string, query?: string): Promise<string>;
+    function getByTitle(title: string, chunkIndex?: number, chunkRange?: string, query?: string, limit?: number): Promise<string>;
 
     /**
      * Create a new memory

@@ -33,23 +33,42 @@ class VectorIndexManager<T : Item<Id, FloatArray>, Id : Any>(
                 indexFile.delete()
                 HnswIndex
                     .newBuilder(dimensions, DistanceFunctions.FLOAT_COSINE_DISTANCE, maxElements)
+                    .withRemoveEnabled()
                     .build()
             }
         } else {
             HnswIndex
                 .newBuilder(dimensions, DistanceFunctions.FLOAT_COSINE_DISTANCE, maxElements)
+                .withRemoveEnabled()
                 .build()
         }
     }
 
     /** 添加一个向量项 */
     fun addItem(item: T) {
+        ensureCapacity(size() + 1)
         index?.add(item)
+    }
+
+    /** 删除一个向量项。 */
+    fun removeItem(id: Id, version: Long = Long.MAX_VALUE): Boolean {
+        return index?.remove(id, version) ?: false
     }
 
     /** 查询最近的K个邻居 */
     fun findNearest(query: FloatArray, k: Int): List<T> {
         return index?.findNearest(query, k)?.map { it.item() } ?: emptyList()
+    }
+
+    fun size(): Int = index?.size() ?: 0
+
+    fun maxItemCount(): Int = index?.maxItemCount ?: maxElements
+
+    fun ensureCapacity(minCapacity: Int) {
+        val current = index ?: return
+        if (minCapacity > current.maxItemCount) {
+            current.resize(minCapacity)
+        }
     }
 
     /** 保存索引到文件 */

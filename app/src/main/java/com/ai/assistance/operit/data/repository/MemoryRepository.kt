@@ -28,7 +28,6 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.objectbox.query.QueryCondition
-import java.io.IOException
 import java.util.UUID
 import java.util.Date
 import java.util.Locale
@@ -42,6 +41,8 @@ import com.ai.assistance.operit.data.model.MemorySearchDebugInfo
 import com.ai.assistance.operit.data.model.MemoryScoreMode
 import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.util.TextSegmenter
+import com.ai.assistance.operit.util.vector.IndexItem
+import com.ai.assistance.operit.util.vector.VectorIndexManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -63,6 +64,10 @@ class MemoryRepository(private val context: Context, profileId: String) {
         /** Represents a weak link, e.g., "A is sometimes associated with B". */
         const val WEAK_LINK = 0.3f
         private const val DANGLING_LINK_CLEANUP_INTERVAL_MS = 30_000L
+        private const val SEARCH_RRF_K = 60.0
+        private const val SEARCH_KEYWORD_COVERAGE_BONUS = 0.6
+        private const val SEARCH_RELEVANCE_THRESHOLD = 0.025
+        private val INDEX_KEY_SANITIZE_REGEX = Regex("[^a-zA-Z0-9._-]")
 
         fun normalizeFolderPath(folderPath: String?): String? {
             val raw = folderPath?.trim() ?: return null
@@ -75,6 +80,11 @@ class MemoryRepository(private val context: Context, profileId: String) {
 
             return parts.takeIf { it.isNotEmpty() }?.joinToString("/")
         }
+
+        private fun sanitizeIndexKey(raw: String): String {
+            val normalized = raw.trim().ifBlank { "default" }
+            return normalized.replace(INDEX_KEY_SANITIZE_REGEX, "_")
+        }
     }
 
     private val store = ObjectBoxManager.get(context, profileId)
@@ -85,6 +95,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
 
     private val searchSettingsPreferences = MemorySearchSettingsPreferences(context, profileId)
     private val cloudEmbeddingService = CloudEmbeddingService()
+    private val sanitizedProfileKey = sanitizeIndexKey(profileId)
     @Volatile
     private var lastDanglingCleanupAtMs: Long = 0L
 
@@ -134,6 +145,9 @@ class MemoryRepository(private val context: Context, profileId: String) {
         if (shouldKeepRawLexicalToken(normalized)) {
             expanded.add(normalized)
         }
+        if (normalized.contains('*')) {
+            return expanded
+        }
 
         // 优先使用项目内已集成的 Jieba 分词，提升中文检索召回质量。
         val jiebaTokens = TextSegmenter.segment(normalized)
@@ -162,6 +176,22 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val debug: MemorySearchDebugInfo
     )
 
+    private data class ResolvedSearchWeights(
+        val scoreMode: MemoryScoreMode,
+        val effectiveKeywordWeight: Double,
+        val effectiveSemanticWeight: Float,
+        val effectiveEdgeWeight: Double,
+        val semanticKeywordNormFactor: Double
+    )
+
+    private fun splitSearchKeywords(query: String): List<String> {
+        return if (query.contains('|')) {
+            query.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+            query.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
     private fun buildLexicalQueryTokens(query: String, keywords: List<String>): List<String> {
         val merged = linkedSetOf<String>()
         if (keywords.isNotEmpty()) {
@@ -176,36 +206,483 @@ class MemoryRepository(private val context: Context, profileId: String) {
             .take(32)
     }
 
+    private fun resolveSearchWeights(
+        scoreMode: MemoryScoreMode,
+        keywordWeight: Float,
+        semanticWeight: Float,
+        edgeWeight: Float,
+        keywordCount: Int
+    ): ResolvedSearchWeights {
+        val normalizedKeywordWeight = keywordWeight.coerceAtLeast(0.0f).toDouble()
+        val normalizedSemanticWeight = semanticWeight.coerceAtLeast(0.0f)
+        val normalizedEdgeWeight = edgeWeight.coerceAtLeast(0.0f).toDouble()
+        val (modeKeywordMultiplier, modeSemanticMultiplier, modeEdgeMultiplier) = when (scoreMode) {
+            MemoryScoreMode.BALANCED -> Triple(1.0, 1.0, 1.0)
+            MemoryScoreMode.KEYWORD_FIRST -> Triple(1.3, 0.8, 0.9)
+            MemoryScoreMode.SEMANTIC_FIRST -> Triple(0.8, 1.3, 1.1)
+        }
+        val semanticKeywordNormFactor =
+            if (keywordCount > 0) 1.0 / sqrt(keywordCount.toDouble()) else 1.0
+
+        return ResolvedSearchWeights(
+            scoreMode = scoreMode,
+            effectiveKeywordWeight = normalizedKeywordWeight * modeKeywordMultiplier,
+            effectiveSemanticWeight = normalizedSemanticWeight * modeSemanticMultiplier.toFloat(),
+            effectiveEdgeWeight = normalizedEdgeWeight * modeEdgeMultiplier,
+            semanticKeywordNormFactor = semanticKeywordNormFactor
+        )
+    }
+
+    private fun computeRrfBaseScore(rank: Int): Double {
+        return 1.0 / (SEARCH_RRF_K + rank)
+    }
+
+    private fun computeKeywordCoverageMultiplier(
+        matchedTokenCount: Int,
+        totalTokenCount: Int
+    ): Double {
+        if (matchedTokenCount <= 0 || totalTokenCount <= 0) return 1.0
+        val coverageRatio = matchedTokenCount.toDouble() / totalTokenCount.toDouble()
+        return 1.0 + (SEARCH_KEYWORD_COVERAGE_BONUS * coverageRatio)
+    }
+
+    private fun computeSemanticWeightedScore(
+        rank: Int,
+        baseImportance: Float,
+        similarity: Float,
+        resolvedWeights: ResolvedSearchWeights
+    ): Double {
+        val normalizedImportance = baseImportance.coerceAtLeast(0.0f).toDouble()
+        val rankScore = computeRrfBaseScore(rank)
+        val similarityScore = similarity * resolvedWeights.effectiveSemanticWeight
+        return ((rankScore * sqrt(normalizedImportance)) + similarityScore) *
+            resolvedWeights.semanticKeywordNormFactor
+    }
+
+    private fun vectorIndexDir(): File = OperitPaths.vectorIndexDir(context)
+
+    private fun currentProfileMemoryIndexFiles(): List<File> {
+        val prefix = "memory_hnsw_${sanitizedProfileKey}_"
+        return vectorIndexDir()
+            .listFiles()
+            ?.filter { file -> file.name.startsWith(prefix) && file.name.endsWith(".idx") }
+            ?.sortedBy { it.name }
+            ?: emptyList()
+    }
+
+    private fun currentProfileDocumentIndexFiles(): List<File> {
+        val prefix = "doc_index_${sanitizedProfileKey}_"
+        return vectorIndexDir()
+            .listFiles()
+            ?.filter { file -> file.name.startsWith(prefix) && file.name.endsWith(".hnsw") }
+            ?.sortedBy { it.name }
+            ?: emptyList()
+    }
+
+    private fun memoryIndexFileForDimension(dimension: Int): File {
+        return File(vectorIndexDir(), "memory_hnsw_${sanitizedProfileKey}_${dimension}.idx")
+    }
+
+    private fun documentIndexFile(memoryId: Long, dimension: Int): File {
+        return File(vectorIndexDir(), "doc_index_${sanitizedProfileKey}_${memoryId}_${dimension}.hnsw")
+    }
+
+    private fun parseMemoryIndexDimension(file: File): Int? {
+        val prefix = "memory_hnsw_${sanitizedProfileKey}_"
+        val name = file.name
+        if (!name.startsWith(prefix) || !name.endsWith(".idx")) return null
+        return name
+            .removePrefix(prefix)
+            .removeSuffix(".idx")
+            .toIntOrNull()
+    }
+
+    private fun deleteIndexFileIfExists(file: File?) {
+        if (file != null && file.exists()) {
+            file.delete()
+        }
+    }
+
+    private fun loadChunksForDocument(memory: Memory): List<DocumentChunk> {
+        memory.documentChunks.reset()
+        return memory.documentChunks.sortedBy { it.chunkIndex }
+    }
+
+    private fun countDocumentChunkIndexableItems(memory: Memory): Int {
+        if (!memory.isDocumentNode) return 0
+        val chunks = loadChunksForDocument(memory)
+        val targetDimension = resolveDocumentIndexDimension(chunks, forcedDimension = null) ?: return 0
+        return chunks.count { chunk ->
+            val vector = chunk.embedding?.vector
+            vector != null && vector.isNotEmpty() && vector.size == targetDimension
+        }
+    }
+
+    private fun createMemoryIndexItem(memory: Memory): IndexItem<Long, Long>? {
+        val embedding = memory.embedding ?: return null
+        if (embedding.vector.isEmpty()) return null
+        return IndexItem(
+            id = memory.id,
+            vector = embedding.vector,
+            version = memory.updatedAt.time,
+            value = memory.id
+        )
+    }
+
+    private fun createChunkIndexItem(chunk: DocumentChunk): IndexItem<Long, Long>? {
+        val embedding = chunk.embedding ?: return null
+        if (embedding.vector.isEmpty()) return null
+        return IndexItem(
+            id = chunk.id,
+            vector = embedding.vector,
+            version = chunk.id,
+            value = chunk.id
+        )
+    }
+
+    private fun removeMemoryFromAllVectorIndices(memoryId: Long) {
+        currentProfileMemoryIndexFiles().forEach { file ->
+            val dimension = parseMemoryIndexDimension(file) ?: return@forEach
+            val manager = VectorIndexManager<IndexItem<Long, Long>, Long>(
+                dimensions = dimension,
+                maxElements = 1,
+                indexFile = file
+            )
+            val removed = manager.removeItem(memoryId, Long.MAX_VALUE)
+            when {
+                !removed -> manager.close()
+                manager.size() <= 0 -> {
+                    manager.close()
+                    deleteIndexFileIfExists(file)
+                }
+                else -> {
+                    manager.save()
+                    manager.close()
+                }
+            }
+        }
+    }
+
+    private fun upsertMemoryVectorIndex(memory: Memory) {
+        removeMemoryFromAllVectorIndices(memory.id)
+
+        val item = createMemoryIndexItem(memory) ?: return
+        val dimension = memory.embedding?.vector?.size ?: return
+        val manager = VectorIndexManager<IndexItem<Long, Long>, Long>(
+            dimensions = dimension,
+            maxElements = 1,
+            indexFile = memoryIndexFileForDimension(dimension)
+        )
+        manager.addItem(item)
+        manager.save()
+        manager.close()
+    }
+
+    private fun addMemoryToIndexInternal(memory: Memory) {
+        upsertMemoryVectorIndex(memory)
+        if (memory.isDocumentNode) {
+            rebuildDocumentChunkIndex(memory)
+        }
+    }
+
+    private fun removeMemoryFromIndexInternal(memory: Memory) {
+        removeMemoryFromAllVectorIndices(memory.id)
+        if (!memory.isDocumentNode) return
+
+        deleteIndexFileIfExists(memory.chunkIndexFilePath?.let(::File))
+        val storedMemory = memoryBox.get(memory.id)
+        if (storedMemory != null && storedMemory.chunkIndexFilePath != null) {
+            storedMemory.chunkIndexFilePath = null
+            memoryBox.put(storedMemory)
+        }
+    }
+
+    private fun rebuildAllMemoryVectorIndices(onItemIndexed: (() -> Unit)? = null): Int {
+        val memoriesByDimension = memoryBox.all
+            .mapNotNull { memory ->
+                val item = createMemoryIndexItem(memory) ?: return@mapNotNull null
+                val dimension = memory.embedding?.vector?.size ?: return@mapNotNull null
+                dimension to item
+            }
+            .groupBy(
+                keySelector = { it.first },
+                valueTransform = { it.second }
+            )
+
+        currentProfileMemoryIndexFiles().forEach { deleteIndexFileIfExists(it) }
+        var indexedCount = 0
+
+        memoriesByDimension.forEach { (dimension, items) ->
+            val manager = VectorIndexManager<IndexItem<Long, Long>, Long>(
+                dimensions = dimension,
+                maxElements = items.size.coerceAtLeast(1),
+                indexFile = memoryIndexFileForDimension(dimension)
+            )
+            items.forEach { item ->
+                manager.addItem(item)
+                indexedCount += 1
+                onItemIndexed?.invoke()
+            }
+            manager.save()
+            manager.close()
+        }
+
+        return indexedCount
+    }
+
+    private fun resolveDocumentIndexDimension(chunks: List<DocumentChunk>, forcedDimension: Int?): Int? {
+        if (forcedDimension != null) {
+            return chunks
+                .any { it.embedding?.vector?.size == forcedDimension }
+                .takeIf { it }
+                ?.let { forcedDimension }
+        }
+
+        return chunks
+            .mapNotNull { it.embedding?.vector?.size?.takeIf { dimension -> dimension > 0 } }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+    }
+
+    private fun rebuildDocumentChunkIndex(
+        memory: Memory,
+        forcedDimension: Int? = null,
+        onItemIndexed: (() -> Unit)? = null
+    ): Int {
+        if (!memory.isDocumentNode) return 0
+
+        val chunks = loadChunksForDocument(memory)
+        val hasEmbeddings = chunks.any { chunk ->
+            val vector = chunk.embedding?.vector
+            vector != null && vector.isNotEmpty()
+        }
+        val targetDimension = resolveDocumentIndexDimension(chunks, forcedDimension)
+        if (targetDimension == null) {
+            if (forcedDimension != null && hasEmbeddings) {
+                return 0
+            }
+            deleteIndexFileIfExists(memory.chunkIndexFilePath?.let(::File))
+            if (memory.chunkIndexFilePath != null) {
+                memory.chunkIndexFilePath = null
+                memoryBox.put(memory)
+            }
+            return 0
+        }
+
+        val compatibleItems = chunks
+            .mapNotNull { chunk ->
+                val embedding = chunk.embedding ?: return@mapNotNull null
+                if (embedding.vector.size != targetDimension) return@mapNotNull null
+                createChunkIndexItem(chunk)
+            }
+
+        val targetFile = documentIndexFile(memory.id, targetDimension)
+        if (compatibleItems.isEmpty()) {
+            deleteIndexFileIfExists(memory.chunkIndexFilePath?.let(::File))
+            if (memory.chunkIndexFilePath != null) {
+                memory.chunkIndexFilePath = null
+                memoryBox.put(memory)
+            }
+            return 0
+        }
+
+        val previousFile = memory.chunkIndexFilePath?.let(::File)
+        if (previousFile?.absolutePath != targetFile.absolutePath) {
+            deleteIndexFileIfExists(previousFile)
+        }
+
+        val manager = VectorIndexManager<IndexItem<Long, Long>, Long>(
+            dimensions = targetDimension,
+            maxElements = compatibleItems.size.coerceAtLeast(1),
+            indexFile = targetFile
+        )
+        compatibleItems.forEach { item ->
+            manager.addItem(item)
+            onItemIndexed?.invoke()
+        }
+        manager.save()
+        manager.close()
+
+        if (memory.chunkIndexFilePath != targetFile.absolutePath) {
+            memory.chunkIndexFilePath = targetFile.absolutePath
+            memoryBox.put(memory)
+        }
+
+        return compatibleItems.size
+    }
+
+    private fun rebuildAllDocumentChunkIndices(onItemIndexed: (() -> Unit)? = null): Int {
+        currentProfileDocumentIndexFiles().forEach { deleteIndexFileIfExists(it) }
+        var indexedCount = 0
+
+        memoryBox.all
+            .filter { it.isDocumentNode }
+            .forEach { memory ->
+                indexedCount += rebuildDocumentChunkIndex(memory, onItemIndexed = onItemIndexed)
+            }
+
+        return indexedCount
+    }
+
+    private fun ensureMemoryVectorIndex(dimension: Int): VectorIndexManager<IndexItem<Long, Long>, Long>? {
+        val targetFile = memoryIndexFileForDimension(dimension)
+        if (!targetFile.exists()) {
+            rebuildAllMemoryVectorIndices()
+        }
+        if (!targetFile.exists()) return null
+        return VectorIndexManager(
+            dimensions = dimension,
+            maxElements = 1,
+            indexFile = targetFile
+        )
+    }
+
+    private fun ensureDocumentChunkIndex(memory: Memory, dimension: Int): VectorIndexManager<IndexItem<Long, Long>, Long>? {
+        val targetFile = documentIndexFile(memory.id, dimension)
+        if (memory.chunkIndexFilePath != targetFile.absolutePath || !targetFile.exists()) {
+            rebuildDocumentChunkIndex(memory, forcedDimension = dimension)
+        }
+        if (!targetFile.exists()) return null
+        return VectorIndexManager(
+            dimensions = dimension,
+            maxElements = 1,
+            indexFile = targetFile
+        )
+    }
+
+    private fun getSemanticMemoryCandidatesFromIndex(queryEmbedding: Embedding): List<Pair<Memory, Float>> {
+        val manager = ensureMemoryVectorIndex(queryEmbedding.vector.size) ?: return emptyList()
+        val availableCount = manager.size()
+        if (availableCount <= 0) {
+            manager.close()
+            return emptyList()
+        }
+        val nearest = manager.findNearest(
+            queryEmbedding.vector,
+            availableCount
+        )
+        manager.close()
+        if (nearest.isEmpty()) return emptyList()
+
+        val ids = nearest.map { it.value }.distinct()
+        val memoryById = memoryBox.get(ids).filterNotNull().associateBy { it.id }
+        return ids.mapNotNull { memoryId ->
+            val memory = memoryById[memoryId] ?: return@mapNotNull null
+            val memoryEmbedding = memory.embedding ?: return@mapNotNull null
+            if (memoryEmbedding.vector.size != queryEmbedding.vector.size) return@mapNotNull null
+            memory to cosineSimilarity(queryEmbedding, memoryEmbedding)
+        }
+    }
+
+    private fun getSemanticChunkCandidatesFromIndex(
+        memory: Memory,
+        queryEmbedding: Embedding
+    ): List<Pair<DocumentChunk, Float>> {
+        val manager = ensureDocumentChunkIndex(memory, queryEmbedding.vector.size) ?: return emptyList()
+        val availableCount = manager.size()
+        if (availableCount <= 0) {
+            manager.close()
+            return emptyList()
+        }
+        val nearest = manager.findNearest(
+            queryEmbedding.vector,
+            availableCount
+        )
+        manager.close()
+        if (nearest.isEmpty()) return emptyList()
+
+        val ids = nearest.map { it.value }.distinct()
+        val chunkById = chunkBox.get(ids).filterNotNull().associateBy { it.id }
+        return ids.mapNotNull { chunkId ->
+            val chunk = chunkById[chunkId] ?: return@mapNotNull null
+            val chunkEmbedding = chunk.embedding ?: return@mapNotNull null
+            if (chunkEmbedding.vector.size != queryEmbedding.vector.size) return@mapNotNull null
+            chunk to cosineSimilarity(queryEmbedding, chunkEmbedding)
+        }
+    }
+
     private fun shouldKeepRawLexicalToken(token: String): Boolean {
-        val t = token.trim()
-        if (t.length !in 2..24) return false
-        if (t.startsWith("http", ignoreCase = true)) return false
-        if (t.contains('<') || t.contains('>')) return false
-        if (t.contains("tool", ignoreCase = true)) return false
-        if (t.contains("param", ignoreCase = true)) return false
-        if (t.contains("visit", ignoreCase = true)) return false
-        if (t.contains("name=", ignoreCase = true)) return false
-        return t.any { ch -> ch.isLetterOrDigit() || ch.code in 0x4E00..0x9FFF }
+        val normalized = token.trim().lowercase(Locale.ROOT)
+        if (normalized.isBlank()) return false
+
+        return if (isWildcardLexicalToken(normalized)) {
+            shouldKeepWildcardLexicalToken(normalized)
+        } else {
+            shouldKeepPlainLexicalToken(normalized)
+        }
+    }
+
+    private fun isWildcardLexicalToken(token: String): Boolean {
+        return token.contains('*') && token != "*"
+    }
+
+    private fun shouldKeepPlainLexicalToken(token: String): Boolean {
+        return isSearchableLexicalBody(token)
+    }
+
+    private fun shouldKeepWildcardLexicalToken(token: String): Boolean {
+        val literalBody = token.split('*').joinToString(separator = "") { it.trim() }
+        if (literalBody.isBlank()) return false
+        return isSearchableLexicalBody(literalBody)
+    }
+
+    private fun isSearchableLexicalBody(text: String): Boolean {
+        if (text.length !in 2..24) return false
+        return text.any { ch -> ch.isLetterOrDigit() || ch.code in 0x4E00..0x9FFF }
+    }
+
+    private fun buildWildcardRegex(token: String): Regex? {
+        if (!token.contains('*') || token == "*") return null
+        val parts = token
+            .split('*')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return null
+        val pattern = parts.joinToString(".*") { Regex.escape(it) }
+        return Regex(pattern, setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    }
+
+    private fun textMatchesLexicalToken(text: String, token: String): Boolean {
+        val normalizedToken = token.trim()
+        if (normalizedToken.isBlank()) return false
+        val wildcardRegex = buildWildcardRegex(normalizedToken)
+        return if (wildcardRegex != null) {
+            wildcardRegex.containsMatchIn(text)
+        } else {
+            text.contains(normalizedToken, ignoreCase = true)
+        }
     }
 
     private fun queryTitleCandidatesByFragments(
         fragments: List<String>,
-        scopedMemoryIds: Set<Long>
+        scopedMemories: List<Memory>
     ): List<TitleMatchCandidate> {
-        if (fragments.isEmpty() || scopedMemoryIds.isEmpty()) return emptyList()
+        if (fragments.isEmpty() || scopedMemories.isEmpty()) return emptyList()
+
+        val scopedMemoryIds = scopedMemories.map { it.id }.toHashSet()
+        val scopedMemoriesById = scopedMemories.associateBy { it.id }
 
         val memoryById = mutableMapOf<Long, Memory>()
         val hitTokensByMemoryId = mutableMapOf<Long, MutableSet<String>>()
 
         fragments.forEach { fragment ->
-            val matches = memoryBox.query()
-                .contains(Memory_.title, fragment, QueryBuilder.StringOrder.CASE_INSENSITIVE)
-                .build()
-                .find()
+            val matches = if (fragment.contains('*') && fragment != "*") {
+                scopedMemories.filter { memory ->
+                    textMatchesLexicalToken(memory.title, fragment)
+                }
+            } else {
+                memoryBox.query()
+                    .contains(Memory_.title, fragment, QueryBuilder.StringOrder.CASE_INSENSITIVE)
+                    .build()
+                    .find()
+            }
 
             matches.forEach { memory ->
                 if (!scopedMemoryIds.contains(memory.id)) return@forEach
-                memoryById.putIfAbsent(memory.id, memory)
+                val scopedMemory = scopedMemoriesById[memory.id] ?: memory
+                memoryById.putIfAbsent(memory.id, scopedMemory)
                 hitTokensByMemoryId.getOrPut(memory.id) { linkedSetOf() }.add(fragment)
             }
         }
@@ -279,6 +756,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         }
 
         memoryBox.put(documentMemory)
+        addMemoryToIndexInternal(documentMemory)
         documentMemory
     }
 
@@ -286,7 +764,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
      * 生成带有元数据（可信度、重要性）的文本，用于embedding。
      */
     private fun generateTextForEmbedding(memory: Memory): String {
-        return memory.content
+        return if (memory.isDocumentNode) memory.title else memory.content
     }
 
     // --- Memory CRUD Operations ---
@@ -299,12 +777,12 @@ class MemoryRepository(private val context: Context, profileId: String) {
     suspend fun saveMemory(memory: Memory): Long = withContext(Dispatchers.IO){
         val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
         memory.folderPath = normalizeFolderPath(memory.folderPath)
-        if (memory.content.isNotBlank()) {
-            val textForEmbedding = generateTextForEmbedding(memory)
+        val textForEmbedding = generateTextForEmbedding(memory)
+        if (textForEmbedding.isNotBlank()) {
             memory.embedding = generateEmbedding(textForEmbedding, cloudConfig)
         }
         val id = memoryBox.put(memory)
-        addMemoryToIndex(memory)
+        addMemoryToIndexInternal(memory)
         id
     }
 
@@ -353,23 +831,9 @@ class MemoryRepository(private val context: Context, profileId: String) {
     suspend fun deleteMemory(memoryId: Long): Boolean = withContext(Dispatchers.IO) {
         val memory = findMemoryById(memoryId) ?: return@withContext false
 
-        // 如果是文档节点，删除其专属的区块索引文件和所有区块
+        // 如果是文档节点，删除其所有区块
         if (memory.isDocumentNode) {
-            if (memory.chunkIndexFilePath != null) {
-                try {
-                    val indexFile = File(memory.chunkIndexFilePath!!)
-                    if (indexFile.exists()) {
-                        if (indexFile.delete()) {
-                            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Deleted chunk index file: ${indexFile.path}")
-                        } else {
-                            com.ai.assistance.operit.util.AppLogger.w("MemoryRepo", "Failed to delete chunk index file: ${indexFile.path}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    com.ai.assistance.operit.util.AppLogger.e("MemoryRepo", "Error deleting chunk index file for memory ID $memoryId", e)
-                }
-            }
-            // 删除关联的区块
+            memory.documentChunks.reset()
             val chunkIds = memory.documentChunks.map { it.id }
             if (chunkIds.isNotEmpty()) {
                 chunkBox.removeByIds(chunkIds)
@@ -385,6 +849,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 "Deleted ${linkIdsToDelete.size} links while deleting memory id=$memoryId."
             )
         }
+        removeMemoryFromIndexInternal(memory)
         memoryBox.remove(memory)
     }
 
@@ -597,13 +1062,11 @@ class MemoryRepository(private val context: Context, profileId: String) {
      * memories.
      * @param query The search query string. Keywords can be separated by '|' or spaces.
      * @param folderPath Optional path to a folder to limit the search.
-     * @param semanticThreshold The minimum semantic similarity threshold (0.0-1.0). Lower values return more results.
      * @return A list of matching Memory objects, sorted by relevance.
      */
     suspend fun searchMemories(
         query: String,
         folderPath: String? = null,
-        semanticThreshold: Float = 0.6f,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
         semanticWeight: Float = 0.5f,
@@ -614,7 +1077,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
         return runSearchMemoriesWithDebug(
             query = query,
             folderPath = folderPath,
-            semanticThreshold = semanticThreshold,
             scoreMode = scoreMode,
             keywordWeight = keywordWeight,
             semanticWeight = semanticWeight,
@@ -627,7 +1089,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
     suspend fun searchMemoriesDebug(
         query: String,
         folderPath: String? = null,
-        semanticThreshold: Float = 0.6f,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
         semanticWeight: Float = 0.5f,
@@ -638,7 +1099,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
         return runSearchMemoriesWithDebug(
             query = query,
             folderPath = folderPath,
-            semanticThreshold = semanticThreshold,
             scoreMode = scoreMode,
             keywordWeight = keywordWeight,
             semanticWeight = semanticWeight,
@@ -651,7 +1111,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
     private suspend fun runSearchMemoriesWithDebug(
         query: String,
         folderPath: String? = null,
-        semanticThreshold: Float = 0.6f,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
         semanticWeight: Float = 0.5f,
@@ -681,28 +1140,24 @@ class MemoryRepository(private val context: Context, profileId: String) {
             }
         }
 
-        val normalizedThreshold = semanticThreshold.coerceIn(0.0f, 1.0f)
-        val normalizedKeywordWeight = keywordWeight.coerceAtLeast(0.0f).toDouble()
-        val normalizedSemanticWeight = semanticWeight.coerceAtLeast(0.0f)
-        val normalizedEdgeWeight = edgeWeight.coerceAtLeast(0.0f).toDouble()
-        val (modeKeywordMultiplier, modeSemanticMultiplier, modeEdgeMultiplier) = when (scoreMode) {
-            MemoryScoreMode.BALANCED -> Triple(1.0, 1.0, 1.0)
-            MemoryScoreMode.KEYWORD_FIRST -> Triple(1.3, 0.8, 0.9)
-            MemoryScoreMode.SEMANTIC_FIRST -> Triple(0.8, 1.3, 1.1)
-        }
-        val effectiveKeywordWeight = normalizedKeywordWeight * modeKeywordMultiplier
-        val effectiveSemanticWeight = normalizedSemanticWeight * modeSemanticMultiplier.toFloat()
-        val effectiveEdgeWeight = normalizedEdgeWeight * modeEdgeMultiplier
-        val relevanceThreshold = 0.025
+        val keywords = splitSearchKeywords(query)
+        val resolvedWeights = resolveSearchWeights(
+            scoreMode = scoreMode,
+            keywordWeight = keywordWeight,
+            semanticWeight = semanticWeight,
+            edgeWeight = edgeWeight,
+            keywordCount = keywords.size
+        )
+        val effectiveKeywordWeight = resolvedWeights.effectiveKeywordWeight
+        val effectiveSemanticWeight = resolvedWeights.effectiveSemanticWeight
+        val effectiveEdgeWeight = resolvedWeights.effectiveEdgeWeight
+        val semanticKeywordNormFactor = resolvedWeights.semanticKeywordNormFactor
+        val relevanceThreshold = SEARCH_RELEVANCE_THRESHOLD
 
         fun buildDebug(
-            keywords: List<String> = emptyList(),
+            debugKeywords: List<String> = keywords,
             lexicalTokens: List<String> = emptyList(),
-            semanticKeywordNormFactor: Double = if (keywords.isNotEmpty()) {
-                1.0 / sqrt(keywords.size.toDouble())
-            } else {
-                1.0
-            },
+            debugSemanticKeywordNormFactor: Double = resolvedWeights.semanticKeywordNormFactor,
             keywordMatchesCount: Int = 0,
             reverseContainmentMatchesCount: Int = 0,
             semanticMatchesCount: Int = 0,
@@ -714,14 +1169,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
         ): MemorySearchDebugInfo {
             return MemorySearchDebugInfo(
                 query = query,
-                keywords = keywords,
+                keywords = debugKeywords,
                 lexicalTokens = lexicalTokens,
                 scoreMode = scoreMode,
-                semanticThreshold = normalizedThreshold,
                 relevanceThreshold = relevanceThreshold,
                 effectiveKeywordWeight = effectiveKeywordWeight,
                 effectiveSemanticWeight = effectiveSemanticWeight,
-                semanticKeywordNormFactor = semanticKeywordNormFactor,
+                semanticKeywordNormFactor = debugSemanticKeywordNormFactor,
                 effectiveEdgeWeight = effectiveEdgeWeight,
                 memoriesInScopeCount = timeFilteredMemoriesInScope.size,
                 keywordMatchesCount = keywordMatchesCount,
@@ -750,16 +1204,10 @@ class MemoryRepository(private val context: Context, profileId: String) {
             )
         }
 
-        // 支持两种分隔符：'|' 或空格
-        val keywords = if (query.contains('|')) {
-            query.split('|').map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-            query.split(Regex("\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
-        }
         if (keywords.isEmpty()) {
             return@withContext SearchComputationResult(
                 memories = emptyList(),
-                debug = buildDebug(keywords = emptyList())
+                debug = buildDebug(debugKeywords = emptyList())
             )
         }
         val keywordTokensForLexicalMatch = buildLexicalQueryTokens(query, keywords)
@@ -769,14 +1217,10 @@ class MemoryRepository(private val context: Context, profileId: String) {
         fun getScoreParts(memoryId: Long): SearchScoreParts {
             return scorePartsByMemoryId.getOrPut(memoryId) { SearchScoreParts() }
         }
-        val k = 60.0 // RRF constant for result fusion
-
-        val semanticKeywordNormFactor =
-            if (keywords.isNotEmpty()) 1.0 / sqrt(keywords.size.toDouble()) else 1.0
         com.ai.assistance.operit.util.AppLogger.d(
             "MemoryRepo",
-            "search settings => mode=$scoreMode, threshold=${String.format("%.2f", normalizedThreshold)}, " +
-                "keyword=${String.format("%.2f", effectiveKeywordWeight)}, semantic=${String.format("%.2f", effectiveSemanticWeight)}, " +
+            "search settings => mode=${resolvedWeights.scoreMode}, keyword=${String.format("%.2f", effectiveKeywordWeight)}, " +
+                "semantic=${String.format("%.2f", effectiveSemanticWeight)}, " +
                 "semanticNorm=${String.format("%.4f", semanticKeywordNormFactor)}, edge=${String.format("%.2f", effectiveEdgeWeight)}"
         )
         com.ai.assistance.operit.util.AppLogger.d(
@@ -802,19 +1246,18 @@ class MemoryRepository(private val context: Context, profileId: String) {
             return@withContext SearchComputationResult(
                 memories = emptyList(),
                 debug = buildDebug(
-                    keywords = keywords,
+                    debugKeywords = keywords,
                     lexicalTokens = keywordTokensForLexicalMatch,
-                    semanticKeywordNormFactor = semanticKeywordNormFactor
+                    debugSemanticKeywordNormFactor = semanticKeywordNormFactor
                 )
             )
         }
 
 
         // 1. Keyword-based search (DB title contains any fragment from the query)
-        val memoriesToSearchIdSet = memoriesToSearch.map { it.id }.toHashSet()
         val keywordResults = queryTitleCandidatesByFragments(
             fragments = keywordTokensForLexicalMatch,
-            scopedMemoryIds = memoriesToSearchIdSet
+            scopedMemories = memoriesToSearch
         )
 
         if (keywordResults.isNotEmpty()) {
@@ -826,13 +1269,11 @@ class MemoryRepository(private val context: Context, profileId: String) {
         keywordResults.forEachIndexed { index, candidate ->
             val memory = candidate.memory
             val rank = index + 1
-            val baseScore = 1.0 / (k + rank)
-            val coverageRatio = if (keywordTokensForLexicalMatch.isNotEmpty()) {
-                candidate.matchedTokenCount.toDouble() / keywordTokensForLexicalMatch.size.toDouble()
-            } else {
-                0.0
-            }
-            val coverageMultiplier = 1.0 + (0.6 * coverageRatio)
+            val baseScore = computeRrfBaseScore(rank)
+            val coverageMultiplier = computeKeywordCoverageMultiplier(
+                matchedTokenCount = candidate.matchedTokenCount,
+                totalTokenCount = keywordTokensForLexicalMatch.size
+            )
             val weightedScore = baseScore * memory.importance * effectiveKeywordWeight * coverageMultiplier
             scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
             val parts = getScoreParts(memory.id)
@@ -843,7 +1284,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         // 2. Reverse Containment Search (Query contains Memory Title)
         // This is crucial for finding "长安大学" within the query "长安大学在西安".
         val reverseContainmentResults =
-                memoriesToSearch.filter { memory -> query.contains(memory.title, ignoreCase = true) }
+                memoriesToSearch.filter { memory -> textMatchesLexicalToken(query, memory.title) }
         
         if (reverseContainmentResults.isNotEmpty()) {
             com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Reverse containment: ${reverseContainmentResults.size} matches")
@@ -851,7 +1292,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         reverseContainmentResults.forEachIndexed { index, memory ->
             val rank = index + 1
             // Use the same RRF formula to add to the score
-            val baseScore = 1.0 / (k + rank)
+            val baseScore = computeRrfBaseScore(rank)
             val weightedScore = baseScore * memory.importance * effectiveKeywordWeight
             scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
             getScoreParts(memory.id).reverseContainmentScore += weightedScore
@@ -859,9 +1300,9 @@ class MemoryRepository(private val context: Context, profileId: String) {
 
         // 3. Semantic search (for conceptual matches)
         val allMemoriesWithEmbedding = memoriesToSearch.filter { it.embedding != null }
-        val minSimilarityThreshold = normalizedThreshold
         val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
         val semanticMatchedIds = mutableSetOf<Long>()
+        val scopedMemoryIds = allMemoriesWithEmbedding.map { it.id }.toHashSet()
 
         if (effectiveSemanticWeight > 0.0f && cloudConfig.isReady()) {
             com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "--- Starting Semantic Search for ${keywords.size} keywords ---")
@@ -872,33 +1313,32 @@ class MemoryRepository(private val context: Context, profileId: String) {
                     return@forEach
                 }
 
-                val semanticResultsWithScores = allMemoriesWithEmbedding
-                    .mapNotNull { memory ->
-                        val memoryEmbedding = memory.embedding ?: return@mapNotNull null
-                        if (memoryEmbedding.vector.size != queryEmbedding.vector.size) return@mapNotNull null
-                        val similarity = cosineSimilarity(queryEmbedding, memoryEmbedding)
-                        if (similarity >= minSimilarityThreshold) {
-                            Pair(memory, similarity)
-                        } else {
-                            null
-                        }
-                    }
+                val semanticResultsWithScores = getSemanticMemoryCandidatesFromIndex(queryEmbedding)
+                    .asSequence()
+                    .filter { (memory, _) -> scopedMemoryIds.contains(memory.id) }
                     .sortedByDescending { it.second }
+                    .toList()
 
-                if (semanticResultsWithScores.isNotEmpty()) {
+                if (semanticResultsWithScores.isEmpty()) {
                     com.ai.assistance.operit.util.AppLogger.d(
                         "MemoryRepo",
-                        "Keyword '$keyword': ${semanticResultsWithScores.size} matches (top: ${String.format("%.2f", semanticResultsWithScores.first().second)})"
+                        "Keyword '$keyword': semantic index returned no compatible memory candidates"
+                    )
+                } else {
+                    com.ai.assistance.operit.util.AppLogger.d(
+                        "MemoryRepo",
+                        "Keyword '$keyword': ${semanticResultsWithScores.size} indexed matches (top: ${String.format("%.2f", semanticResultsWithScores.first().second)})"
                     )
                 }
 
                 semanticResultsWithScores.forEachIndexed { index, (memory, similarity) ->
                     val rank = index + 1
-                    val rankScore = 1.0 / (k + rank)
-                    val similarityScore = similarity * effectiveSemanticWeight
-                    val weightedScore =
-                        ((rankScore * sqrt(memory.importance.toDouble())) + similarityScore) *
-                            semanticKeywordNormFactor
+                    val weightedScore = computeSemanticWeightedScore(
+                        rank = rank,
+                        baseImportance = memory.importance,
+                        similarity = similarity,
+                        resolvedWeights = resolvedWeights
+                    )
                     scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
                     getScoreParts(memory.id).semanticScore += weightedScore
                     semanticMatchedIds.add(memory.id)
@@ -960,9 +1400,9 @@ class MemoryRepository(private val context: Context, profileId: String) {
             return@withContext SearchComputationResult(
                 memories = emptyList(),
                 debug = buildDebug(
-                    keywords = keywords,
+                    debugKeywords = keywords,
                     lexicalTokens = keywordTokensForLexicalMatch,
-                    semanticKeywordNormFactor = semanticKeywordNormFactor,
+                    debugSemanticKeywordNormFactor = semanticKeywordNormFactor,
                     keywordMatchesCount = keywordResults.size,
                     reverseContainmentMatchesCount = reverseContainmentResults.size,
                     semanticMatchesCount = semanticMatchedIds.size,
@@ -1004,9 +1444,9 @@ class MemoryRepository(private val context: Context, profileId: String) {
         }
 
         val debugInfo = buildDebug(
-            keywords = keywords,
+            debugKeywords = keywords,
             lexicalTokens = keywordTokensForLexicalMatch,
-            semanticKeywordNormFactor = semanticKeywordNormFactor,
+            debugSemanticKeywordNormFactor = semanticKeywordNormFactor,
             keywordMatchesCount = keywordResults.size,
             reverseContainmentMatchesCount = reverseContainmentResults.size,
             semanticMatchesCount = semanticMatchedIds.size,
@@ -1087,7 +1527,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
      * @param query 搜索查询。
      * @return 匹配的DocumentChunk列表。
      */
-    suspend fun searchChunksInDocument(memoryId: Long, query: String): List<DocumentChunk> = withContext(Dispatchers.IO) {
+    suspend fun searchChunksInDocument(memoryId: Long, query: String, limit: Int = 20): List<DocumentChunk> = withContext(Dispatchers.IO) {
         com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "--- Starting search in document (Memory ID: $memoryId) for query: '$query' ---")
         val memory = findMemoryById(memoryId) ?: return@withContext emptyList<DocumentChunk>().also {
             com.ai.assistance.operit.util.AppLogger.w("MemoryRepo", "Document with ID $memoryId not found.")
@@ -1095,49 +1535,135 @@ class MemoryRepository(private val context: Context, profileId: String) {
         if (!memory.isDocumentNode) {
             return@withContext emptyList()
         }
+        val validLimit = limit.coerceAtLeast(1)
 
         if (query.isBlank()) {
-            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Query is blank, returning all chunks sorted by index.")
-            return@withContext getChunksForMemory(memoryId) // 返回有序的全部区块
+            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Query is blank, returning up to $validLimit chunks sorted by index.")
+            return@withContext getChunksForMemory(memoryId).take(validLimit)
         }
 
-        val keywords = query.split('|').map { it.trim() }.filter { it.isNotEmpty() }
+        val keywords = splitSearchKeywords(query)
         if (keywords.isEmpty()) {
-            return@withContext getChunksForMemory(memoryId)
+            return@withContext getChunksForMemory(memoryId).take(validLimit)
         }
 
         val allChunks = getChunksForMemory(memoryId)
-        val keywordResults = allChunks
-            .filter { chunk -> keywords.any { keyword -> chunk.content.contains(keyword, ignoreCase = true) } }
-            .toMutableList()
+        if (allChunks.isEmpty()) {
+            return@withContext emptyList()
+        }
 
-        val semanticResults = mutableListOf<DocumentChunk>()
-        val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
-        if (cloudConfig.isReady()) {
-            val queryEmbedding = generateEmbedding(query, cloudConfig)
-            if (queryEmbedding != null) {
-                val semanticThreshold = 0.55f
-                semanticResults.addAll(
-                    allChunks
-                        .mapNotNull { chunk ->
-                            val chunkEmbedding = chunk.embedding ?: return@mapNotNull null
-                            if (chunkEmbedding.vector.size != queryEmbedding.vector.size) return@mapNotNull null
-                            val similarity = cosineSimilarity(queryEmbedding, chunkEmbedding)
-                            if (similarity >= semanticThreshold) {
-                                Pair(chunk, similarity)
-                            } else {
-                                null
-                            }
-                        }
-                        .sortedByDescending { it.second }
-                        .take(20)
-                        .map { it.first }
+        val searchConfig = searchSettingsPreferences.load()
+        val resolvedWeights = resolveSearchWeights(
+            scoreMode = searchConfig.scoreMode,
+            keywordWeight = searchConfig.keywordWeight,
+            semanticWeight = searchConfig.vectorWeight,
+            edgeWeight = searchConfig.edgeWeight,
+            keywordCount = keywords.size
+        )
+        val effectiveKeywordWeight = resolvedWeights.effectiveKeywordWeight
+        val effectiveSemanticWeight = resolvedWeights.effectiveSemanticWeight
+        val keywordTokensForLexicalMatch = buildLexicalQueryTokens(query, keywords)
+        val scores = mutableMapOf<Long, Double>()
+
+        com.ai.assistance.operit.util.AppLogger.d(
+            "MemoryRepo",
+            "Document chunk search settings => mode=${resolvedWeights.scoreMode}, " +
+                "keyword=${String.format("%.2f", effectiveKeywordWeight)}, " +
+                "semantic=${String.format("%.2f", effectiveSemanticWeight)}, " +
+                "semanticNorm=${String.format("%.4f", resolvedWeights.semanticKeywordNormFactor)}, " +
+                "edge=${String.format("%.2f", resolvedWeights.effectiveEdgeWeight)} (ignored for chunks)"
+        )
+
+        val keywordResults = allChunks
+            .mapNotNull { chunk ->
+                val matchedTokens = keywordTokensForLexicalMatch.count { token ->
+                    textMatchesLexicalToken(chunk.content, token)
+                }
+                if (matchedTokens > 0) {
+                    Pair(chunk, matchedTokens)
+                } else {
+                    null
+                }
+            }
+            .sortedWith(
+                compareByDescending<Pair<DocumentChunk, Int>> { it.second }
+                    .thenBy { it.first.chunkIndex }
+            )
+
+        if (keywordResults.isNotEmpty()) {
+            com.ai.assistance.operit.util.AppLogger.d(
+                "MemoryRepo",
+                "Document keyword search: ${keywordResults.size} chunk matches"
+            )
+        }
+
+        if (effectiveKeywordWeight > 0.0) {
+            keywordResults.forEachIndexed { index, (chunk, matchedTokenCount) ->
+                val rank = index + 1
+                val baseScore = computeRrfBaseScore(rank)
+                val coverageMultiplier = computeKeywordCoverageMultiplier(
+                    matchedTokenCount = matchedTokenCount,
+                    totalTokenCount = keywordTokensForLexicalMatch.size
                 )
+                val weightedScore = baseScore * effectiveKeywordWeight * coverageMultiplier
+                scores[chunk.id] = scores.getOrDefault(chunk.id, 0.0) + weightedScore
             }
         }
 
-        val combinedResults = (keywordResults + semanticResults).distinctBy { it.id }
-        com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Combined and deduplicated results count: ${combinedResults.size}. Results are now ordered by relevance.")
+        val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
+        if (effectiveSemanticWeight > 0.0f && cloudConfig.isReady()) {
+            keywords.forEach { keyword ->
+                val queryEmbedding = generateEmbedding(keyword, cloudConfig)
+                if (queryEmbedding == null) {
+                    com.ai.assistance.operit.util.AppLogger.w("MemoryRepo", "Failed to generate chunk embedding query for: '$keyword'")
+                    return@forEach
+                }
+
+                val semanticResultsWithScores = getSemanticChunkCandidatesFromIndex(
+                    memory = memory,
+                    queryEmbedding = queryEmbedding
+                )
+                    .sortedByDescending { it.second }
+
+                if (semanticResultsWithScores.isNotEmpty()) {
+                    com.ai.assistance.operit.util.AppLogger.d(
+                        "MemoryRepo",
+                        "Document semantic search for '$keyword': ${semanticResultsWithScores.size} indexed chunk matches"
+                    )
+                } else {
+                    com.ai.assistance.operit.util.AppLogger.d(
+                        "MemoryRepo",
+                        "Document semantic search for '$keyword': no indexed chunk matches"
+                    )
+                }
+
+                semanticResultsWithScores.forEachIndexed { index, (chunk, similarity) ->
+                    val rank = index + 1
+                    val weightedScore = computeSemanticWeightedScore(
+                        rank = rank,
+                        baseImportance = 1.0f,
+                        similarity = similarity,
+                        resolvedWeights = resolvedWeights
+                    )
+                    scores[chunk.id] = scores.getOrDefault(chunk.id, 0.0) + weightedScore
+                }
+            }
+        }
+
+        if (scores.isEmpty()) {
+            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "No matching chunks found after weighted ranking.")
+            return@withContext emptyList()
+        }
+
+        val chunkById = allChunks.associateBy { it.id }
+        val combinedResults = scores.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<Long, Double>> { it.value }
+                    .thenBy { chunkById[it.key]?.chunkIndex ?: Int.MAX_VALUE }
+            )
+            .mapNotNull { entry -> chunkById[entry.key] }
+            .take(validLimit)
+        com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Weighted document chunk results count: ${combinedResults.size}. Limit=$validLimit.")
         com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "--- Search in document finished ---")
 
         combinedResults
@@ -1155,38 +1681,18 @@ class MemoryRepository(private val context: Context, profileId: String) {
         chunk.content = newContent
         chunk.embedding = generateEmbedding(newContent, cloudConfig)
         chunkBox.put(chunk)
+        val owner = chunk.memory.target
+        if (owner != null) {
+            rebuildDocumentChunkIndex(owner, forcedDimension = chunk.embedding?.vector?.size)
+        }
     }
 
     suspend fun addMemoryToIndex(memory: Memory) = withContext(Dispatchers.IO) {
-        // No-op: HNSW is intentionally not used in the current memory retrieval path.
-        memory.id
+        addMemoryToIndexInternal(memory)
     }
 
     suspend fun removeMemoryFromIndex(memory: Memory) = withContext(Dispatchers.IO) {
-        // No-op: HNSW is intentionally not used in the current memory retrieval path.
-        memory.id
-    }
-
-    /** 基于数据库向量的精确语义检索。 */
-    suspend fun searchMemoriesPrecise(query: String, similarityThreshold: Float = 0.95f): List<Memory> = withContext(Dispatchers.IO) {
-        if (query.isBlank()) return@withContext emptyList()
-        val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
-        if (!cloudConfig.isReady()) return@withContext emptyList()
-
-        val queryEmbedding = generateEmbedding(query, cloudConfig) ?: return@withContext emptyList()
-        memoryBox.all
-            .mapNotNull { memory ->
-                val memoryEmbedding = memory.embedding ?: return@mapNotNull null
-                if (memoryEmbedding.vector.size != queryEmbedding.vector.size) return@mapNotNull null
-                val similarity = cosineSimilarity(queryEmbedding, memoryEmbedding)
-                if (similarity >= similarityThreshold) {
-                    Pair(memory, similarity)
-                } else {
-                    null
-                }
-            }
-            .sortedByDescending { it.second }
-            .map { it.first }
+        removeMemoryFromIndexInternal(memory)
     }
 
     fun loadCloudEmbeddingConfig(): CloudEmbeddingConfig {
@@ -1227,93 +1733,39 @@ class MemoryRepository(private val context: Context, profileId: String) {
         )
     }
 
-    suspend fun rebuildEmbeddings(onProgress: (EmbeddingRebuildProgress) -> Unit) = withContext(Dispatchers.IO) {
-        val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
-        if (!cloudConfig.isReady()) {
-            throw IOException("Cloud embedding configuration is incomplete.")
-        }
-
+    suspend fun rebuildVectorIndices(onProgress: (EmbeddingRebuildProgress) -> Unit) = withContext(Dispatchers.IO) {
         val memories = memoryBox.all
-        val chunks = chunkBox.all
-        val total = memories.size + chunks.size
-        var processed = 0
-        var failed = 0
-
-        onProgress(
-            EmbeddingRebuildProgress(
-                total = total,
-                processed = processed,
-                failed = failed,
-                currentStage = "preparing"
-            )
-        )
-
-        memories.forEach { memory ->
-            val textForEmbedding = if (memory.isDocumentNode) memory.title else generateTextForEmbedding(memory)
-            val embedding = generateEmbedding(textForEmbedding, cloudConfig)
-            if (embedding == null) {
-                failed += 1
-            }
-            memory.embedding = embedding
-            memoryBox.put(memory)
-            processed += 1
-            onProgress(
-                EmbeddingRebuildProgress(
-                    total = total,
-                    processed = processed,
-                    failed = failed,
-                    currentStage = "memory"
-                )
-            )
-        }
-
-        chunks.forEach { chunk ->
-            val embedding = generateEmbedding(chunk.content, cloudConfig)
-            if (embedding == null) {
-                failed += 1
-            }
-            chunk.embedding = embedding
-            chunkBox.put(chunk)
-            processed += 1
-            onProgress(
-                EmbeddingRebuildProgress(
-                    total = total,
-                    processed = processed,
-                    failed = failed,
-                    currentStage = "chunk"
-                )
-            )
-        }
-
-        cleanupLegacyVectorIndexFiles()
-        onProgress(
-            EmbeddingRebuildProgress(
-                total = total,
-                processed = processed,
-                failed = failed,
-                currentStage = "done"
-            )
-        )
-    }
-
-    private fun cleanupLegacyVectorIndexFiles() {
-        val vectorDir = OperitPaths.vectorIndexDir(context)
-        if (vectorDir.exists()) {
-            vectorDir.listFiles()?.forEach { file ->
-                val shouldDelete =
-                    (file.name.startsWith("memory_hnsw_") && file.name.endsWith(".idx")) ||
-                        (file.name.startsWith("doc_index_") && file.name.endsWith(".hnsw"))
-                if (shouldDelete) {
-                    file.delete()
+        val total =
+            memories.count { createMemoryIndexItem(it) != null } +
+                memories.filter { it.isDocumentNode }.sumOf { memory ->
+                    countDocumentChunkIndexableItems(memory)
                 }
-            }
+        var processed = 0
+
+        fun report(stage: String) {
+            onProgress(
+                EmbeddingRebuildProgress(
+                    total = total,
+                    processed = processed,
+                    failed = 0,
+                    currentStage = stage
+                )
+            )
         }
 
-        val documentMemories = memoryBox.all.filter { it.chunkIndexFilePath != null }
-        if (documentMemories.isNotEmpty()) {
-            documentMemories.forEach { it.chunkIndexFilePath = null }
-            memoryBox.put(documentMemories)
+        report("preparing")
+        report("memory_index")
+        rebuildAllMemoryVectorIndices {
+            processed += 1
+            report("memory_index")
         }
+        report("chunk_index")
+        rebuildAllDocumentChunkIndices {
+            processed += 1
+            report("chunk_index")
+        }
+        processed = total
+        report("done")
     }
 
     /**
@@ -1471,12 +1923,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
             val embedding = generateEmbedding(placeholder.content, cloudConfig)
             if (embedding != null) placeholder.embedding = embedding
             memoryBox.put(placeholder)
+            addMemoryToIndexInternal(placeholder)
             true
         } catch (e: Exception) {
             com.ai.assistance.operit.util.AppLogger.e("MemoryRepo", "Failed to create folder", e)
             false
         }
-            }
+    }
 
     /**
      * 创建新记忆并自动生成embedding，保存到数据库并同步索引。
@@ -1515,7 +1968,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
             memoryBox.put(memory)
         }
 
-        addMemoryToIndex(memory)
         memory
     }
 
@@ -1534,11 +1986,16 @@ class MemoryRepository(private val context: Context, profileId: String) {
         newTags: List<String>? = null // 可选的要更新的标签列表
     ): Memory? = withContext(Dispatchers.IO) {
         val cloudConfig = searchSettingsPreferences.loadCloudEmbedding()
+        val titleChanged = memory.title != newTitle
         val contentChanged = memory.content != newContent
         val credibilityChanged = memory.credibility != newCredibility
         val importanceChanged = memory.importance != newImportance
 
-        val needsReEmbedding = contentChanged || credibilityChanged || importanceChanged
+        val needsReEmbedding =
+            contentChanged ||
+                credibilityChanged ||
+                importanceChanged ||
+                (memory.isDocumentNode && titleChanged)
 
         // 更新记忆属性
         memory.apply {
@@ -1613,8 +2070,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
             store.runInTx {
                 // 2. Create the new merged memory (without embedding yet)
                 val mergedMemory = Memory(
-            title = newTitle,
-            content = newContent,
+                    title = newTitle,
+                    content = newContent,
                     folderPath = normalizeFolderPath(folderPath),
                     source = "merged_from_problem_library"
                 )
@@ -1650,6 +2107,15 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 linkBox.put(allLinksToProcess.toList())
 
                 // 5. Delete old source memories
+                sourceMemories.forEach { sourceMemory ->
+                    if (sourceMemory.isDocumentNode) {
+                        sourceMemory.documentChunks.reset()
+                        val chunkIds = sourceMemory.documentChunks.map { it.id }
+                        if (chunkIds.isNotEmpty()) {
+                            chunkBox.removeByIds(chunkIds)
+                        }
+                    }
+                }
                 memoryBox.removeByIds(sourceIdsSet.toList())
 
                 newMemory = mergedMemory
@@ -1663,11 +2129,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 memory.embedding = generateEmbedding(textForEmbedding, cloudConfig)
                 memoryBox.put(memory)
 
-                // Update vector index
-                addMemoryToIndex(memory)
-                for (mem in sourceMemories) {
-                    removeMemoryFromIndex(mem)
-                }
+                sourceMemories.forEach(::removeMemoryFromIndexInternal)
+                addMemoryToIndexInternal(memory)
             }
         } catch (e: Exception) {
             com.ai.assistance.operit.util.AppLogger.e("MemoryRepo", "Error during memory merge transaction.", e)
@@ -1675,15 +2138,6 @@ class MemoryRepository(private val context: Context, profileId: String) {
         }
 
         newMemory
-    }
-
-    /**
-     * 删除记忆并同步索引。
-     */
-    suspend fun deleteMemoryAndIndex(memoryId: Long): Boolean = withContext(Dispatchers.IO) {
-        val memory = findMemoryById(memoryId) ?: return@withContext false
-        removeMemoryFromIndex(memory)
-        deleteMemory(memoryId)
     }
 
     /**
@@ -1753,21 +2207,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
         }
 
         // 4. 在事务外处理向量索引和文件
-        for (memory in memoriesToDelete) {
-            removeMemoryFromIndex(memory)
-            // 删除文档的专属索引文件
-            if (memory.isDocumentNode && memory.chunkIndexFilePath != null) {
-                try {
-                    val indexFile = File(memory.chunkIndexFilePath!!)
-                    if (indexFile.exists() && indexFile.delete()) {
-                         com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Deleted chunk index file: ${indexFile.path}")
-                    }
-                } catch (e: Exception) {
-                    com.ai.assistance.operit.util.AppLogger.e("MemoryRepo", "Error deleting chunk index file for memory UUID ${memory.uuid}", e)
-                }
-            }
-        }
-        com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Removed memories from vector index and cleaned up chunk index files.")
+        memoriesToDelete.forEach(::removeMemoryFromIndexInternal)
+        com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Removed deleted memories from vector indices and cleaned up chunk index files.")
 
         return@withContext true
     }

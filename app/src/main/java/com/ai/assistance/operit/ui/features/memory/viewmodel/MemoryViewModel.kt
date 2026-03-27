@@ -144,7 +144,6 @@ class MemoryViewModel(
                     if (query.isBlank()) {
                         repository.searchMemories(
                             query = "",
-                            semanticThreshold = config.semanticThreshold,
                             scoreMode = config.scoreMode,
                             keywordWeight = config.keywordWeight,
                             semanticWeight = config.vectorWeight,
@@ -153,7 +152,6 @@ class MemoryViewModel(
                     } else {
                         repository.searchMemories(
                             query = query,
-                            semanticThreshold = config.semanticThreshold,
                             scoreMode = config.scoreMode,
                             keywordWeight = config.keywordWeight,
                             semanticWeight = config.vectorWeight,
@@ -228,7 +226,6 @@ class MemoryViewModel(
                 val debugInfo = repository.searchMemoriesDebug(
                     query = query,
                     folderPath = folderPath,
-                    semanticThreshold = config.semanticThreshold,
                     scoreMode = config.scoreMode,
                     keywordWeight = config.keywordWeight,
                     semanticWeight = config.vectorWeight,
@@ -314,7 +311,7 @@ class MemoryViewModel(
             }
 
             try {
-                repository.rebuildEmbeddings { progress ->
+                repository.rebuildVectorIndices { progress ->
                     _uiState.update { state ->
                         state.copy(embeddingRebuildProgress = progress)
                     }
@@ -654,7 +651,7 @@ class MemoryViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                repository.deleteMemoryAndIndex(memoryId)
+                repository.deleteMemory(memoryId)
                 val updatedGraph = refreshGraph()
                 // 刷新文件夹列表（删除记忆可能导致文件夹变空）
                 loadFolderPaths()

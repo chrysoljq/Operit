@@ -154,7 +154,6 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         val query = tool.parameters.find { it.name == "query" }?.value ?: ""
         val folderPath = tool.parameters.find { it.name == "folder_path" }?.value
         val settings = memorySearchSettingsPreferences.load()
-        val threshold = tool.parameters.find { it.name == "threshold" }?.value?.toFloatOrNull() ?: settings.semanticThreshold
         val limitParam = tool.parameters.find { it.name == "limit" }?.value
         val limit = limitParam?.toIntOrNull()
         val startTimeParam = tool.parameters.find { it.name == "start_time" }?.value
@@ -196,7 +195,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         val defaultLimit = if (isWildcardQuery && limit == null) {
             Int.MAX_VALUE // 使用最大值表示返回所有结果
         } else {
-            5 // 普通查询默认返回 5 条
+            20 // 普通查询默认返回 20 条
         }
         val finalLimit = limit ?: defaultLimit
 
@@ -204,8 +203,6 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             return ToolResult(toolName = tool.name, success = false, result = StringResultData(""), error = "Query parameter cannot be empty.")
         }
 
-        // 验证参数范围
-        val validThreshold = threshold.coerceIn(0.0f, 1.0f)
         // limit 无上限，但至少为 1
         val validLimit = if (finalLimit < 1) 1 else finalLimit
         val snapshotState =
@@ -224,14 +221,13 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
 
         AppLogger.d(
             TAG,
-            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', snapshot_id=${snapshotState.id}, snapshot_created=$snapshotCreated, start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, threshold: $validThreshold, limit: $validLimit, mode=${settings.scoreMode}, keywordWeight=${settings.keywordWeight}, vectorWeight=${settings.vectorWeight}, edgeWeight=${settings.edgeWeight}"
+            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', snapshot_id=${snapshotState.id}, snapshot_created=$snapshotCreated, start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, limit: $validLimit, mode=${settings.scoreMode}, keywordWeight=${settings.keywordWeight}, vectorWeight=${settings.vectorWeight}, edgeWeight=${settings.edgeWeight}"
         )
 
         return try {
             val results = memoryRepository.searchMemories(
                 query = query,
                 folderPath = folderPath,
-                semanticThreshold = validThreshold,
                 scoreMode = settings.scoreMode,
                 keywordWeight = settings.keywordWeight,
                 semanticWeight = settings.vectorWeight,
@@ -279,8 +275,9 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         val chunkIndexParam = tool.parameters.find { it.name == "chunk_index" }?.value
         val chunkRangeParam = tool.parameters.find { it.name == "chunk_range" }?.value
         val queryParam = tool.parameters.find { it.name == "query" }?.value
+        val chunkLimitParam = tool.parameters.find { it.name == "limit" }?.value
 
-        AppLogger.d(TAG, "Getting memory by title: $title, chunk_index: $chunkIndexParam, chunk_range: $chunkRangeParam, query: $queryParam")
+        AppLogger.d(TAG, "Getting memory by title: $title, chunk_index: $chunkIndexParam, chunk_range: $chunkRangeParam, query: $queryParam, limit: $chunkLimitParam")
 
         return try {
             val memory = memoryRepository.findMemoryByTitle(title)
@@ -295,7 +292,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
 
             // 如果是文档节点且提供了分块参数，则进行特殊处理
             if (memory.isDocumentNode && (chunkIndexParam != null || chunkRangeParam != null || queryParam != null)) {
-                return handleDocumentChunkRetrieval(tool.name, memory, chunkIndexParam, chunkRangeParam, queryParam)
+                return handleDocumentChunkRetrieval(tool.name, memory, chunkIndexParam, chunkRangeParam, queryParam, chunkLimitParam)
             }
 
             // 默认行为：返回完整记忆
@@ -322,17 +319,19 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         memory: Memory,
         chunkIndexParam: String?,
         chunkRangeParam: String?,
-        queryParam: String?
+        queryParam: String?,
+        limitParam: String?
     ): ToolResult = withContext(Dispatchers.IO) {
         val totalChunks = memoryRepository.getTotalChunkCount(memory.id)
+        val validLimit = (limitParam?.toIntOrNull() ?: 20).coerceAtLeast(1)
         
         try {
             // 优先级：query > chunk_range > chunk_index
             val chunks = when {
                 // 模糊搜索分块
                 !queryParam.isNullOrBlank() -> {
-                    AppLogger.d(TAG, "Searching chunks in document '${memory.title}' with query: '$queryParam'")
-                    memoryRepository.searchChunksInDocument(memory.id, queryParam)
+                    AppLogger.d(TAG, "Searching chunks in document '${memory.title}' with query: '$queryParam', limit: $validLimit")
+                    memoryRepository.searchChunksInDocument(memory.id, queryParam, validLimit)
                 }
                 // 范围查询
                 !chunkRangeParam.isNullOrBlank() -> {
@@ -1176,7 +1175,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             if (memory.isDocumentNode) {
                 // 对于文档节点，执行"二次探查"，获取匹配的区块内容
                 AppLogger.d(TAG, "Memory result is a document ('${memory.title}'). Fetching specific matching chunks for query: '$query'")
-                val matchingChunks = memoryRepository.searchChunksInDocument(memory.id, query)
+                val matchingChunks = memoryRepository.searchChunksInDocument(memory.id, query, limit)
                 val totalChunks = memoryRepository.getTotalChunkCount(memory.id)
 
                 if (matchingChunks.isNotEmpty()) {
@@ -1208,7 +1207,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
                     if (isTruncatedMode) {
                         content = "Document: ${memory.title}"
                     } else {
-                        content = "Document '${memory.title}' was found, but no specific chunks strongly matched the query '$query'. The document's general content is: ${memory.content}"
+                        content = "Document '${memory.title}' was found, but no specific chunks matched the query '$query'. The document's general content is: ${memory.content}"
                     }
                 }
             } else {

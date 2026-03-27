@@ -636,22 +636,22 @@ fun getJsToolsDefinition(): String {
             // 记忆管理
             Memory: {
                 // 查询记忆库
-                query: (query, folderPath, threshold, limit, startTime, endTime, snapshotId) => {
+                query: (query, folderPath, limit, startTime, endTime, snapshotId) => {
                     const params = { query };
                     if (folderPath) params.folder_path = folderPath;
                     if (startTime !== undefined) params.start_time = startTime;
                     if (endTime !== undefined) params.end_time = endTime;
-                    if (threshold !== undefined) params.threshold = threshold;
                     if (limit !== undefined) params.limit = limit;
                     if (snapshotId !== undefined && snapshotId !== null) params.snapshot_id = String(snapshotId);
                     return toolCall("query_memory", params);
                 },
                 // 通过标题获取记忆
-                getByTitle: (title, chunkIndex, chunkRange, query) => {
+                getByTitle: (title, chunkIndex, chunkRange, query, limit) => {
                     const params = { title };
                     if (chunkIndex !== undefined) params.chunk_index = chunkIndex;
                     if (chunkRange) params.chunk_range = chunkRange;
                     if (query) params.query = query;
+                    if (limit !== undefined) params.limit = limit;
                     return toolCall("get_memory_by_title", params);
                 },
                 // 创建记忆

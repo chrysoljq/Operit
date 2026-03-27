@@ -7,7 +7,6 @@ enum class MemoryScoreMode {
 }
 
 data class MemorySearchConfig(
-    val semanticThreshold: Float = 0.6f,
     val scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
     val keywordWeight: Float = 10.0f,
     val vectorWeight: Float = 0.0f,
@@ -15,7 +14,6 @@ data class MemorySearchConfig(
 ) {
     fun normalized(): MemorySearchConfig {
         return copy(
-            semanticThreshold = semanticThreshold.coerceIn(0.0f, 1.0f),
             keywordWeight = keywordWeight.coerceAtLeast(0.0f),
             vectorWeight = vectorWeight.coerceAtLeast(0.0f),
             edgeWeight = edgeWeight.coerceAtLeast(0.0f)

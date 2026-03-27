@@ -5452,9 +5452,8 @@
     <string name="memory_test_tool_hint">Enter a query to simulate AI retrieving relevant memories from the knowledge base:</string>
     <string name="memory_test_results">Results</string>
     <string name="memory_search_settings_title">Memory Search Settings</string>
-    <string name="memory_search_threshold">Semantic Threshold</string>
     <string name="memory_search_calc_mode">Scoring Mode</string>
-    <string name="memory_search_weight_section">Threshold &amp; Weights</string>
+    <string name="memory_search_weight_section">Weights</string>
     <string name="memory_search_mode_balanced">Balanced</string>
     <string name="memory_search_mode_keyword_first">Keyword First</string>
     <string name="memory_search_mode_semantic_first">Semantic First</string>
@@ -5491,8 +5490,8 @@
     <string name="memory_embedding_rebuild_action">Rebuild Vector Index</string>
     <string name="memory_embedding_rebuild_progress">Progress %1$d/%2$d, failed %3$d, stage: %4$s</string>
     <string name="memory_embedding_stage_preparing">Preparing</string>
-    <string name="memory_embedding_stage_memory">Rebuilding memory vectors</string>
-    <string name="memory_embedding_stage_chunk">Rebuilding chunk vectors</string>
+    <string name="memory_embedding_stage_memory_index">Rebuilding memory indices</string>
+    <string name="memory_embedding_stage_chunk_index">Rebuilding document chunk indices</string>
     <string name="memory_embedding_stage_done">Done</string>
     <string name="memory_embedding_rebuild_failed">Failed to rebuild vector index: %1$s</string>
     <string name="memory_document_title">Document Title</string>
