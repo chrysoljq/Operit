@@ -86,6 +86,7 @@ import androidx.compose.ui.text.input.ImeAction
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.MemorySearchSettingsDialog
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.MemorySearchSimulationDialog
+import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
 
 @Composable
 fun MemorySearchBar(
@@ -164,6 +165,14 @@ fun MemoryScreen() {
     val uiState by viewModel.uiState.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+    val isCurrentScreen = LocalIsCurrentScreen.current
+
+    LaunchedEffect(isCurrentScreen, selectedProfileId) {
+        if (isCurrentScreen) {
+            viewModel.loadMemoryGraph()
+            viewModel.loadFolderPaths()
+        }
+    }
 
     LaunchedEffect(uiState.error) {
         val error = uiState.error ?: return@LaunchedEffect
