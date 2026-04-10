@@ -4557,8 +4557,6 @@
     <string name="global_permission_switch_description">此设置作为主控制，可以覆盖单个工具权限。</string>
     <string name="permission_level_allow">允许</string>
     <string name="permission_level_allow_description">这些工具将自动运行。</string>
-    <string name="permission_level_cautious">谨慎</string>
-    <string name="permission_level_cautious_description">这些工具只会在危险操作时询问。</string>
     <string name="permission_level_forbid">禁止</string>
     <string name="permission_level_forbid_description">这些工具永远不会运行。</string>
     <string name="permission_level_ask">询问</string>
@@ -5441,6 +5439,16 @@
     <string name="memory_embedding_rebuild_failed">向量补全并重建失败: %1$s</string>
     <string name="memory_embedding_rebuild_requires_config">请先配置并保存可用的向量服务</string>
     <string name="memory_embedding_rebuild_probe_failed">无法获取当前向量模型的维度，请检查向量服务是否可用</string>
+    <string name="memory_embedding_error_config_incomplete">向量服务未配置完整</string>
+    <string name="memory_embedding_error_input_empty">向量输入为空</string>
+    <string name="memory_embedding_error_http">向量请求失败(%1$d): %2$s</string>
+    <string name="memory_embedding_error_empty_response">向量请求成功但响应为空</string>
+    <string name="memory_embedding_error_missing_data">向量响应缺少 data 字段: %1$s</string>
+    <string name="memory_embedding_error_empty_data">向量响应 data 为空: %1$s</string>
+    <string name="memory_embedding_error_invalid_first_item">向量响应 data[0] 不是对象: %1$s</string>
+    <string name="memory_embedding_error_missing_embedding">向量响应缺少 embedding 字段: %1$s</string>
+    <string name="memory_embedding_error_empty_embedding">向量响应 embedding 为空: %1$s</string>
+    <string name="memory_embedding_error_parse_failed">向量响应解析失败: %1$s</string>
     <string name="memory_document_title">文档标题</string>
     <string name="memory_search_in_document">在文档内搜索...</string>
     <string name="memory_save_all">保存全部</string>

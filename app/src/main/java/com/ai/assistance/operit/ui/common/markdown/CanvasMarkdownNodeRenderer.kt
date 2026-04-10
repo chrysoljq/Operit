@@ -750,38 +750,20 @@ private fun UnifiedCanvasRenderer(
         val revealInstruction = layoutResult.instructions.filterIsInstance<DrawInstruction.TextLayout>().firstOrNull()
         val targetLength = revealInstruction?.layout?.text?.length ?: 0
         val revealAnim = remember(nodeKey) { Animatable(0f) }
-        val lastLoggedTargetLength = remember(nodeKey) { mutableStateOf(-1) }
         LaunchedEffect(enableTypewriter) {
             if (!enableTypewriter) {
                 revealAnim.snapTo(targetLength.toFloat())
             }
         }
         LaunchedEffect(targetLength, enableTypewriter) {
-            val prevTarget = lastLoggedTargetLength.value
-            if (prevTarget != -1 && targetLength < prevTarget) {
-                AppLogger.w(
-                    TAG,
-                    "[md-typewriter] nodeKey=$nodeKey targetLength decreased $prevTarget -> $targetLength enableTypewriter=$enableTypewriter type=${node.type.name} children=${node.children.size}"
-                )
-            }
-            lastLoggedTargetLength.value = targetLength
-
             if (!enableTypewriter) {
                 return@LaunchedEffect
             }
             if (targetLength <= 0) {
-                AppLogger.w(
-                    TAG,
-                    "[md-typewriter] nodeKey=$nodeKey targetLength<=0 enableTypewriter=true type=${node.type.name} children=${node.children.size}"
-                )
                 return@LaunchedEffect
             }
             val current = revealAnim.value
             if (targetLength.toFloat() < current) {
-                AppLogger.w(
-                    TAG,
-                    "[md-typewriter] nodeKey=$nodeKey snap backward current=${current.toInt()} targetLength=$targetLength type=${node.type.name}"
-                )
                 revealAnim.snapTo(targetLength.toFloat())
             } else {
                 val deltaChars = (targetLength - floor(current).toInt()).coerceAtLeast(0)

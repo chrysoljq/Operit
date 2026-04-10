@@ -475,6 +475,15 @@ class HttpVoiceProvider(
             val encodedRate = rate.toString()
             val encodedPitch = pitch.toString()
             val encodedVoiceId = voiceId?.let { URLEncoder.encode(it, "UTF-8") } ?: ""
+            val bodyPlaceholders =
+                linkedMapOf(
+                    "text" to text,
+                    "rate" to encodedRate,
+                    "pitch" to encodedPitch
+                ).apply {
+                    voiceId?.let { put("voice", it) }
+                    extraParams.forEach { (key, value) -> put(key, value) }
+                }
 
             val requestBuilder = Request.Builder()
 
@@ -488,19 +497,12 @@ class HttpVoiceProvider(
                 }
 
                 // Replace placeholders in the request body template
-                var requestBody = httpConfig.requestBody
-                    .replace("{text}", text, ignoreCase = true) // Don't encode for JSON body
-                    .replace("{rate}", encodedRate, ignoreCase = true)
-                    .replace("{pitch}", encodedPitch, ignoreCase = true)
-
-                if (voiceId != null) {
-                    requestBody = requestBody.replace("{voice}", voiceId, ignoreCase = true)
-                }
-
-                // Replace any extra parameters
-                extraParams.forEach { (key, value) ->
-                    requestBody = requestBody.replace("{$key}", value, ignoreCase = true)
-                }
+                val requestBody =
+                    replaceBodyPlaceholders(
+                        template = httpConfig.requestBody,
+                        replacements = bodyPlaceholders,
+                        contentType = httpConfig.contentType
+                    )
 
                 val mediaType = httpConfig.contentType.toMediaType()
                 val body = requestBody.toRequestBody(mediaType)
@@ -569,6 +571,90 @@ class HttpVoiceProvider(
             if (e is TtsException) throw e
             throw TtsException(context.getString(R.string.http_tts_fetch_failed), cause = e)
         }
+    }
+
+    private fun replaceBodyPlaceholders(
+        template: String,
+        replacements: Map<String, String>,
+        contentType: String
+    ): String {
+        return when {
+            isJsonContentType(contentType) ->
+                replacePlaceholders(template, replacements) { rawValue, matchRange, currentTemplate ->
+                    encodeJsonPlaceholderValue(currentTemplate, matchRange, rawValue)
+                }
+
+            isFormUrlEncodedContentType(contentType) ->
+                replacePlaceholders(template, replacements) { rawValue, _, _ ->
+                    URLEncoder.encode(rawValue, "UTF-8")
+                }
+
+            else ->
+                replacePlaceholders(template, replacements) { rawValue, _, _ -> rawValue }
+        }
+    }
+
+    private fun replacePlaceholders(
+        template: String,
+        replacements: Map<String, String>,
+        transform: (rawValue: String, matchRange: IntRange, currentTemplate: String) -> String
+    ): String {
+        var result = template
+        replacements.forEach { (key, rawValue) ->
+            val regex = Regex("\\{${Regex.escape(key)}\\}", RegexOption.IGNORE_CASE)
+            val currentTemplate = result
+            result =
+                regex.replace(currentTemplate) { matchResult ->
+                    transform(rawValue, matchResult.range, currentTemplate)
+                }
+        }
+        return result
+    }
+
+    private fun encodeJsonPlaceholderValue(
+        template: String,
+        matchRange: IntRange,
+        rawValue: String
+    ): String {
+        val encodedAsJsonString = Json.encodeToString(rawValue)
+        if (isWrappedInJsonQuotes(template, matchRange)) {
+            return encodedAsJsonString.removeSurrounding("\"")
+        }
+
+        val jsonLiteral = rawValue.toJsonLiteralOrNull()
+        return jsonLiteral ?: encodedAsJsonString
+    }
+
+    private fun isWrappedInJsonQuotes(template: String, matchRange: IntRange): Boolean {
+        val start = matchRange.first
+        val endExclusive = matchRange.last + 1
+        return start > 0 &&
+            endExclusive < template.length &&
+            template[start - 1] == '"' &&
+            template[endExclusive] == '"'
+    }
+
+    private fun String.toJsonLiteralOrNull(): String? {
+        val trimmed = trim()
+        if (trimmed.isEmpty()) return null
+        return when {
+            trimmed.equals("true", ignoreCase = true) -> "true"
+            trimmed.equals("false", ignoreCase = true) -> "false"
+            trimmed.equals("null", ignoreCase = true) -> "null"
+            trimmed.toLongOrNull() != null -> trimmed
+            trimmed.toDoubleOrNull() != null -> trimmed
+            else -> null
+        }
+    }
+
+    private fun isJsonContentType(contentType: String): Boolean {
+        val normalized = contentType.substringBefore(';').trim().lowercase()
+        return normalized == "application/json" || normalized.endsWith("+json")
+    }
+
+    private fun isFormUrlEncodedContentType(contentType: String): Boolean {
+        return contentType.substringBefore(';').trim()
+            .equals("application/x-www-form-urlencoded", ignoreCase = true)
     }
 
     private fun validateResponsePipeline(steps: List<HttpTtsResponsePipelineStep>) {

@@ -23,7 +23,6 @@ import com.ai.assistance.shower.wrappers.WindowManager;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -320,46 +319,8 @@ public class Main {
     }
 
     private byte[] captureScreenshotBytes(int displayId) {
-        String path = "/data/local/tmp/shower_screenshot_" + displayId + ".png";
-        String cmd = "screencap -d " + displayId + " -p " + path;
-        Process proc = null;
-        try {
-            logToFile("captureScreenshotBytes executing: " + cmd, null);
-            proc = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
-            int exit = proc.waitFor();
-            if (exit != 0) {
-                logToFile("captureScreenshotBytes screencap exited with code=" + exit, null);
-                return null;
-            }
-
-            File f = new File(path);
-            if (!f.exists() || f.length() == 0) {
-                logToFile("captureScreenshotBytes file missing or empty: " + path, null);
-                return null;
-            }
-
-            byte[] data;
-            try (FileInputStream fis = new FileInputStream(f)) {
-                data = new byte[(int) f.length()];
-                int read = fis.read(data);
-                if (read != data.length) {
-                    logToFile("captureScreenshotBytes short read: " + read + " / " + data.length, null);
-                }
-            }
-            return data;
-        } catch (Exception e) {
-            logToFile("captureScreenshotBytes failed: " + e.getMessage(), e);
-            return null;
-        } finally {
-            if (proc != null) {
-                try {
-                    proc.destroy();
-                } catch (Exception ignored) {
-                }
-            }
-            // Cleanup file
-            new File(path).delete();
-        }
+        logToFile("captureScreenshotBytes using DisplayCapture for displayId=" + displayId, null);
+        return DisplayCapture.captureDisplay(displayId);
     }
 
 

@@ -73,7 +73,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 不在提示词加入的工具
     handler.registerTool(
             name = "execute_shell",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""
                 s(R.string.toolreg_execute_shell_desc, command)
@@ -86,7 +85,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "close_all_virtual_displays",
-            dangerCheck = { false },
             descriptionGenerator = { _ -> s(R.string.toolreg_close_all_virtual_displays_desc) },
             executor = { tool ->
                 try {
@@ -110,7 +108,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 终端命令执行工具 - 一次性收集输出
     handler.registerTool(
             name = "create_terminal_session",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val sessionName = tool.parameters.find { it.name == "session_name" }?.value
                 val displayName = sessionName ?: s(R.string.toolreg_unnamed)
@@ -124,7 +121,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "execute_in_terminal_session",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""
                 val sessionId = tool.parameters.find { it.name == "session_id" }?.value
@@ -138,7 +134,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "execute_hidden_terminal_command",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""
                 val executorKey =
@@ -153,7 +148,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "close_terminal_session",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val sessionId = tool.parameters.find { it.name == "session_id" }?.value
                 s(R.string.toolreg_close_terminal_session_desc, sessionId ?: "")
@@ -166,7 +160,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "input_in_terminal_session",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val sessionId = tool.parameters.find { it.name == "session_id" }?.value
                 val control = tool.parameters.find { it.name == "control" }?.value ?: "-"
@@ -180,7 +173,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "get_terminal_session_screen",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
                 s(R.string.toolreg_get_terminal_session_screen_desc, sessionId)
@@ -193,7 +185,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "read_environment_variable",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val key = tool.parameters.find { it.name == "key" }?.value ?: ""
                 "Read environment variable: $key"
@@ -206,7 +197,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "write_environment_variable",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val key = tool.parameters.find { it.name == "key" }?.value ?: ""
                 val value = tool.parameters.find { it.name == "value" }?.value
@@ -221,7 +211,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "list_sandbox_packages",
-            dangerCheck = { false },
             descriptionGenerator = { _ ->
                 "List sandbox packages and their enabled states"
             },
@@ -234,7 +223,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "set_sandbox_package_enabled",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val packageName = tool.parameters.find { it.name == "package_name" }?.value ?: ""
                 val enabled = tool.parameters.find { it.name == "enabled" }?.value ?: ""
@@ -249,7 +237,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "execute_sandbox_script_direct",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val sourcePath = tool.parameters.find { it.name == "source_path" }?.value?.trim().orEmpty()
                 val hasInlineCode =
@@ -273,7 +260,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "restart_mcp_with_logs",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val timeoutMs = tool.parameters.find { it.name == "timeout_ms" }?.value ?: "120000"
                 "Restart MCP startup and return per-plugin logs (timeout=${timeoutMs}ms)"
@@ -286,7 +272,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "get_speech_services_config",
-            dangerCheck = { false },
             descriptionGenerator = { _ ->
                 "Get current TTS/STT speech services configuration"
             },
@@ -298,7 +283,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "set_speech_services_config",
-            dangerCheck = { false },
             descriptionGenerator = { _ ->
                 "Update TTS/STT speech services configuration"
             },
@@ -310,7 +294,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "test_tts_playback",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val text = tool.parameters.find { it.name == "text" }?.value.orEmpty()
                 val preview = text.take(24).replace('\n', ' ')
@@ -324,7 +307,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "list_model_configs",
-            dangerCheck = { false },
             descriptionGenerator = { _ ->
                 "List all model configs and current function-to-config mappings"
             },
@@ -336,7 +318,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "create_model_config",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val name = tool.parameters.find { it.name == "name" }?.value ?: "New Model Config"
                 "Create model config: $name"
@@ -349,7 +330,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "update_model_config",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val configId = tool.parameters.find { it.name == "config_id" }?.value ?: ""
                 "Update model config: $configId"
@@ -362,7 +342,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "delete_model_config",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val configId = tool.parameters.find { it.name == "config_id" }?.value ?: ""
                 "Delete model config: $configId"
@@ -375,7 +354,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "list_function_model_configs",
-            dangerCheck = { false },
             descriptionGenerator = { _ ->
                 "List function model bindings only (function -> config_id + model_index)"
             },
@@ -387,7 +365,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "get_function_model_config",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val functionType = tool.parameters.find { it.name == "function_type" }?.value ?: ""
                 "Get function model config: $functionType"
@@ -400,7 +377,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "set_function_model_config",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val functionType = tool.parameters.find { it.name == "function_type" }?.value ?: ""
                 val configId = tool.parameters.find { it.name == "config_id" }?.value ?: ""
@@ -415,7 +391,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "test_model_config_connection",
-            dangerCheck = { false },
             descriptionGenerator = { tool ->
                 val configId = tool.parameters.find { it.name == "config_id" }?.value ?: ""
                 val modelIndex = tool.parameters.find { it.name == "model_index" }?.value ?: "0"
@@ -430,7 +405,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册问题库查询工具
     handler.registerTool(
             name = "query_memory",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val query = tool.parameters.find { it.name == "query" }?.value ?: ""
                 s(R.string.toolreg_query_memory_desc, query)
@@ -444,7 +418,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册根据标题获取单个记忆工具
     handler.registerTool(
             name = "get_memory_by_title",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val title = tool.parameters.find { it.name == "title" }?.value ?: ""
                 s(R.string.toolreg_get_memory_by_title_desc, title)
@@ -458,7 +431,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册用户偏好更新工具
     handler.registerTool(
             name = "update_user_preferences",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val params = mutableListOf<String>()
                 tool.parameters.forEach { param ->
@@ -490,7 +462,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册创建记忆工具
     handler.registerTool(
             name = "create_memory",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val title = tool.parameters.find { it.name == "title" }?.value ?: ""
                 s(R.string.toolreg_create_memory_desc, title)
@@ -504,7 +475,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册更新记忆工具
     handler.registerTool(
             name = "update_memory",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val oldTitle = tool.parameters.find { it.name == "old_title" }?.value ?: ""
                 val newTitle = tool.parameters.find { it.name == "new_title" }?.value ?: oldTitle
@@ -519,7 +489,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册删除记忆工具
     handler.registerTool(
             name = "delete_memory",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val title = tool.parameters.find { it.name == "title" }?.value ?: ""
                 s(R.string.toolreg_delete_memory_desc, title)
@@ -533,7 +502,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册批量移动记忆工具
     handler.registerTool(
             name = "move_memory",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val sourceFolder = tool.parameters.find { it.name == "source_folder_path" }?.value
                 val targetFolder = tool.parameters.find { it.name == "target_folder_path" }?.value ?: ""
@@ -557,7 +525,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册链接记忆工具
     handler.registerTool(
             name = "link_memories",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value ?: ""
                 val targetTitle = tool.parameters.find { it.name == "target_title" }?.value ?: ""
@@ -573,7 +540,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册查询记忆链接工具
     handler.registerTool(
             name = "query_memory_links",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val linkId = tool.parameters.find { it.name == "link_id" }?.value
                 val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
@@ -595,7 +561,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册更新记忆链接工具
     handler.registerTool(
             name = "update_memory_link",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val linkId = tool.parameters.find { it.name == "link_id" }?.value
                 val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
@@ -616,7 +581,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 注册删除记忆链接工具
     handler.registerTool(
             name = "delete_memory_link",
-            dangerCheck = null,
             descriptionGenerator = { tool ->
                 val linkId = tool.parameters.find { it.name == "link_id" }?.value
                 val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
@@ -985,7 +949,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // Intent工具
     handler.registerTool(
             name = "execute_intent",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val action = tool.parameters.find { it.name == "action" }?.value
                 val packageName = tool.parameters.find { it.name == "package" }?.value
@@ -1014,7 +977,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "send_broadcast",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val action = tool.parameters.find { it.name == "action" }?.value
                 val preview = action?.takeIf { it.isNotBlank() } ?: "(no action)"
@@ -1389,7 +1351,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 写入文件
     handler.registerTool(
             name = "write_file",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val path = tool.parameters.find { it.name == "path" }?.value ?: ""
                 val environment = tool.parameters.find { it.name == "environment" }?.value
@@ -1411,7 +1372,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 写入二进制文件
     handler.registerTool(
         name = "write_file_binary",
-        dangerCheck = { true }, // 总是危险操作
         descriptionGenerator = { tool ->
             val path = tool.parameters.find { it.name == "path" }?.value ?: ""
             val environment = tool.parameters.find { it.name == "environment" }?.value
@@ -1426,7 +1386,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 删除文件/目录
     handler.registerTool(
             name = "delete_file",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val path = tool.parameters.find { it.name == "path" }?.value ?: ""
                 val environment = tool.parameters.find { it.name == "environment" }?.value
@@ -1449,33 +1408,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 点击元素
     handler.registerTool(
             name = "click_element",
-            dangerCheck = { tool ->
-                val resourceId = tool.parameters.find { it.name == "resourceId" }?.value ?: ""
-                val className = tool.parameters.find { it.name == "className" }?.value ?: ""
-                val dangerousWords =
-                        listOf(
-                                "send",
-                                "submit",
-                                "confirm",
-                                "pay",
-                                "purchase",
-                                "buy",
-                                "delete",
-                                "remove",
-                                s(R.string.tool_action_send),
-                                s(R.string.tool_action_submit),
-                                s(R.string.tool_action_confirm),
-                                s(R.string.tool_action_pay),
-                                s(R.string.tool_action_purchase),
-                                s(R.string.tool_action_delete),
-                                s(R.string.tool_action_remove)
-                        )
-
-                dangerousWords.any { word ->
-                    resourceId.contains(word, ignoreCase = true) ||
-                            className.contains(word, ignoreCase = true)
-                }
-            },
             descriptionGenerator = { tool ->
                 val resourceId = tool.parameters.find { it.name == "resourceId" }?.value
                 val className = tool.parameters.find { it.name == "className" }?.value
@@ -1610,7 +1542,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 移动/重命名文件或目录
     handler.registerTool(
             name = "move_file",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val source = tool.parameters.find { it.name == "source" }?.value ?: ""
                 val destination = tool.parameters.find { it.name == "destination" }?.value ?: ""
@@ -1685,7 +1616,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 智能应用文件绑定
     handler.registerTool(
             name = "apply_file",
-            dangerCheck = { true }, // 总是危险操作
             descriptionGenerator = { tool ->
                 val path = tool.parameters.find { it.name == "path" }?.value ?: ""
                 val environment = tool.parameters.find { it.name == "environment" }?.value
@@ -1816,7 +1746,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "toast",
-            dangerCheck = { false },
             executor = { tool ->
                 runBlocking(Dispatchers.IO) { systemOperationTools.toast(tool) }
             }
@@ -1824,7 +1753,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
 
     handler.registerTool(
             name = "send_notification",
-            dangerCheck = { false },
             executor = { tool ->
                 runBlocking(Dispatchers.IO) { systemOperationTools.sendNotification(tool) }
             }
@@ -1833,7 +1761,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 修改系统设置
     handler.registerTool(
             name = "modify_system_setting",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val key = tool.parameters.find { it.name == "key" }?.value ?: ""
                 val value = tool.parameters.find { it.name == "value" }?.value ?: ""
@@ -1859,7 +1786,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 安装应用
     handler.registerTool(
             name = "install_app",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val path = tool.parameters.find { it.name == "path" }?.value ?: ""
                 s(R.string.toolreg_install_app_desc, path)
@@ -1872,7 +1798,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 卸载应用
     handler.registerTool(
             name = "uninstall_app",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val packageName = tool.parameters.find { it.name == "package_name" }?.value ?: ""
                 s(R.string.toolreg_uninstall_app_desc, packageName)
@@ -1906,7 +1831,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // 停止应用
     handler.registerTool(
             name = "stop_app",
-            dangerCheck = { true },
             descriptionGenerator = { tool ->
                 val packageName = tool.parameters.find { it.name == "package_name" }?.value ?: ""
                 s(R.string.toolreg_stop_app_desc, packageName)
@@ -2049,7 +1973,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // FFmpeg工具 - 执行通用FFmpeg命令
     handler.registerTool(
             name = "ffmpeg_execute",
-            dangerCheck = { true }, // 总是危险操作，因为可能会修改文件
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""
                 s(R.string.toolreg_ffmpeg_execute_desc, command)
@@ -2073,7 +1996,6 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     // FFmpeg视频转换工具 - 简化的视频转换接口
     handler.registerTool(
             name = "ffmpeg_convert",
-            dangerCheck = { true }, // 总是危险操作，因为会创建新文件
             descriptionGenerator = { tool ->
                 val inputPath = tool.parameters.find { it.name == "input_path" }?.value ?: ""
                 val outputPath = tool.parameters.find { it.name == "output_path" }?.value ?: ""

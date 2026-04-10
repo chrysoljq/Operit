@@ -139,6 +139,43 @@ open class OpenAIProvider(
         onTokensUpdated(parsed.inputTokens, parsed.cachedInputTokens, parsed.outputTokens)
     }
 
+    private fun buildOpenAiErrorDetail(error: JSONObject, fallback: String): String {
+        val message = error.optString("message", "").trim().ifEmpty { fallback }
+        val type = error.optString("type", "").trim()
+        val code = error.opt("code")?.toString()?.trim().orEmpty()
+
+        if (type.isEmpty() && code.isEmpty()) {
+            return message
+        }
+
+        return buildString {
+            append(message)
+            append(" [")
+            if (type.isNotEmpty()) {
+                append("type=").append(type)
+            }
+            if (type.isNotEmpty() && code.isNotEmpty()) {
+                append(", ")
+            }
+            if (code.isNotEmpty()) {
+                append("code=").append(code)
+            }
+            append("]")
+        }
+    }
+
+    private fun throwIfOpenAiErrorPayload(context: Context, jsonResponse: JSONObject) {
+        val error = jsonResponse.optJSONObject("error") ?: return
+        val detail = buildOpenAiErrorDetail(
+            error,
+            context.getString(R.string.openai_error_no_error_details)
+        )
+        val exceptionMessage = context.getString(R.string.openai_error_response_failed, detail)
+
+        AppLogger.e("AIService", "【发送消息】响应中包含错误对象: $detail")
+        throw IOException(exceptionMessage)
+    }
+
     // 重置token计数
     override fun resetTokenCounts() {
         tokenCacheManager.resetTokenCounts()
@@ -1959,6 +1996,7 @@ open class OpenAIProvider(
 
                 try {
                     val jsonResponse = JSONObject(data)
+                    throwIfOpenAiErrorPayload(context, jsonResponse)
 
                     if (useResponsesApi) {
                         processResponsesStreamingEvent(context, jsonResponse, state, emitter, onTokensUpdated)
@@ -2148,6 +2186,7 @@ open class OpenAIProvider(
 
                             try {
                                 val jsonResponse = JSONObject(responseText)
+                                throwIfOpenAiErrorPayload(context, jsonResponse)
                                 val handledImages = tryHandleOpenAiImageResponse(jsonResponse, emitter, null)
 
                                 if (useResponsesApi) {
@@ -2220,6 +2259,8 @@ open class OpenAIProvider(
                                 applyUsageToCounters(jsonResponse.optJSONObject("usage"), onTokensUpdated)
 
                                 AppLogger.d("AIService", "【发送消息】非流式响应处理完成")
+                            } catch (e: IOException) {
+                                throw e
                             } catch (e: Exception) {
                                 AppLogger.e("AIService", "【发送消息】解析非流式响应失败", e)
                                 throw IOException(context.getString(R.string.openai_error_parse_response_failed, e.message ?: ""), e)

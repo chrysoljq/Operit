@@ -9,7 +9,6 @@ import com.ai.assistance.operit.util.stream.asStream
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.consumeAsFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -49,15 +48,15 @@ private fun Stream<Char>.nativeMarkdownSplitBySession(
                     val mutex = Mutex()
                     val flushMutex = Mutex()
 
-                    var defaultTextChannel: Channel<Char>? = null
-                    var activePluginChannel: Channel<Char>? = null
+                    var defaultTextChannel: Channel<String>? = null
+                    var activePluginChannel: Channel<String>? = null
                     var activeTag: MarkdownProcessorType? = null
 
                     suspend fun openDefaultChannel() {
                         if (defaultTextChannel == null) {
-                            val newChannel = Channel<Char>(Channel.UNLIMITED)
+                            val newChannel = Channel<String>(Channel.UNLIMITED)
                             defaultTextChannel = newChannel
-                            val stream = newChannel.consumeAsFlow().map { it.toString() }.asStream()
+                            val stream = newChannel.consumeAsFlow().asStream()
                             groupChannel.send(StreamGroup(null, stream))
                         }
                     }
@@ -68,10 +67,10 @@ private fun Stream<Char>.nativeMarkdownSplitBySession(
                     }
 
                     suspend fun openPluginChannel(tag: MarkdownProcessorType) {
-                        val newChannel = Channel<Char>(Channel.UNLIMITED)
+                        val newChannel = Channel<String>(Channel.UNLIMITED)
                         activePluginChannel = newChannel
                         activeTag = tag
-                        val stream = newChannel.consumeAsFlow().map { it.toString() }.asStream()
+                        val stream = newChannel.consumeAsFlow().asStream()
                         groupChannel.send(StreamGroup(tag, stream))
                     }
 
@@ -134,8 +133,8 @@ private fun Stream<Char>.nativeMarkdownSplitBySession(
                                         closePluginChannel()
                                     }
                                     openDefaultChannel()
-                                    for (ch in text) {
-                                        defaultTextChannel?.send(ch)
+                                    if (text.isNotEmpty()) {
+                                        defaultTextChannel?.send(text)
                                     }
                                 } else {
                                     if (defaultTextChannel != null) {
@@ -147,8 +146,8 @@ private fun Stream<Char>.nativeMarkdownSplitBySession(
                                         closePluginChannel()
                                         openPluginChannel(type)
                                     }
-                                    for (ch in text) {
-                                        activePluginChannel?.send(ch)
+                                    if (text.isNotEmpty()) {
+                                        activePluginChannel?.send(text)
                                     }
                                 }
                             }
@@ -240,15 +239,15 @@ private fun Stream<String>.nativeMarkdownSplitBySessionString(
                     val mutex = Mutex()
                     val flushMutex = Mutex()
 
-                    var defaultTextChannel: Channel<Char>? = null
-                    var activePluginChannel: Channel<Char>? = null
+                    var defaultTextChannel: Channel<String>? = null
+                    var activePluginChannel: Channel<String>? = null
                     var activeTag: MarkdownProcessorType? = null
 
                     suspend fun openDefaultChannel() {
                         if (defaultTextChannel == null) {
-                            val newChannel = Channel<Char>(Channel.UNLIMITED)
+                            val newChannel = Channel<String>(Channel.UNLIMITED)
                             defaultTextChannel = newChannel
-                            val stream = newChannel.consumeAsFlow().map { it.toString() }.asStream()
+                            val stream = newChannel.consumeAsFlow().asStream()
                             groupChannel.send(StreamGroup(null, stream))
                         }
                     }
@@ -259,10 +258,10 @@ private fun Stream<String>.nativeMarkdownSplitBySessionString(
                     }
 
                     suspend fun openPluginChannel(tag: MarkdownProcessorType) {
-                        val newChannel = Channel<Char>(Channel.UNLIMITED)
+                        val newChannel = Channel<String>(Channel.UNLIMITED)
                         activePluginChannel = newChannel
                         activeTag = tag
-                        val stream = newChannel.consumeAsFlow().map { it.toString() }.asStream()
+                        val stream = newChannel.consumeAsFlow().asStream()
                         groupChannel.send(StreamGroup(tag, stream))
                     }
 
@@ -325,8 +324,8 @@ private fun Stream<String>.nativeMarkdownSplitBySessionString(
                                         closePluginChannel()
                                     }
                                     openDefaultChannel()
-                                    for (ch in text) {
-                                        defaultTextChannel?.send(ch)
+                                    if (text.isNotEmpty()) {
+                                        defaultTextChannel?.send(text)
                                     }
                                 } else {
                                     if (defaultTextChannel != null) {
@@ -338,8 +337,8 @@ private fun Stream<String>.nativeMarkdownSplitBySessionString(
                                         closePluginChannel()
                                         openPluginChannel(type)
                                     }
-                                    for (ch in text) {
-                                        activePluginChannel?.send(ch)
+                                    if (text.isNotEmpty()) {
+                                        activePluginChannel?.send(text)
                                     }
                                 }
                             }

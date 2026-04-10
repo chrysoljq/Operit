@@ -26,11 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRendererState
+import com.ai.assistance.operit.ui.features.chat.components.ChatMessageHeightMemory
 import com.ai.assistance.operit.ui.features.chat.components.rememberRevisableTextStream
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.features.chat.components.part.ThinkToolsXmlNodeGrouper
@@ -77,8 +79,9 @@ fun BubbleAiMessageComposable(
     bubbleContentPaddingRight: Float = 12f,
     onLinkClick: ((String) -> Unit)? = null,
     isHidden: Boolean = false,
+    heightMemory: ChatMessageHeightMemory? = null,
     enableDialogs: Boolean = true,
-    onAvatarLongPressMention: ((String) -> Unit)? = null
+    onAvatarLongPressMention: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
@@ -206,6 +209,14 @@ fun BubbleAiMessageComposable(
     }
     val shouldUseExpandedBubbleLayout =
         rendererState.renderNodes.any { node -> node.type in ExpandedBubbleLayoutNodeTypes }
+    val sizeTrackingModifier =
+        if (isHidden) {
+            Modifier
+        } else {
+            Modifier.onSizeChanged { size ->
+                heightMemory?.updateMeasured(message.timestamp, size.height)
+            }
+        }
     val baseTypography = MaterialTheme.typography
     val bubbleTypography =
         remember(
@@ -255,6 +266,7 @@ fun BubbleAiMessageComposable(
                     end = 0.dp,
                     bottom = 4.dp,
                 )
+                .then(sizeTrackingModifier)
                 .alpha(alpha)
                 .offset(y = offsetY.dp),
         ) {
@@ -352,7 +364,7 @@ fun BubbleAiMessageComposable(
                                             top = 12.dp,
                                             end = bubbleContentPaddingRight.dp,
                                             bottom = 12.dp,
-                                        ),
+                                    ),
                                     state = rendererState,
                                     fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
@@ -371,7 +383,7 @@ fun BubbleAiMessageComposable(
                                             top = 12.dp,
                                             end = bubbleContentPaddingRight.dp,
                                             bottom = 12.dp,
-                                        ),
+                                    ),
                                     state = rendererState,
                                     fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
@@ -405,6 +417,7 @@ fun BubbleAiMessageComposable(
     Row(
         modifier = Modifier
             .padding(horizontal = 0.dp, vertical = 4.dp)
+            .then(sizeTrackingModifier)
             .alpha(alpha)
             .offset(y = offsetY.dp),
         horizontalArrangement = Arrangement.Start,
@@ -529,9 +542,9 @@ fun BubbleAiMessageComposable(
                                             top = 12.dp,
                                             end = bubbleContentPaddingRight.dp,
                                             bottom = 12.dp,
-                                        ),
+                                    ),
                                     state = rendererState,
-                                    fillMaxWidth = shouldUseExpandedBubbleLayout
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
                             } else {
                                 // 对于已完成的静态消息，使用 content 参数的渲染器以支持Markdown
@@ -550,9 +563,9 @@ fun BubbleAiMessageComposable(
                                             top = 12.dp,
                                             end = bubbleContentPaddingRight.dp,
                                             bottom = 12.dp,
-                                        ),
+                                    ),
                                     state = rendererState,
-                                    fillMaxWidth = shouldUseExpandedBubbleLayout
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
                             }
                         }

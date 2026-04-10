@@ -42,7 +42,7 @@ fun ToolPermissionSettingsScreen(navigateBack: () -> Unit) {
 
     val allTools = remember { toolHandler.getAllToolNames().filterNot { it == "package_proxy" } }
     val toolPermissions = remember { mutableStateMapOf<String, PermissionLevel>() }
-    val masterSwitch = toolPermissionSystem.masterSwitchFlow.collectAsState(initial = PermissionLevel.ALLOW).value
+    val masterSwitch = toolPermissionSystem.masterSwitchFlow.collectAsState(initial = PermissionLevel.ASK).value
     var masterSwitchInput by remember { mutableStateOf(masterSwitch) }
 
     LaunchedEffect(allTools) {
@@ -160,14 +160,6 @@ fun ToolPermissionSettingsScreen(navigateBack: () -> Unit) {
         }
         item {
             PermissionGroup(
-                level = PermissionLevel.CAUTION,
-                allTools = allTools,
-                toolsInLevel = toolPermissions.filterValues { it == PermissionLevel.CAUTION }.keys,
-                onToolToggled = { toolName -> handlePermissionChange(toolName, PermissionLevel.CAUTION) }
-            )
-        }
-        item {
-            PermissionGroup(
                 level = PermissionLevel.FORBID,
                 allTools = allTools,
                 toolsInLevel = toolPermissions.filterValues { it == PermissionLevel.FORBID }.keys,
@@ -191,11 +183,6 @@ private fun PermissionGroup(
             stringResource(R.string.permission_level_allow),
             stringResource(R.string.permission_level_allow_description),
             MaterialTheme.colorScheme.primary
-        )
-        PermissionLevel.CAUTION -> Triple(
-            stringResource(R.string.permission_level_cautious),
-            stringResource(R.string.permission_level_cautious_description),
-            MaterialTheme.colorScheme.tertiary
         )
         PermissionLevel.FORBID -> Triple(
             stringResource(R.string.permission_level_forbid),
@@ -388,7 +375,6 @@ fun CompactPermissionLevelSelector(
                 Text(
                     text = when (level) {
                         PermissionLevel.ALLOW -> stringResource(R.string.permission_level_allow)
-                        PermissionLevel.CAUTION -> stringResource(R.string.permission_level_cautious)
                         PermissionLevel.ASK -> stringResource(R.string.permission_level_ask)
                         PermissionLevel.FORBID -> stringResource(R.string.forbid)
                     },

@@ -5,29 +5,18 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -189,7 +178,6 @@ class ThinkToolsXmlNodeGrouper(
             animationSpec = tween(durationMillis = 800),
             label = "fadeIn-think-tools-$rendererId"
         )
-
         val sliceEndExclusive = (group.endIndexInclusive + 1).coerceAtMost(nodes.size)
         val slice = if (group.startIndex in 0 until sliceEndExclusive) {
             nodes.subList(group.startIndex, sliceEndExclusive)
@@ -200,6 +188,15 @@ class ThinkToolsXmlNodeGrouper(
         val toolCount = slice.count {
             it.type == MarkdownProcessorType.XML_BLOCK && extractXmlTagName(it.content) == "tool"
         }
+        val titleText =
+            stringResource(
+                id = if (group.stableKey.startsWith("tools-only-")) {
+                    R.string.tools_group_title_with_count
+                } else {
+                    R.string.thinking_tools_group_title_with_count
+                },
+                toolCount
+            )
 
         val hasLiveXmlStream = slice.indices.any { idx ->
             val absoluteIndex = group.startIndex + idx
@@ -241,8 +238,8 @@ class ThinkToolsXmlNodeGrouper(
         // 流结束（包括用户取消后落为静态消息）默认自动收起。
         val shouldAutoExpand = hasLiveXmlStream && !hasNonConformingAfterGroup
 
-        var expanded by remember(rendererId, group.stableKey) { mutableStateOf(shouldAutoExpand) }
-        var userOverride by remember(rendererId, group.stableKey) { mutableStateOf<Boolean?>(null) }
+        var expanded by rememberSaveable(rendererId, group.stableKey) { mutableStateOf(shouldAutoExpand) }
+        var userOverride by rememberSaveable(rendererId, group.stableKey) { mutableStateOf<Boolean?>(null) }
         val appearedKeys = remember(rendererId, group.stableKey) { mutableStateMapOf<String, Boolean>() }
 
         LaunchedEffect(shouldAutoExpand, userOverride) {
@@ -257,45 +254,24 @@ class ThinkToolsXmlNodeGrouper(
                     .padding(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 4.dp)
                     .graphicsLayer { this.alpha = alpha }
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val newExpanded = !expanded
-                        expanded = newExpanded
-                        userOverride = newExpanded
-                    },
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val rotation by animateFloatAsState(
-                    targetValue = if (expanded) 90f else 0f,
-                    animationSpec = tween(durationMillis = 300),
-                    label = "arrowRotation-think-tools-$rendererId"
-                )
+            val rotation by animateFloatAsState(
+                targetValue = if (expanded) 90f else 0f,
+                animationSpec = tween(durationMillis = 300),
+                label = "arrowRotation-think-tools-$rendererId"
+            )
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                    modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
-                )
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Text(
-                    text = stringResource(
-                        id = if (group.stableKey.startsWith("tools-only-")) {
-                            R.string.tools_group_title_with_count
-                        } else {
-                            R.string.thinking_tools_group_title_with_count
-                        },
-                        toolCount
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = textColor.copy(alpha = 0.7f)
-                )
-            }
+            CanvasExpandableHeaderRow(
+                title = titleText,
+                semanticDescription = if (expanded) "Collapse" else "Expand",
+                expanded = expanded,
+                titleColor = textColor.copy(alpha = 0.7f),
+                rotationDegrees = rotation,
+                onClick = {
+                    val newExpanded = !expanded
+                    expanded = newExpanded
+                    userOverride = newExpanded
+                },
+            )
 
             AnimatedVisibility(
                 visible = expanded,

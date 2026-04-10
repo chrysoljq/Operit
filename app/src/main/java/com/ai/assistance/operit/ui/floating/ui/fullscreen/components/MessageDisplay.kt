@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.features.chat.components.rememberChatMessageHeightMemory
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleStyleChatMessage
 
 /**
@@ -63,6 +64,7 @@ fun MessageDisplay(
         messages
             .filter { it.sender != "think" }
             .asReversed()
+    val messageHeightMemory = rememberChatMessageHeightMemory(displayMessages)
 
     LaunchedEffect(displayMessages.size) {
         if (displayMessages.isNotEmpty()) {
@@ -133,6 +135,7 @@ fun MessageDisplay(
                     bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
                     bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
                     bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
+                    heightMemory = messageHeightMemory,
                     enableDialogs = false
                 )
             }

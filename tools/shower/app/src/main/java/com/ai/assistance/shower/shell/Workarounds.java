@@ -6,6 +6,7 @@ import android.app.Instrumentation;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.pm.ApplicationInfo;
+import android.os.Build;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -40,7 +41,14 @@ public final class Workarounds {
     }
 
     public static void apply() {
-        fillAppInfo();
+        if (Build.VERSION.SDK_INT >= 31) {
+            fillConfigurationController();
+        }
+
+        boolean mustFillAppInfo = !Build.BRAND.equalsIgnoreCase("ONYX");
+        if (mustFillAppInfo) {
+            fillAppInfo();
+        }
         fillAppContext();
         fillInstrumentation();
     }
@@ -89,6 +97,23 @@ public final class Workarounds {
                 Instrumentation instrumentation = new Instrumentation();
                 instrField.set(ACTIVITY_THREAD, instrumentation);
             }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void fillConfigurationController() {
+        try {
+            Class<?> configurationControllerClass = Class.forName("android.app.ConfigurationController");
+            Class<?> activityThreadInternalClass = Class.forName("android.app.ActivityThreadInternal");
+
+            Constructor<?> configurationControllerConstructor =
+                    configurationControllerClass.getDeclaredConstructor(activityThreadInternalClass);
+            configurationControllerConstructor.setAccessible(true);
+            Object configurationController = configurationControllerConstructor.newInstance(ACTIVITY_THREAD);
+
+            Field configurationControllerField = ACTIVITY_THREAD_CLASS.getDeclaredField("mConfigurationController");
+            configurationControllerField.setAccessible(true);
+            configurationControllerField.set(ACTIVITY_THREAD, configurationController);
         } catch (Throwable ignored) {
         }
     }

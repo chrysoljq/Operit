@@ -1,13 +1,9 @@
 package com.ai.assistance.shower.wrappers;
 
-import com.ai.assistance.shower.shell.FakeContext;
-
 import android.annotation.SuppressLint;
-import android.content.Context;
 import android.os.IBinder;
 import android.os.IInterface;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 @SuppressLint("PrivateApi,DiscouragedPrivateApi")
@@ -25,6 +21,7 @@ public final class ServiceManager {
 
     private static ActivityManager activityManager;
     private static WindowManager windowManager;
+    private static DisplayManager displayManager;
 
     private ServiceManager() {
     }
@@ -51,5 +48,12 @@ public final class ServiceManager {
             windowManager = WindowManager.create();
         }
         return windowManager;
+    }
+
+    public static synchronized DisplayManager getDisplayManager() {
+        if (displayManager == null) {
+            displayManager = DisplayManager.create();
+        }
+        return displayManager;
     }
 }

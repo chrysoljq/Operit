@@ -32,7 +32,6 @@ private val Context.toolPermissionsDataStore: DataStore<Preferences> by preferen
  */
 enum class PermissionLevel {
     ALLOW,      // Allow automatically without asking
-    CAUTION,    // Ask for dangerous operations, allow others
     ASK,        // Always ask
     FORBID;     // Never allow
 
@@ -40,7 +39,7 @@ enum class PermissionLevel {
         fun fromString(value: String?): PermissionLevel {
             return when (value) {
                 "ALLOW" -> ALLOW
-                "CAUTION" -> CAUTION
+                "CAUTION" -> ASK
                 "ASK" -> ASK
                 "FORBID" -> FORBID
                 else -> ASK  // Default to ASK
@@ -114,34 +113,14 @@ class ToolPermissionSystem private constructor(private val context: Context) {
         }
     }
     
-    // Registry of dangerous operations by tool name
-    private val dangerousOperationsRegistry = mutableMapOf<String, (AITool) -> Boolean>()
-    
     // Registry of operation descriptions by tool name
     private val operationDescriptionRegistry = mutableMapOf<String, (AITool) -> String>()
-    
-    /**
-     * Register a tool as potentially dangerous with custom danger check logic
-     */
-    fun registerDangerousOperation(toolName: String, dangerCheck: (AITool) -> Boolean) {
-        dangerousOperationsRegistry[toolName] = dangerCheck
-    }
     
     /**
      * Register a description generator for a tool
      */
     fun registerOperationDescription(toolName: String, descriptionGenerator: (AITool) -> String) {
         operationDescriptionRegistry[toolName] = descriptionGenerator
-    }
-    
-    /**
-     * Initialize default dangerous operations and descriptions
-     */
-    fun initializeDefaultRules() {
-        // 不需要在这里预先注册工具的危险操作检查和描述生成器
-        // 所有工具相关的信息都应该在AIToolHandler中通过统一的registerTool方法完成
-        // 这个方法保留为空，以便在必要时进行一些全局初始化操作
-        AppLogger.d(TAG, "工具权限系统已初始化 - 所有工具定义现在都在AIToolHandler中")
     }
     
     /**
@@ -200,13 +179,6 @@ class ToolPermissionSystem private constructor(private val context: Context) {
     }
     
     /**
-     * Check if a tool operation is dangerous
-     */
-    fun isDangerousOperation(tool: AITool): Boolean {
-        return dangerousOperationsRegistry[tool.name]?.invoke(tool) ?: false
-    }
-    
-    /**
      * Get human-readable description of an operation
      */
     fun getOperationDescription(tool: AITool): String {
@@ -228,10 +200,6 @@ class ToolPermissionSystem private constructor(private val context: Context) {
         
         return when (permissionLevel) {
             PermissionLevel.ALLOW -> true
-            PermissionLevel.CAUTION -> {
-                val isDangerous = isDangerousOperation(tool)
-                if (isDangerous) requestPermission(tool) else true
-            }
             PermissionLevel.ASK -> requestPermission(tool)
             PermissionLevel.FORBID -> false
         }
@@ -336,4 +304,4 @@ class ToolPermissionSystem private constructor(private val context: Context) {
     fun refreshPermissionRequestState(): Boolean {
         return hasActivePermissionRequest()
     }
-} 
+}

@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.animation.core.*
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,12 +15,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
@@ -51,17 +50,26 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
+import com.ai.assistance.operit.ui.features.chat.components.ChatMessageHeightMemory
 import com.ai.assistance.operit.ui.features.chat.components.ScrollToBottomButton
+import com.ai.assistance.operit.ui.features.chat.components.rememberChatMessageHeightMemory
+import com.ai.assistance.operit.ui.features.chat.components.lazy.LazyLayoutCacheWindow
+import com.ai.assistance.operit.ui.features.chat.components.lazy.RecyclerLazyColumn
+import com.ai.assistance.operit.ui.features.chat.components.lazy.itemsIndexed
+import com.ai.assistance.operit.ui.features.chat.components.lazy.rememberLazyListState as rememberChatLazyListState
+import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
 import com.ai.assistance.operit.ui.floating.ui.window.components.*
 import com.ai.assistance.operit.ui.floating.ui.window.models.*
 import com.ai.assistance.operit.ui.floating.ui.window.viewmodel.*
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.ui.floating.FloatContext
@@ -613,12 +621,17 @@ private fun ColumnScope.ChatContentArea(
 
 /** 聊天消息视图 */
 @SuppressLint("SuspiciousIndentation")
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatMessagesView(
     floatContext: FloatContext,
     viewModel: FloatingChatWindowModeViewModel
 ) {
-    val scrollState = rememberScrollState()
+    val scrollState =
+        rememberChatLazyListState(
+            cacheWindow = LazyLayoutCacheWindow(aheadFraction = 1.5f, behindFraction = 0.75f)
+        )
+    val messageHeightMemory = rememberChatMessageHeightMemory(floatContext.messages)
     val coroutineScope = rememberCoroutineScope()
     val userMessageColor = MaterialTheme.colorScheme.primaryContainer
     val aiMessageColor = MaterialTheme.colorScheme.surface
@@ -661,55 +674,82 @@ private fun ChatMessagesView(
         }
     }
 
-    LaunchedEffect(floatContext.messages.size, viewModel.streamUpdateTrigger, scrollState.maxValue) {
+    LaunchedEffect(floatContext.messages.size, viewModel.streamUpdateTrigger) {
         if (floatContext.messages.isNotEmpty() && autoScrollToBottom) {
-            scrollState.animateScrollTo(scrollState.maxValue)
+            scrollState.animateScrollToItem(floatContext.messages.lastIndex)
+        }
+    }
+
+    val messagesCount = floatContext.messages.size
+    val maxVisibleIndex = messagesCount - 1
+    val minVisibleIndex =
+        maxOf(0, maxVisibleIndex - currentDepth.value * messagesPerPage + 1)
+    val hasMoreMessages = minVisibleIndex > 0
+    val inputProcessingState = floatContext.inputProcessingState.value
+    val isLoading =
+        inputProcessingState !is InputProcessingState.Idle &&
+            inputProcessingState !is InputProcessingState.Completed
+    val lastMessage = floatContext.messages.lastOrNull()
+    val showLoadingIndicator =
+        isLoading &&
+            (
+                lastMessage?.sender == "user" ||
+                    (lastMessage?.sender == "ai" && lastMessage.content.isBlank())
+            )
+    val loadMoreText = stringResource(id = R.string.load_more_history)
+    val loadMoreTextStyle = MaterialTheme.typography.bodyMedium
+    val visibleMessages = floatContext.messages.subList(minVisibleIndex, messagesCount)
+    val renderItems = buildList<Any> {
+        if (hasMoreMessages) {
+            add(FloatingLoadMoreItem)
+        }
+        addAll(visibleMessages)
+        if (showLoadingIndicator) {
+            add(FloatingLoadingItem)
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+        RecyclerLazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .fillMaxSize(),
+            state = scrollState,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // 分页逻辑
-            val messagesCount = floatContext.messages.size
-            val maxVisibleIndex = messagesCount - 1
-            val minVisibleIndex =
-                maxOf(0, maxVisibleIndex - currentDepth.value * messagesPerPage + 1)
-            val hasMoreMessages = minVisibleIndex > 0
+            itemsIndexed(
+                items = renderItems,
+                key = { _, item ->
+                    when (item) {
+                        is com.ai.assistance.operit.data.model.ChatMessage -> item.timestamp
+                        FloatingLoadMoreItem -> "floating_load_more_history"
+                        FloatingLoadingItem -> "floating_loading_indicator"
+                        else -> item.hashCode()
+                    }
+                },
+            ) { renderIndex, item ->
+                when (item) {
+                    FloatingLoadMoreItem -> {
+                        Text(
+                            text = loadMoreText,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { currentDepth.value += 1 }
+                                .padding(vertical = 16.dp),
+                            style = loadMoreTextStyle,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
 
-            // 加载更多按钮
-            if (hasMoreMessages) {
-                Text(
-                    text = stringResource(id = R.string.load_more_history),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { currentDepth.value += 1 }
-                        .padding(vertical = 16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-            }
+                    is ChatMessage -> {
+                        val actualIndex =
+                            minVisibleIndex +
+                                if (hasMoreMessages) renderIndex - 1 else renderIndex
 
-            // 计算最后一条AI消息的索引，用于流式输出
-            val lastAiMessageIndex = floatContext.messages.indexOfLast { it.sender == "ai" }
-
-            // 根据当前深度筛选显示的消息
-            floatContext.messages.subList(minVisibleIndex, messagesCount)
-                .forEachIndexed { relativeIndex, message ->
-                    val actualIndex = minVisibleIndex + relativeIndex
-                    val isLastAiMessage = message.sender == "ai" && actualIndex == lastAiMessageIndex
-                    
-                    key(message.timestamp) {
-                        MessageItem(
+                        FloatingMessageItem(
                             index = actualIndex,
-                            message = message,
-                            isLastAiMessage = isLastAiMessage,
+                            message = item,
                             userMessageColor = userMessageColor,
                             aiMessageColor = aiMessageColor,
                             userTextColor = userTextColor,
@@ -718,26 +758,25 @@ private fun ChatMessagesView(
                             systemTextColor = systemTextColor,
                             thinkingBackgroundColor = thinkingBackgroundColor,
                             thinkingTextColor = thinkingTextColor,
+                            heightMemory = messageHeightMemory,
                             onSelectMessageToEdit = null,
-                            onCopyMessage = null
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
 
-            val inputProcessingState = floatContext.inputProcessingState.value
-            val isLoading = inputProcessingState !is InputProcessingState.Idle && inputProcessingState !is InputProcessingState.Completed
-            val lastMessage = floatContext.messages.lastOrNull()
-            
-            if (isLoading && (lastMessage?.sender == "user" || (lastMessage?.sender == "ai" && lastMessage.content.isBlank()))) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 0.dp)
-                ) {
-                    Box(modifier = Modifier.padding(start = 16.dp)) {
-                        LoadingDotsIndicator(MaterialTheme.colorScheme.onSurface)
+                    FloatingLoadingItem -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 0.dp)
+                        ) {
+                            Box(modifier = Modifier.padding(start = 16.dp)) {
+                                LoadingDotsIndicator(MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
                     }
+
+                    else -> Unit
                 }
             }
         }
@@ -753,6 +792,44 @@ private fun ChatMessagesView(
                 .padding(bottom = 16.dp)
         )
     }
+}
+
+private data object FloatingLoadMoreItem
+
+private data object FloatingLoadingItem
+
+@Composable
+private fun FloatingMessageItem(
+    index: Int,
+    message: ChatMessage,
+    userMessageColor: Color,
+    aiMessageColor: Color,
+    userTextColor: Color,
+    aiTextColor: Color,
+    systemMessageColor: Color,
+    systemTextColor: Color,
+    thinkingBackgroundColor: Color,
+    thinkingTextColor: Color,
+    heightMemory: ChatMessageHeightMemory,
+    onSelectMessageToEdit: ((Int, ChatMessage, String) -> Unit)?,
+) {
+    CursorStyleChatMessage(
+        message = message,
+        userMessageColor = userMessageColor,
+        aiMessageColor = aiMessageColor,
+        userTextColor = userTextColor,
+        aiTextColor = aiTextColor,
+        systemMessageColor = systemMessageColor,
+        systemTextColor = systemTextColor,
+        thinkingBackgroundColor = thinkingBackgroundColor,
+        thinkingTextColor = thinkingTextColor,
+        heightMemory = heightMemory,
+        index = index,
+        enableDialogs = false,
+        onEditSummary = { summaryMessage ->
+            onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
+        },
+    )
 }
 
 /** 输入对话框视图 */

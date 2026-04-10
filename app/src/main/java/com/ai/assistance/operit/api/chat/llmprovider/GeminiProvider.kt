@@ -730,6 +730,40 @@ class GeminiProvider(
         }
     }
 
+    private fun buildGeminiErrorDetail(error: JSONObject, fallback: String): String {
+        val message = error.optString("message", "").trim().ifEmpty { fallback }
+        val status = error.opt("status")?.toString()?.trim().orEmpty()
+        val code = error.opt("code")?.toString()?.trim().orEmpty()
+
+        if (status.isEmpty() && code.isEmpty()) {
+            return message
+        }
+
+        return buildString {
+            append(message)
+            append(" [")
+            if (status.isNotEmpty()) {
+                append("status=").append(status)
+            }
+            if (status.isNotEmpty() && code.isNotEmpty()) {
+                append(", ")
+            }
+            if (code.isNotEmpty()) {
+                append("code=").append(code)
+            }
+            append("]")
+        }
+    }
+
+    private fun throwIfGeminiErrorPayload(context: Context, json: JSONObject) {
+        val error = json.optJSONObject("error") ?: return
+        val detail = buildGeminiErrorDetail(error, context.getString(R.string.gemini_unknown_error))
+        val exceptionMessage = context.getString(R.string.gemini_error_response_failed, detail)
+
+        logError("API返回错误: $detail")
+        throw IOException(exceptionMessage)
+    }
+
     private fun resolveRetryErrorText(context: Context, exception: Exception): String {
         return when (exception) {
             is SocketTimeoutException -> context.getString(R.string.provider_error_timeout)
@@ -1173,6 +1207,8 @@ class GeminiProvider(
                                 // 只发送新增的内容
                                 streamCollector.emit(content)
                             }
+                        } catch (e: IOException) {
+                            throw e
                         } catch (e: Exception) {
                             logError("解析SSE响应数据失败: ${e.message}", e)
                         }
@@ -1248,6 +1284,8 @@ class GeminiProvider(
                                     isCollectingJson = false
                                     completeJsonBuilder.clear()
                                 }
+                            } catch (e: IOException) {
+                                throw e
                             } catch (e: Exception) {
                                 // JSON尚未完整，继续收集
                                 if (jsonDepth > 0) {
@@ -1305,6 +1343,8 @@ class GeminiProvider(
                             }
                         }
                     }
+                } catch (e: IOException) {
+                    throw e
                 } catch (e: Exception) {
                     logError("解析最终收集的JSON失败: ${e.message}", e)
                 }
@@ -1390,13 +1430,7 @@ class GeminiProvider(
         val pendingThoughtSignatures = mutableListOf<String>()
 
         try {
-            // 检查是否有错误信息
-            if (json.has("error")) {
-                val error = json.getJSONObject("error")
-                val errorMsg = error.optString("message", context.getString(R.string.gemini_unknown_error))
-                logError("API返回错误: $errorMsg")
-                return "" // 有错误时返回空字符串
-            }
+            throwIfGeminiErrorPayload(context, json)
 
             // 提取候选项
             val candidates = json.optJSONArray("candidates")
@@ -1646,6 +1680,8 @@ class GeminiProvider(
             }
             
             return finalContent
+        } catch (e: IOException) {
+            throw e
         } catch (e: Exception) {
             logError("提取内容时发生错误: ${e.message}", e)
             return ""

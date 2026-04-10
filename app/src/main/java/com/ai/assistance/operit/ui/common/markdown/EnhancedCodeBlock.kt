@@ -1,13 +1,9 @@
 package com.ai.assistance.operit.ui.common.markdown
 
-import com.ai.assistance.operit.util.AppLogger
 import android.view.MotionEvent
 import android.webkit.WebView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -19,13 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -33,8 +27,6 @@ import com.ai.assistance.operit.R
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,8 +37,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private const val TAG = "CodeBlock"
 
 private enum class CodeBlockPreviewType {
     MERMAID,
@@ -72,6 +62,8 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
     val scope = rememberCoroutineScope()
     var showCopiedToast by remember { mutableStateOf(false) }
     var autoWrapEnabled by remember { mutableStateOf(true) }
+    val markdownRenderMode = LocalMarkdownRenderMode.current
+    val preferStreamingBody = markdownRenderMode == MarkdownRenderMode.STREAMING
 
     // 检测是否为Mermaid代码
     val isMermaid = language.equals("mermaid", ignoreCase = true)
@@ -90,45 +82,10 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
 
     val configuration = LocalConfiguration.current
     val maxScrollableHeight = remember(configuration.screenHeightDp) {
-        (configuration.screenHeightDp.dp * 0.65f).coerceIn(320.dp, 720.dp)
+        (configuration.screenHeightDp.dp * 0.5f).coerceIn(240.dp, 560.dp)
     }
-
-    val verticalScrollState = rememberScrollState()
-    var autoScrollEnabled by remember { mutableStateOf(true) }
-    var userHasInteractedWithScroll by remember { mutableStateOf(false) }
-    var isProgrammaticScroll by remember { mutableStateOf(false) }
 
     val isPreviewMode = (isMermaid && showRenderedMermaid) || (isHtml && showRenderedHtml)
-    val isShowingCode = !isPreviewMode
-
-    LaunchedEffect(verticalScrollState.isScrollInProgress) {
-        if (!isShowingCode) return@LaunchedEffect
-        if (verticalScrollState.isScrollInProgress) {
-            if (!isProgrammaticScroll) {
-                userHasInteractedWithScroll = true
-            }
-            return@LaunchedEffect
-        }
-
-        if (userHasInteractedWithScroll && !isProgrammaticScroll) {
-            val threshold = 80
-            val atBottom = verticalScrollState.value >= (verticalScrollState.maxValue - threshold)
-            autoScrollEnabled = atBottom
-        }
-    }
-
-    LaunchedEffect(code) {
-        if (!isShowingCode) return@LaunchedEffect
-        if (autoScrollEnabled) {
-            isProgrammaticScroll = true
-            try {
-                withFrameNanos { }
-                verticalScrollState.scrollTo(verticalScrollState.maxValue)
-            } finally {
-                isProgrammaticScroll = false
-            }
-        }
-    }
 
     // 处理复制事件
     val handleCopy: () -> Unit = {
@@ -157,10 +114,19 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
 
     // 缓存已计算过的行，避免重复创建
     val lineCache = remember { mutableMapOf<String, AnnotatedString>() }
-
-    val density = LocalDensity.current
-    val codeLineHeightsPx = remember(code) { mutableStateMapOf<Int, Int>() }
-    val defaultCodeLineHeightDp = with(density) { 16.sp.toDp() }
+    val highlightedLines =
+        remember(codeLines, language, preferStreamingBody) {
+            if (preferStreamingBody) {
+                emptyList()
+            } else {
+                codeLines.map { line ->
+                    val cacheKey = "$language:$line"
+                    lineCache[cacheKey] ?: highlightSyntaxLine(line, language).also {
+                        lineCache[cacheKey] = it
+                    }
+                }
+            }
+        }
 
     // 无障碍朗读描述：只朗读块类型
     val accessibilityDesc = if (language.isNotEmpty()) {
@@ -204,13 +170,19 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                 ) {
                     // Mermaid渲染按钮（如果是Mermaid图表则显示）
                     if (isMermaid) {
-                        IconButton(onClick = handleToggleMermaid, modifier = Modifier.size(28.dp)) {
+                        IconButton(
+                            onClick = handleToggleMermaid,
+                            modifier = Modifier.size(28.dp),
+                            enabled = !preferStreamingBody,
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription =
                                     if (showRenderedMermaid) stringResource(R.string.common_show_code) else stringResource(R.string.common_render_mermaid),
                                 tint =
-                                    if (showRenderedMermaid)
+                                    if (preferStreamingBody)
+                                        Color(0xFF666666)
+                                    else if (showRenderedMermaid)
                                         MaterialTheme.colorScheme.primary
                                     else Color(0xFFAAAAAA),
                                 modifier = Modifier.size(16.dp)
@@ -220,12 +192,18 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
 
                     // HTML预览按钮（如果是HTML则显示）
                     if (isHtml) {
-                        IconButton(onClick = handleToggleHtml, modifier = Modifier.size(28.dp)) {
+                        IconButton(
+                            onClick = handleToggleHtml,
+                            modifier = Modifier.size(28.dp),
+                            enabled = !preferStreamingBody,
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = if (showRenderedHtml) stringResource(R.string.common_show_code) else stringResource(R.string.common_preview_html),
                                 tint =
-                                    if (showRenderedHtml)
+                                    if (preferStreamingBody)
+                                        Color(0xFF666666)
+                                    else if (showRenderedHtml)
                                         MaterialTheme.colorScheme.primary
                                     else Color(0xFFAAAAAA),
                                 modifier = Modifier.size(16.dp)
@@ -298,132 +276,29 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                         .height(360.dp)
                 )
             } else {
-                // 显示代码
-                Row(
+                CanvasMonospaceCodeBlockBody(
+                    code = code,
+                    codeLines = codeLines,
+                    highlightedLines = if (preferStreamingBody) null else highlightedLines,
+                    autoWrapEnabled = autoWrapEnabled,
+                    maxScrollableHeight = maxScrollableHeight,
+                )
+            }
+
+            if (showCopiedToast) {
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .heightIn(max = maxScrollableHeight)
-                        .verticalScroll(verticalScrollState)
+                        .align(Alignment.End)
+                        .padding(4.dp),
+                    color = Color(0xFF0366D6),
+                    shape = RoundedCornerShape(4.dp)
                 ) {
-                    // 行号列
-                    val digits = codeLines.size.toString().length.coerceAtLeast(2) // 至少2位数的宽度
-
-                    // 行号栏
-                    Column(
-                        modifier =
-                            Modifier
-                                .background(Color(0xFF252526))
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        codeLines.forEachIndexed { index, _ ->
-                            val codeLineHeightDp =
-                                codeLineHeightsPx[index]?.let { with(density) { it.toDp() } }
-                                    ?: defaultCodeLineHeightDp
-
-                            Box(
-                                modifier = Modifier.height(codeLineHeightDp),
-                                contentAlignment = Alignment.TopEnd
-                            ) {
-                                Text(
-                                    text = (index + 1).toString().padStart(digits),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp,
-                                    color = Color(0xFF6A737D),
-                                    modifier = Modifier.padding(end = 4.dp)
-                                )
-                            }
-
-                            // 添加与代码内容相同的间距
-                            if (index < codeLines.size - 1) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                            }
-                        }
-                    }
-
-                    val horizontalScrollState = rememberScrollState()
-                    Box(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        val content: @Composable () -> Unit = {
-                            Column(
-                                modifier = Modifier
-                                    .padding(end = 8.dp, top = 8.dp)
-                                    .then(
-                                        if (autoWrapEnabled) {
-                                            Modifier
-                                        } else {
-                                            Modifier.wrapContentWidth(unbounded = true)
-                                        }
-                                    )
-                            ) {
-                                codeLines.forEachIndexed { index, line ->
-                                    val lineHash = line.hashCode()
-                                    val lineKey = "$index:$lineHash"
-
-                                    key(lineKey) {
-                                        if (index > 0) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                        }
-
-                                        val lineModifier =
-                                            (if (autoWrapEnabled) {
-                                                Modifier.fillMaxWidth()
-                                            } else {
-                                                Modifier.wrapContentWidth(unbounded = true)
-                                            })
-                                                .onSizeChanged { size ->
-                                                    val old = codeLineHeightsPx[index]
-                                                    if (old == null || old != size.height) {
-                                                        codeLineHeightsPx[index] = size.height
-                                                    }
-                                                }
-
-                                        CachedCodeLine(
-                                            line = line,
-                                            language = language,
-                                            index = index,
-                                            lineCache = lineCache,
-                                            autoWrapEnabled = autoWrapEnabled,
-                                            modifier = lineModifier
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        if (autoWrapEnabled) {
-                            content()
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(horizontalScrollState)
-                            ) {
-                                content()
-                            }
-                        }
-                    }
-                }
-
-                // 显示复制成功提示
-                if (showCopiedToast) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(4.dp),
-                        color = Color(0xFF0366D6), // GitHub 蓝色
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.common_copied),
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.common_copied),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
         }
@@ -866,44 +741,6 @@ fun HtmlPreviewRenderer(code: String, modifier: Modifier = Modifier) {
     AndroidView(
         factory = { webView },
         modifier = modifier.nestedScroll(nestedScrollInterop)
-    )
-}
-
-/** 带缓存的单行代码组件，进一步减少重组和计算 */
-@Composable
-private fun CachedCodeLine(
-    line: String,
-    language: String,
-    index: Int,
-    lineCache: MutableMap<String, AnnotatedString>,
-    autoWrapEnabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    // 计算缓存key
-    val cacheKey = "$language:$line"
-
-    // 使用缓存或重新计算高亮
-    val highlightedLine =
-        if (lineCache.containsKey(cacheKey)) {
-            // 删除缓存命中的日志，减少噪音
-            lineCache[cacheKey]!!
-        } else {
-            val lineStart = if (line.length > 15) line.substring(0, 15) + "..." else line
-            val result = highlightSyntaxLine(line, language)
-            lineCache[cacheKey] = result
-            result
-        }
-
-    Text(
-        text = highlightedLine,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        color = Color.White,
-        maxLines = if (autoWrapEnabled) Int.MAX_VALUE else 1,
-        softWrap = autoWrapEnabled,
-        overflow = TextOverflow.Clip,
-        modifier = modifier
     )
 }
 

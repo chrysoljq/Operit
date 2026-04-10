@@ -858,6 +858,17 @@ class MemoryDocumentsProvider : DocumentsProvider() {
     }
 
     private fun parseDocumentId(documentId: String): DocRef {
+        return try {
+            parseDirectDocumentId(documentId)
+        } catch (directError: FileNotFoundException) {
+            if (!documentId.contains('/')) {
+                throw directError
+            }
+            parseSyntheticTreeDocumentId(documentId)
+        }
+    }
+
+    private fun parseDirectDocumentId(documentId: String): DocRef {
         return when {
             documentId == DOC_ID_ROOT -> DocRef.Root
             documentId.startsWith(DOC_ID_PROFILE_PREFIX) -> {
@@ -901,6 +912,117 @@ class MemoryDocumentsProvider : DocumentsProvider() {
             }
             else -> throw FileNotFoundException("Unknown documentId: $documentId")
         }
+    }
+
+    private fun parseSyntheticTreeDocumentId(documentId: String): DocRef {
+        val parts = documentId.split('/').filter { it.isNotBlank() }
+        if (parts.size < 2) {
+            throw FileNotFoundException("Unknown documentId: $documentId")
+        }
+
+        var current = parseDirectDocumentId(parts.first())
+        parts.drop(1).forEach { displayName ->
+            current = resolveSyntheticChild(current, displayName, documentId)
+        }
+        return current
+    }
+
+    private fun resolveSyntheticChild(parent: DocRef, displayName: String, originalDocumentId: String): DocRef {
+        return when (parent) {
+            is DocRef.Root -> {
+                val prefs = UserPreferencesManager.getInstance(requireProviderContext())
+                val profileIds = runBlocking { prefs.profileListFlow.first() }
+                val profile = profileIds
+                    .asSequence()
+                    .map { profileId -> runBlocking { prefs.getUserPreferencesFlow(profileId).first() } }
+                    .firstOrNull { getProfileDisplayName(it) == displayName }
+                    ?: throw FileNotFoundException("Synthetic child not found: $originalDocumentId")
+                DocRef.Profile(profile.id)
+            }
+
+            is DocRef.Profile -> {
+                requireProfileExists(parent.profileId)
+                val repo = getRepository(parent.profileId)
+                resolveSyntheticChildInContainer(
+                    profileId = parent.profileId,
+                    parentFolderPath = null,
+                    displayName = displayName,
+                    repo = repo,
+                    originalDocumentId = originalDocumentId
+                )
+            }
+
+            is DocRef.Directory -> {
+                val repo = getRepository(parent.profileId)
+                requireDirectoryExists(repo, parent.path)
+                resolveSyntheticChildInContainer(
+                    profileId = parent.profileId,
+                    parentFolderPath = parent.path,
+                    displayName = displayName,
+                    repo = repo,
+                    originalDocumentId = originalDocumentId
+                )
+            }
+
+            is DocRef.Memory -> throw FileNotFoundException("Memory has no child: $originalDocumentId")
+        }
+    }
+
+    private fun resolveSyntheticChildInContainer(
+        profileId: String,
+        parentFolderPath: String?,
+        displayName: String,
+        repo: MemoryRepository,
+        originalDocumentId: String
+    ): DocRef {
+        val allMemories = loadAllMemories(repo)
+        val childDirectoryPath = findDirectChildDirectoryPath(
+            parentFolderPath = parentFolderPath,
+            childDisplayName = displayName,
+            folderPaths = collectRealFolderPaths(allMemories)
+        )
+        if (childDirectoryPath != null) {
+            return DocRef.Directory(
+                profileId = profileId,
+                path = childDirectoryPath,
+                displayName = childDisplayName(childDirectoryPath)
+            )
+        }
+
+        val childMemory = filterDirectMemories(allMemories, parentFolderPath)
+            .firstOrNull { memory -> buildMemoryDisplayName(memory.title, memory.uuid) == displayName }
+            ?: throw FileNotFoundException("Synthetic child not found: $originalDocumentId")
+
+        return DocRef.Memory(profileId = profileId, uuid = childMemory.uuid)
+    }
+
+    private fun findDirectChildDirectoryPath(
+        parentFolderPath: String?,
+        childDisplayName: String,
+        folderPaths: Collection<String>
+    ): String? {
+        val normalizedFolders = normalizeFolders(folderPaths)
+        return if (parentFolderPath == null) {
+            normalizedFolders
+                .mapNotNull { path -> path.split('/').firstOrNull()?.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .firstOrNull { it == childDisplayName }
+        } else {
+            normalizedFolders
+                .asSequence()
+                .filter { path -> path.startsWith(parentFolderPath + "/") }
+                .mapNotNull { path ->
+                    path.removePrefix(parentFolderPath + "/").split('/').firstOrNull()?.takeIf { it.isNotBlank() }
+                }
+                .distinct()
+                .firstOrNull { it == childDisplayName }
+                ?.let { childName -> parentFolderPath + "/" + childName }
+        }
+    }
+
+    private fun childDisplayName(path: String): String {
+        return path.split('/').lastOrNull().orEmpty().ifBlank { path }
     }
 
     private fun getRepository(profileId: String): MemoryRepository {

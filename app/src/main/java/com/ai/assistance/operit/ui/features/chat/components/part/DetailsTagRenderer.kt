@@ -5,27 +5,18 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.ui.common.displays.MarkdownTextComposable
 
@@ -45,38 +36,21 @@ object DetailsTagRenderer {
 
         val defaultExpanded = hasOpenAttribute(xmlContent, tagName)
         var expanded by remember { mutableStateOf(defaultExpanded) }
+        val rotation by animateFloatAsState(
+            targetValue = if (expanded) 90f else 0f,
+            animationSpec = tween(durationMillis = 300),
+            label = "detailsArrowRotation"
+        )
 
         Column(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { expanded = !expanded },
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val rotation by animateFloatAsState(
-                    targetValue = if (expanded) 90f else 0f,
-                    animationSpec = tween(durationMillis = 300),
-                    label = "detailsArrowRotation"
-                )
-
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .padding(start = 0.dp)
-                        .graphicsLayer { rotationZ = rotation }
-                )
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Text(
-                    text = if (summary.isNotBlank()) summary else "Details",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = textColor.copy(alpha = 0.85f)
-                )
-            }
+            CanvasExpandableHeaderRow(
+                title = if (summary.isNotBlank()) summary else "Details",
+                semanticDescription = if (expanded) "Collapse" else "Expand",
+                expanded = expanded,
+                titleColor = textColor.copy(alpha = 0.85f),
+                rotationDegrees = rotation,
+                onClick = { expanded = !expanded },
+            )
 
             AnimatedVisibility(
                 visible = expanded,

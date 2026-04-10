@@ -73,60 +73,28 @@ fun CompactToolDisplay(
         )
     }
 
-    Row(
-            modifier =
-                    modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(4.dp))
-                            .clearAndSetSemantics {
-                                contentDescription = semanticDescription
-                            }
-                            .clickable(enabled = hasParams && enableDialog) {
-                                // 仅在启用弹窗时才允许点击打开详情
-                                if (hasParams && enableDialog) showDetailDialog = true
-                            }
-                            .padding(top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 工具图标
-        Icon(
-                imageVector = getToolIcon(displayToolName),
-                contentDescription = context.getString(R.string.tool_call),
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                modifier = Modifier.size(16.dp)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // 工具名称
-        Text(
-                text = displayToolName,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.widthIn(min = 80.dp, max = 120.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-        )
-
-        // 参数内容摘要（如果有）
-        if (displayParams.isNotBlank()) {
-            val summary = remember(displayParams.length) {
-                // 尝试从XML中提取第一个参数的值作为摘要
-                val firstParamRegex = "<param.*?>([^<]*)<\\/param>".toRegex()
-                val match = firstParamRegex.find(displayParams)
-                match?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: displayParams.replace("\n", " ").trim()
-            }
-            Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = textColor.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-            )
-        }
+    val summary = remember(displayParams.length) {
+        val firstParamRegex = "<param.*?>([^<]*)<\\/param>".toRegex()
+        val match = firstParamRegex.find(displayParams)
+        match?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: displayParams.replace("\n", " ").trim()
     }
+
+    CanvasToolSummaryRow(
+        toolName = displayToolName,
+        summary = summary,
+        semanticDescription = semanticDescription,
+        leadingIcon = getToolIcon(displayToolName),
+        titleColor = MaterialTheme.colorScheme.primary,
+        summaryColor = textColor.copy(alpha = 0.7f),
+        modifier = modifier,
+        onClick =
+            if (hasParams && enableDialog) {
+                { showDetailDialog = true }
+            } else {
+                null
+            },
+    )
 }
 
 /** 卡片式工具显示组件 用于显示较长内容的工具调用，支持流式渲染，美化版 */
@@ -165,49 +133,21 @@ fun DetailedToolDisplay(
         )
     }
 
-    Row(
-        modifier =
-            modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .clearAndSetSemantics {
-                    contentDescription = semanticDescription
-                }
-                .clickable(enabled = hasParams && enableDialog) {
-                    if (hasParams && enableDialog) showDetailDialog = true
-                }
-                .padding(top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = getToolIcon(displayToolName),
-            contentDescription = context.getString(R.string.tool_call),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-            modifier = Modifier.size(16.dp)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Text(
-            text = displayToolName,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.widthIn(min = 80.dp, max = 120.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        if (hasParams) {
-            Text(
-                text = paramsSizeLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = textColor.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
+    CanvasToolSummaryRow(
+        toolName = displayToolName,
+        summary = paramsSizeLabel,
+        semanticDescription = semanticDescription,
+        leadingIcon = getToolIcon(displayToolName),
+        titleColor = MaterialTheme.colorScheme.primary,
+        summaryColor = textColor.copy(alpha = 0.7f),
+        modifier = modifier,
+        onClick =
+            if (hasParams && enableDialog) {
+                { showDetailDialog = true }
+            } else {
+                null
+            },
+    )
 }
 
 /** 显示带行号的代码内容 */

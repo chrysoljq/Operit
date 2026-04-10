@@ -118,6 +118,10 @@ object ApiProviderConfigs {
                 ProviderEndpointOption(
                     endpoint = "https://api.moonshot.ai/v1/chat/completions",
                     label = "International (moonshot.ai)"
+                ),
+                ProviderEndpointOption(
+                    endpoint = "https://api.kimi.com/coding/v1/chat/completions",
+                    label = "Kimi Code (api.kimi.com)"
                 )
             )
         ),

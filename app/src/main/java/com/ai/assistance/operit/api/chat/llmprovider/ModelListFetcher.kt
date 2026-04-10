@@ -27,6 +27,8 @@ object ModelListFetcher {
     private const val ANTHROPIC_VERSION = "2023-06-01"
     private val ZHIPU_CODING_PLAN_MODELS =
             listOf("glm-4.7", "glm-4.6", "glm-4.5", "glm-4.5-air")
+    private val KIMI_CODING_MODELS =
+            listOf("kimi-for-coding")
 
     // 使用更长的超时时间
     private val client =
@@ -117,6 +119,16 @@ object ModelListFetcher {
         }
     }
 
+    private fun isKimiCodingEndpoint(apiEndpoint: String): Boolean {
+        return apiEndpoint.contains("api.kimi.com/coding/v1", ignoreCase = true)
+    }
+
+    private fun getKimiCodingModels(): List<ModelOption> {
+        return KIMI_CODING_MODELS.map { modelId ->
+            ModelOption(id = modelId, name = modelId)
+        }
+    }
+
     /** 从完整URL提取基本URL 例如: https://api.openai.com/v1/chat/completions -> https://api.openai.com */
     private fun extractBaseUrl(fullUrl: String): String {
         return try {
@@ -178,6 +190,14 @@ object ModelListFetcher {
                     ) {
                         AppLogger.d(TAG, "检测到智谱Coding Plan端点，返回文档约束的固定模型列表")
                         return@withContext Result.success(getZhipuCodingPlanModels())
+                    }
+
+                    if (
+                            apiProviderType == ApiProviderType.MOONSHOT &&
+                                    isKimiCodingEndpoint(completedEndpoint)
+                    ) {
+                        AppLogger.d(TAG, "检测到 Kimi Code 端点，返回官方配置中的固定模型列表")
+                        return@withContext Result.success(getKimiCodingModels())
                     }
 
                     // 根据提供商类型获取模型列表URL

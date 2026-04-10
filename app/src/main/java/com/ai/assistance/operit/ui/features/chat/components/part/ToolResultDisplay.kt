@@ -56,73 +56,42 @@ fun ToolResultDisplay(
         )
     }
 
-    Row(
-            modifier =
-                    Modifier.fillMaxWidth()
-                            .padding(start = 24.dp, end = 16.dp, top = 0.dp, bottom = 0.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable(enabled = hasContent && enableDialog) {
-                                // 仅在启用弹窗时才允许点击打开详情
-                                if (hasContent && enableDialog) showDetailDialog = true
-                            }
-                            .padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 子目录箭头图标，表示这是上个工具的执行结果
-        Icon(
-                imageVector = Icons.Default.SubdirectoryArrowRight,
-                contentDescription = context.getString(R.string.tool_execution_result),
-                tint =
-                        if (isSuccess) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                        else MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                modifier = Modifier.size(18.dp)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // 状态图标
-        Icon(
-                imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
-                contentDescription = if (isSuccess) context.getString(R.string.success) else context.getString(R.string.failed),
-                tint =
-                        if (isSuccess) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(14.dp)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // 结果内容（确保在一行显示）
-        Text(
-                text = if (hasContent) result.take(200) else if (isSuccess) context.getString(R.string.execution_success) else context.getString(R.string.execution_failed),
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (!hasContent) FontWeight.Medium else FontWeight.Normal,
-                color =
-                        if (isSuccess) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                        else MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-        )
-
-        // 复制按钮（仅在有内容时显示）
+    val summaryText =
         if (hasContent) {
-            IconButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(result))
-                        onCopyResult()
-                    },
-                    modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = context.getString(R.string.copy_result),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                        modifier = Modifier.size(14.dp)
-                )
-            }
+            result.take(200)
+        } else if (isSuccess) {
+            context.getString(R.string.execution_success)
+        } else {
+            context.getString(R.string.execution_failed)
         }
+    val semanticDescription = remember(toolName, summaryText, isSuccess) {
+        val resultLabel = context.getString(R.string.tool_execution_result)
+        val statusLabel =
+            if (isSuccess) context.getString(R.string.success) else context.getString(R.string.failed)
+        "$resultLabel: $toolName, $statusLabel, $summaryText"
     }
+
+    CanvasToolResultRow(
+        summary = summaryText,
+        isSuccess = isSuccess,
+        semanticDescription = semanticDescription,
+        emphasizeSummary = !hasContent,
+        onClick =
+            if (hasContent && enableDialog) {
+                { showDetailDialog = true }
+            } else {
+                null
+            },
+        onCopyClick =
+            if (hasContent) {
+                {
+                    clipboardManager.setText(AnnotatedString(result))
+                    onCopyResult()
+                }
+            } else {
+                null
+            },
+    )
 }
 
 /** 工具结果详情弹窗 美观的弹窗显示完整的工具执行结果 */

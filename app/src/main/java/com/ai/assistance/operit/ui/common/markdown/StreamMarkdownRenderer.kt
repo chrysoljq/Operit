@@ -18,9 +18,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -34,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -76,6 +76,44 @@ import ru.noties.jlatexmath.JLatexMathDrawable
 private const val TAG = "MarkdownRenderer"
 private const val RENDER_INTERVAL_MS = 200L // 渲染间隔 0.2 秒
 private const val FADE_IN_DURATION_MS = 800 // 淡入动画持续时间
+
+internal enum class MarkdownRenderMode {
+    STREAMING,
+    STATIC,
+}
+
+internal val LocalMarkdownRenderMode = compositionLocalOf { MarkdownRenderMode.STATIC }
+
+private fun appendInlineChunk(
+    parentNode: MarkdownNode,
+    getOrCreateChildNode: () -> MarkdownNode,
+    chunk: String,
+    lastCharWasNewline: Boolean,
+): Boolean {
+    var pendingNewline = lastCharWasNewline
+
+    for (char in chunk) {
+        val isCurrentCharNewline = char == '\n' || char == '\r'
+        if (isCurrentCharNewline) {
+            pendingNewline = true
+            continue
+        }
+
+        val childNode = getOrCreateChildNode()
+        if (pendingNewline) {
+            if (parentNode.content.isNotEmpty()) {
+                parentNode.content + '\n'
+                childNode.content + '\n'
+            }
+            pendingNewline = false
+        }
+
+        parentNode.content + char
+        childNode.content + char
+    }
+
+    return pendingNewline
+}
 
 /**
  * Converts a mutable [MarkdownNode] to an immutable, stable [MarkdownNodeStable].
@@ -258,7 +296,7 @@ fun StreamMarkdownRenderer(
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
         enableDialogs: Boolean = true,
-        fillMaxWidth: Boolean = true
+        fillMaxWidth: Boolean = true,
 ) {
     // 使用传入的state或创建新的state
     val rendererState = state ?: remember { StreamMarkdownRendererState() }
@@ -372,33 +410,19 @@ fun StreamMarkdownRenderer(
 
                         var childNode: MarkdownNode? = null
 
-                        inlineGroup.stream.collect { str ->
-                            val isCurrentCharNewline = str == "\n" || str == "\r\n" || str == "\r"
-                            if (isCurrentCharNewline) {
-                                lastCharWasNewline = true
-                                return@collect
-                            }
-
-                            if (childNode == null) {
-                                childNode = MarkdownNode(type = tempInlineType)
-                                newNode.children.add(childNode!!)
-                            }
-
-                            if (lastCharWasNewline) {
-                                if (newNode.content.isNotEmpty()) {
-                                    newNode.content + ("\n" + str)
-                                    childNode!!.content + ("\n" + str)
-                                } else {
-                                    newNode.content + str
-                                    childNode!!.content + str
-                                }
-                                lastCharWasNewline = false
-                            } else {
-                                newNode.content + str
-                                childNode!!.content + str
-                            }
-
-                            lastCharWasNewline = isCurrentCharNewline
+                        inlineGroup.stream.collect { chunk ->
+                            lastCharWasNewline =
+                                appendInlineChunk(
+                                    parentNode = newNode,
+                                    getOrCreateChildNode = {
+                                        childNode ?: MarkdownNode(type = tempInlineType).also {
+                                            childNode = it
+                                            newNode.children.add(it)
+                                        }
+                                    },
+                                    chunk = chunk,
+                                    lastCharWasNewline = lastCharWasNewline,
+                                )
                         }
 
                         if (isInlineLatex && childNode != null) {
@@ -458,28 +482,43 @@ fun StreamMarkdownRenderer(
 
     // 渲染Markdown内容 - 使用统一的Canvas渲染器
     Surface(modifier = modifier, color = Color.Transparent, shape = RoundedCornerShape(4.dp)) {
-        key(rendererId) {
-            UnifiedMarkdownCanvas(
-                nodes = renderNodes,
-                rendererId = rendererId,
-                nodeAnimationStates = nodeAnimationStates,
-                textColor = textColor,
-                onLinkClick = onLinkClick,
-                xmlRenderer = xmlRenderer,
-                xmlStreamsByIndex = xmlNodeStreams,
-                nodeGrouper = nodeGrouper,
-                enableDialogs = enableDialogs,
-                modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
-                fillMaxWidth = fillMaxWidth
-            )
+        CompositionLocalProvider(LocalMarkdownRenderMode provides MarkdownRenderMode.STREAMING) {
+            key(rendererId) {
+                UnifiedMarkdownCanvas(
+                    nodes = renderNodes,
+                    rendererId = rendererId,
+                    nodeAnimationStates = nodeAnimationStates,
+                    textColor = textColor,
+                    onLinkClick = onLinkClick,
+                    xmlRenderer = xmlRenderer,
+                    xmlStreamsByIndex = xmlNodeStreams,
+                    nodeGrouper = nodeGrouper,
+                    enableDialogs = enableDialogs,
+                    modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
+                    fillMaxWidth = fillMaxWidth,
+                )
+            }
         }
     }
 }
 
 /** A cache for parsed markdown nodes to improve performance. */
 private object MarkdownNodeCache {
-    // Cache up to 100 parsed messages
-    private val cache = LruCache<String, List<MarkdownNode>>(100)
+    // Limit static markdown cache by estimated bytes instead of entry count, so
+    // incrementally growing content does not retain many large historical versions.
+    private val maxCacheBytes =
+        (Runtime.getRuntime().maxMemory() / 64L)
+            .coerceIn(256 * 1024L, 4L * 1024L * 1024L)
+            .toInt()
+
+    private val cache =
+        object : LruCache<String, List<MarkdownNode>>(maxCacheBytes) {
+            override fun sizeOf(key: String, value: List<MarkdownNode>): Int {
+                return (estimateStringBytes(key) + estimateNodeListBytes(value))
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+        }
 
     fun get(key: String): List<MarkdownNode>? {
         return cache.get(key)
@@ -487,6 +526,28 @@ private object MarkdownNodeCache {
 
     fun put(key: String, value: List<MarkdownNode>) {
         cache.put(key, value)
+    }
+
+    private fun estimateNodeListBytes(nodes: List<MarkdownNode>): Long {
+        var totalBytes = 64L
+        nodes.forEach { node ->
+            totalBytes += estimateNodeBytes(node)
+        }
+        return totalBytes
+    }
+
+    private fun estimateNodeBytes(node: MarkdownNode): Long {
+        var totalBytes = 80L
+        totalBytes += estimateStringBytes(node.content.toString())
+        totalBytes += 16L * node.children.size
+        node.children.forEach { child ->
+            totalBytes += estimateNodeBytes(child)
+        }
+        return totalBytes
+    }
+
+    private fun estimateStringBytes(text: String): Long {
+        return 40L + text.length.toLong() * 2L
     }
 }
 
@@ -502,7 +563,7 @@ fun StreamMarkdownRenderer(
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
         enableDialogs: Boolean = true,
-        fillMaxWidth: Boolean = true
+        fillMaxWidth: Boolean = true,
 ) {
     // 使用传入的state或创建新的state
     val rendererState = state ?: remember(content) { StreamMarkdownRendererState() }
@@ -568,7 +629,6 @@ fun StreamMarkdownRenderer(
         launch(Dispatchers.IO) {
             try {
                 val parsedNodes = mutableListOf<MarkdownNode>()
-
                 stream { emit(content) }.nativeMarkdownSplitByBlock().collect { blockGroup ->
                     val blockType = blockGroup.tag ?: MarkdownProcessorType.PLAIN_TEXT
 
@@ -607,33 +667,19 @@ fun StreamMarkdownRenderer(
 
                             var childNode: MarkdownNode? = null
 
-                            inlineGroup.stream.collect { str ->
-                                val isCurrentCharNewline = str == "\n" || str == "\r\n" || str == "\r"
-                                if (isCurrentCharNewline) {
-                                    lastCharWasNewline = true
-                                    return@collect
-                                }
-
-                                if (childNode == null) {
-                                    childNode = MarkdownNode(type = tempInlineType)
-                                    newNode.children.add(childNode!!)
-                                }
-
-                                if (lastCharWasNewline) {
-                                    if (newNode.content.isNotEmpty()) {
-                                        newNode.content + ("\n" + str)
-                                        childNode!!.content + ("\n" + str)
-                                    } else {
-                                        newNode.content + str
-                                        childNode!!.content + str
-                                    }
-                                    lastCharWasNewline = false
-                                } else {
-                                    newNode.content + str
-                                    childNode!!.content + str
-                                }
-
-                                lastCharWasNewline = isCurrentCharNewline
+                            inlineGroup.stream.collect { chunk ->
+                                lastCharWasNewline =
+                                    appendInlineChunk(
+                                        parentNode = newNode,
+                                        getOrCreateChildNode = {
+                                            childNode ?: MarkdownNode(type = tempInlineType).also {
+                                                childNode = it
+                                                newNode.children.add(it)
+                                            }
+                                        },
+                                        chunk = chunk,
+                                        lastCharWasNewline = lastCharWasNewline,
+                                    )
                             }
 
                             if (isInlineLatex && childNode != null) {
@@ -670,8 +716,6 @@ fun StreamMarkdownRenderer(
                     }
                 }
 
-                // 移除解析耗时相关日志
-
                 // 将解析完成的节点添加到节点列表，并更新动画状态
                 withContext(Dispatchers.Main) {
                     // 保存到缓存，这样下次渲染同样内容时可以直接使用
@@ -705,20 +749,22 @@ fun StreamMarkdownRenderer(
 
     // 渲染Markdown内容 - 使用统一的Canvas渲染器
     Surface(modifier = modifier, color = Color.Transparent, shape = RoundedCornerShape(4.dp)) {
-        key(rendererId) {
-            UnifiedMarkdownCanvas(
-                nodes = renderNodes,
-                rendererId = rendererId,
-                nodeAnimationStates = nodeAnimationStates,
-                textColor = textColor,
-                onLinkClick = onLinkClick,
-                xmlRenderer = xmlRenderer,
-                xmlStreamsByIndex = xmlNodeStreams,
-                nodeGrouper = nodeGrouper,
-                enableDialogs = enableDialogs,
-                modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
-                fillMaxWidth = fillMaxWidth
-            )
+        CompositionLocalProvider(LocalMarkdownRenderMode provides MarkdownRenderMode.STATIC) {
+            key(rendererId) {
+                UnifiedMarkdownCanvas(
+                    nodes = renderNodes,
+                    rendererId = rendererId,
+                    nodeAnimationStates = nodeAnimationStates,
+                    textColor = textColor,
+                    onLinkClick = onLinkClick,
+                    xmlRenderer = xmlRenderer,
+                    xmlStreamsByIndex = xmlNodeStreams,
+                    nodeGrouper = nodeGrouper,
+                    enableDialogs = enableDialogs,
+                    modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
+                    fillMaxWidth = fillMaxWidth,
+                )
+            }
         }
     }
 }
@@ -795,30 +841,13 @@ private fun UnifiedMarkdownCanvas(
     nodeGrouper: MarkdownNodeGrouper,
     enableDialogs: Boolean,
     modifier: Modifier = Modifier,
-    fillMaxWidth: Boolean = true
+    fillMaxWidth: Boolean = true,
 ) {
-    
-    val density = LocalDensity.current
-    val typography = MaterialTheme.typography
-
     val lastRenderableIndex = run {
         val idx = nodes.indexOfLast { it.content.isNotEmpty() || it.children.isNotEmpty() }
         if (idx >= 0) idx else nodes.lastIndex
     }
-    
-    // 缓存字体大小
-    val fontSizes = remember(typography) {
-        object {
-            val bodyMedium = typography.bodyMedium.fontSize
-            val headlineLarge = typography.headlineLarge.fontSize
-            val headlineMedium = typography.headlineMedium.fontSize
-            val headlineSmall = typography.headlineSmall.fontSize
-            val titleLarge = typography.titleLarge.fontSize
-            val titleMedium = typography.titleMedium.fontSize
-            val titleSmall = typography.titleSmall.fontSize
-        }
-    }
-    
+
     fun nodeKeyForIndex(index: Int): String {
         return if (rendererId.startsWith("static-")) {
             "static-node-$rendererId-$index"
@@ -856,7 +885,7 @@ private fun UnifiedMarkdownCanvas(
                             xmlStream = xmlStreamsByIndex[index],
                             enableDialogs = enableDialogs,
                             fillMaxWidth = fillMaxWidth,
-                            isLastNode = index == lastRenderableIndex
+                            isLastNode = index == lastRenderableIndex,
                         )
                     }
                 }
@@ -876,7 +905,7 @@ private fun UnifiedMarkdownCanvas(
                             onLinkClick = onLinkClick,
                             xmlRenderer = xmlRenderer,
                             xmlStreamResolver = { idx -> xmlStreamsByIndex[idx] },
-                            fillMaxWidth = fillMaxWidth
+                            fillMaxWidth = fillMaxWidth,
                         )
                     }
                 }
@@ -898,12 +927,6 @@ private class BatchNodeUpdater(
 ) {
     private var updateJob: Job? = null
 
-    private var lastLoggedNodesSize: Int = -1
-    private var lastLoggedRenderNodesSize: Int = -1
-    private var lastLoggedLastSourceLen: Int = -1
-    private var lastLoggedLastRenderLen: Int = -1
-    private var lastLoggedLastRenderType: MarkdownProcessorType? = null
-
     fun startBatchUpdates() {
         if (updateJob?.isActive == true) {
             return
@@ -922,7 +945,6 @@ private class BatchNodeUpdater(
     }
 
     private fun performBatchUpdate() {
-        // 使用synchronizeRenderNodes函数进行节点同步
         synchronizeRenderNodes(
             nodes,
             renderNodes,
@@ -932,58 +954,6 @@ private class BatchNodeUpdater(
             rendererId,
             scope
         )
-
-        val currentNodesSize = nodes.size
-        val currentRenderNodesSize = renderNodes.size
-        val lastSource = nodes.lastOrNull()
-        val lastRender = renderNodes.lastOrNull()
-        val lastSourceLen = lastSource?.content?.length ?: -1
-        val lastRenderLen = lastRender?.content?.length ?: -1
-        val lastRenderType = lastRender?.type
-
-        val shouldLog =
-            currentNodesSize != lastLoggedNodesSize ||
-                currentRenderNodesSize != lastLoggedRenderNodesSize ||
-                lastSourceLen != lastLoggedLastSourceLen ||
-                lastRenderLen != lastLoggedLastRenderLen ||
-                lastRenderType != lastLoggedLastRenderType
-
-        val hasRegression =
-            (lastLoggedNodesSize != -1 && currentNodesSize < lastLoggedNodesSize) ||
-                (lastLoggedRenderNodesSize != -1 && currentRenderNodesSize < lastLoggedRenderNodesSize) ||
-                (lastLoggedLastSourceLen != -1 && lastSourceLen != -1 && lastSourceLen < lastLoggedLastSourceLen) ||
-                (lastLoggedLastRenderLen != -1 && lastRenderLen != -1 && lastRenderLen < lastLoggedLastRenderLen)
-
-        if (shouldLog || hasRegression) {
-            val nodeKey = if (currentRenderNodesSize > 0) {
-                "node-$rendererId-${currentRenderNodesSize - 1}"
-            } else {
-                "node-$rendererId--1"
-            }
-            val renderTail = lastRender?.content?.takeLast(24)
-                ?.replace("\n", "\\n")
-                ?.replace("\r", "\\r")
-                ?.replace("\t", "\\t")
-            val sourceTail = lastSource?.content?.toString()?.takeLast(24)
-                ?.replace("\n", "\\n")
-                ?.replace("\r", "\\r")
-                ?.replace("\t", "\\t")
-
-            val msg =
-                "[md-batch] rendererId=$rendererId nodeKey=$nodeKey nodesSize=$currentNodesSize renderSize=$currentRenderNodesSize " +
-                    "lastSourceLen=$lastSourceLen lastRenderLen=$lastRenderLen lastRenderType=${lastRenderType?.name} " +
-                    "sourceTail=\"${sourceTail ?: ""}\" renderTail=\"${renderTail ?: ""}\""
-
-            if (hasRegression) {
-                AppLogger.w(TAG, msg)
-            }
-
-            lastLoggedNodesSize = currentNodesSize
-            lastLoggedRenderNodesSize = currentRenderNodesSize
-            lastLoggedLastSourceLen = lastSourceLen
-            lastLoggedLastRenderLen = lastRenderLen
-            lastLoggedLastRenderType = lastRenderType
-        }
     }
 }
 
@@ -1015,29 +985,6 @@ private fun synchronizeRenderNodes(
         if (i < renderNodes.size) {
             // 如果节点内容发生变化，则更新
             if (renderNodes[i] != stableNode) {
-                val oldNode = renderNodes[i]
-                val oldLen = oldNode.content.length
-                val newLen = stableNode.content.length
-                val oldType = oldNode.type
-                val newType = stableNode.type
-                val oldChildren = oldNode.children.size
-                val newChildren = stableNode.children.size
-
-                if (newLen < oldLen) {
-                    val oldTail = oldNode.content.takeLast(24)
-                        .replace("\n", "\\n")
-                        .replace("\r", "\\r")
-                        .replace("\t", "\\t")
-                    val newTail = stableNode.content.takeLast(24)
-                        .replace("\n", "\\n")
-                        .replace("\r", "\\r")
-                        .replace("\t", "\\t")
-                    AppLogger.w(
-                        TAG,
-                        "[md-sync] rendererId=$rendererId index=$i nodeKey=node-$rendererId-$i contentLen decreased $oldLen -> $newLen type=$oldType->$newType children=$oldChildren->$newChildren oldTail=\"$oldTail\" newTail=\"$newTail\""
-                    )
-                }
-
                 renderNodes[i] = stableNode
                 // AppLogger.d(TAG, "【渲染性能】最终同步：替换节点 at index $i")
             }
@@ -1051,12 +998,6 @@ private fun synchronizeRenderNodes(
     }
 
     // 2. 如果源列表变小，则移除多余的节点
-    if (renderNodes.size > nodes.size) {
-        AppLogger.w(
-            TAG,
-            "[md-sync] rendererId=$rendererId renderNodes shrinks ${renderNodes.size} -> ${nodes.size}"
-        )
-    }
     while (renderNodes.size > nodes.size) {
         renderNodes.removeAt(renderNodes.lastIndex)
     }

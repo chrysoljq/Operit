@@ -134,16 +134,10 @@ class AIToolHandler private constructor(private val context: Context) {
     // 工具注册的唯一方法 - 提供完整信息的注册
     fun registerTool(
             name: String,
-            dangerCheck: ((AITool) -> Boolean)? = null,
             descriptionGenerator: ((AITool) -> String)? = null,
             executor: ToolExecutor
     ) {
         availableTools[name] = executor
-
-        // 注册危险操作检查（如果提供）
-        if (dangerCheck != null) {
-            toolPermissionSystem.registerDangerousOperation(name, dangerCheck)
-        }
 
         // 注册描述生成器（如果提供）
         if (descriptionGenerator != null) {
@@ -154,13 +148,11 @@ class AIToolHandler private constructor(private val context: Context) {
     // 添加重载方法接受函数式接口作为executor的便捷写法
     fun registerTool(
             name: String,
-            dangerCheck: ((AITool) -> Boolean)? = null,
             descriptionGenerator: ((AITool) -> String)? = null,
             executor: (AITool) -> ToolResult
     ) {
         registerTool(
                 name = name,
-                dangerCheck = dangerCheck,
                 descriptionGenerator = descriptionGenerator,
                 executor =
                         object : ToolExecutor {
@@ -176,7 +168,6 @@ class AIToolHandler private constructor(private val context: Context) {
         if (defaultToolsRegistered.get()) return
         synchronized(registrationLock) {
             if (defaultToolsRegistered.get()) return
-            toolPermissionSystem.initializeDefaultRules()
             registerAllTools(this, context)
             defaultToolsRegistered.set(true)
         }

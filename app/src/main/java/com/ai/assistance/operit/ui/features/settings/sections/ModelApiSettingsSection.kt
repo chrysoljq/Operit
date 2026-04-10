@@ -245,6 +245,23 @@ fun ModelApiSettingsSection(
         return ApiProviderConfigs.isDefaultApiEndpoint(endpoint)
     }
 
+    fun syncMoonshotModelForEndpoint(endpoint: String) {
+        if (selectedApiProvider != ApiProviderType.MOONSHOT) {
+            return
+        }
+
+        val moonshotDefaultModel = getDefaultModelName(ApiProviderType.MOONSHOT)
+        val isKimiCodeEndpoint = endpoint.contains("api.kimi.com/coding/v1", ignoreCase = true)
+
+        if (isKimiCodeEndpoint) {
+            if (modelNameInput.isEmpty() || modelNameInput == moonshotDefaultModel) {
+                modelNameInput = "kimi-for-coding"
+            }
+        } else if (modelNameInput == "kimi-for-coding") {
+            modelNameInput = moonshotDefaultModel
+        }
+    }
+
     // 当API提供商改变时更新端点
     LaunchedEffect(selectedApiProvider) {
         AppLogger.d("ModelApiSettingsSection", "API提供商改变")
@@ -434,6 +451,7 @@ fun ModelApiSettingsSection(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     apiEndpointInput = endpoint
+                                                    syncMoonshotModelForEndpoint(endpoint)
                                                     showEndpointDialog = false
                                                 }
                                                 .padding(vertical = 10.dp, horizontal = 8.dp),

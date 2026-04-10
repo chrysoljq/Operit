@@ -3,7 +3,6 @@ package com.ai.assistance.operit.ui.features.chat.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.padding
@@ -22,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.ui.features.chat.components.lazy.LazyListState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ScrollToBottomButton(
-    scrollState: ScrollState,
+    scrollState: LazyListState,
     coroutineScope: CoroutineScope,
     autoScrollToBottom: Boolean,
     onAutoScrollToBottomChange: (Boolean) -> Unit,
@@ -48,30 +48,36 @@ fun ScrollToBottomButton(
 
     // 核心滚动逻辑 - 监听用户的手动滚动行为
     LaunchedEffect(scrollState) {
-        var lastPosition = scrollState.value
-        snapshotFlow { scrollState.value }
+        var lastIndex = scrollState.firstVisibleItemIndex
+        var lastOffset = scrollState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            Triple(
+                scrollState.firstVisibleItemIndex,
+                scrollState.firstVisibleItemScrollOffset,
+                scrollState.canScrollForward,
+            )
+        }
             .distinctUntilChanged()
-            .collect { currentPosition ->
-                // isScrollInProgress 为 true 表示正在滚动（包括动画和手势）
+            .collect { (currentIndex, currentOffset, _) ->
                 if (scrollState.isScrollInProgress) {
-                    val scrolledUp = currentPosition < lastPosition
+                    val scrolledUp =
+                        currentIndex < lastIndex ||
+                            (currentIndex == lastIndex && currentOffset < lastOffset)
                     if (scrolledUp) {
-                        // 用户向上滚动，禁用自动滚动并显示按钮
-                        // 只有在用户实际拖动时才禁用自动滚动，避免被自动滚动动画触发
                         if (autoScrollToBottom && isDragged) {
                             onAutoScrollToBottomChange(false)
                             showScrollButton = true
                         }
                     } else {
-                        // 用户向下滚动，检查是否已到达底部
-                        val isAtBottom = scrollState.value >= scrollState.maxValue
+                        val isAtBottom = scrollState.isAtBottom()
                         if (isAtBottom && !autoScrollToBottom) {
                             onAutoScrollToBottomChange(true)
                             showScrollButton = false
                         }
                     }
                 }
-                lastPosition = currentPosition
+                lastIndex = currentIndex
+                lastOffset = currentOffset
             }
     }
 
@@ -84,10 +90,13 @@ fun ScrollToBottomButton(
         IconButton(
             onClick = {
                 coroutineScope.launch {
-                    scrollState.animateScrollTo(scrollState.maxValue)
+                    val lastIndex = scrollState.layoutInfo.totalItemsCount - 1
+                    if (lastIndex >= 0) {
+                        scrollState.animateScrollToItem(lastIndex)
+                    }
                 }
-                onAutoScrollToBottomChange(true) // 重新启用自动滚动
-                showScrollButton = false // 点击后隐藏按钮
+                onAutoScrollToBottomChange(true)
+                showScrollButton = false
             },
             modifier = Modifier
                 .background(
@@ -102,4 +111,13 @@ fun ScrollToBottomButton(
             )
         }
     }
+}
+
+private fun LazyListState.isAtBottom(): Boolean {
+    val layoutInfo = layoutInfo
+    if (layoutInfo.totalItemsCount == 0) {
+        return true
+    }
+    val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return false
+    return !canScrollForward && lastVisibleItemIndex >= layoutInfo.totalItemsCount - 1
 }

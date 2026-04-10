@@ -4,6 +4,7 @@ package com.ai.assistance.operit.ui.features.chat.components.style.bubble
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.ui.features.chat.components.ChatMessageHeightMemory
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.SummaryMessageComposable
 import com.ai.assistance.operit.util.stream.Stream
 
@@ -29,11 +30,12 @@ fun BubbleStyleChatMessage(
     bubbleAiContentPaddingLeft: Float = 12f,
     bubbleAiContentPaddingRight: Float = 12f,
     isHidden: Boolean = false,
+    heightMemory: ChatMessageHeightMemory? = null,
     onDeleteMessage: ((Int) -> Unit)? = null,
     index: Int = -1,
     enableDialogs: Boolean = true,  // 新增参数：是否启用弹窗功能，默认启用
     onRoleAvatarLongPress: ((String) -> Unit)? = null,
-    onEditSummary: ((ChatMessage) -> Unit)? = null
+    onEditSummary: ((ChatMessage) -> Unit)? = null,
 ) {
     when (message.sender) {
         "user" -> {
@@ -58,8 +60,9 @@ fun BubbleStyleChatMessage(
                 bubbleContentPaddingLeft = bubbleAiContentPaddingLeft,
                 bubbleContentPaddingRight = bubbleAiContentPaddingRight,
                 isHidden = isHidden,
+                heightMemory = heightMemory,
                 enableDialogs = enableDialogs,
-                onAvatarLongPressMention = onRoleAvatarLongPress
+                onAvatarLongPressMention = onRoleAvatarLongPress,
             )
         }
         "summary" -> {

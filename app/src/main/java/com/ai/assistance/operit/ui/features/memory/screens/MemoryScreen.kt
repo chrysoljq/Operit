@@ -174,12 +174,6 @@ fun MemoryScreen() {
         }
     }
 
-    LaunchedEffect(uiState.error) {
-        val error = uiState.error ?: return@LaunchedEffect
-        Toast.makeText(context, error, Toast.LENGTH_LONG).show()
-        viewModel.clearError()
-    }
-
     LaunchedEffect(uiState.message) {
         val message = uiState.message ?: return@LaunchedEffect
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -413,6 +407,7 @@ fun MemoryScreen() {
                     cloudConfig = uiState.cloudEmbeddingConfig,
                     dimensionUsage = uiState.embeddingDimensionUsage,
                     rebuildProgress = uiState.embeddingRebuildProgress,
+                    error = uiState.error,
                     isRebuilding = uiState.isEmbeddingRebuildRunning,
                     onDismiss = { viewModel.showSearchSettingsDialog(false) },
                     onSave = { config, cloudConfig ->

@@ -397,8 +397,12 @@ fun MCPConfigScreen(
                 onSaveConfig = {
                     selectedPluginId?.let { pluginId ->
                         scope.launch {
-                        mcpLocalServer.savePluginConfig(pluginId, pluginConfigJson)
-                            Toast.makeText(context, context.getString(R.string.config_saved), Toast.LENGTH_SHORT).show()
+                            val saved = mcpLocalServer.savePluginConfig(pluginId, pluginConfigJson)
+                            Toast.makeText(
+                                context,
+                                if (saved) context.getString(R.string.config_saved) else context.getString(R.string.save_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
                 },

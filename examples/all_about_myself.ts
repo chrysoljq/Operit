@@ -2897,11 +2897,9 @@ async function test_tts_playback(params?: {
     const options: Record<string, unknown> = { ...(params ?? {}) };
     delete options.text;
     const result = await Tools.SoftwareSettings.testTtsPlayback(text, options);
-    const success = !!(result as { success?: boolean } | null)?.success;
+    const success = result.playbackTriggered;
     const detailMessage =
-      (typeof (result as { error?: unknown } | null)?.error === "string" && (result as { error?: string }).error) ||
-      (typeof (result as { result?: { errorMessage?: unknown } } | null)?.result?.errorMessage === "string" &&
-        (result as { result?: { errorMessage?: string } }).result?.errorMessage) ||
+      (typeof result.errorMessage === "string" && result.errorMessage.trim().length > 0 && result.errorMessage) ||
       "TTS playback test failed.";
     complete({
       success,

@@ -94,7 +94,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
     private val chunkBox = store.boxFor<DocumentChunk>()
 
     private val searchSettingsPreferences = MemorySearchSettingsPreferences(context, profileId)
-    private val cloudEmbeddingService = CloudEmbeddingService()
+    private val cloudEmbeddingService = CloudEmbeddingService(context)
     private val sanitizedProfileKey = sanitizeIndexKey(profileId)
     @Volatile
     private var lastDanglingCleanupAtMs: Long = 0L
@@ -204,6 +204,12 @@ class MemoryRepository(private val context: Context, profileId: String) {
             .distinct()
             .sortedByDescending { it.length }
             .take(32)
+    }
+
+    private fun isFolderPlaceholderMemory(memory: Memory): Boolean {
+        val title = memory.title.trim()
+        return title == ".folder_placeholder" ||
+            title == context.getString(R.string.memory_repository_folder_description_title)
     }
 
     private fun resolveSearchWeights(
@@ -1157,10 +1163,12 @@ class MemoryRepository(private val context: Context, profileId: String) {
             getMemoriesByFolderPath(normalizedFolderPath)
         }
 
+        val searchableMemoriesInScope = memoriesInScope.filterNot(::isFolderPlaceholderMemory)
+
         val timeFilteredMemoriesInScope = if (createdAtStartMs == null && createdAtEndMs == null) {
-            memoriesInScope
+            searchableMemoriesInScope
         } else {
-            memoriesInScope.filter { memory ->
+            searchableMemoriesInScope.filter { memory ->
                 val createdAtMs = memory.createdAt.time
                 (createdAtStartMs == null || createdAtMs >= createdAtStartMs) &&
                     (createdAtEndMs == null || createdAtMs <= createdAtEndMs)
@@ -1800,8 +1808,11 @@ class MemoryRepository(private val context: Context, profileId: String) {
             )
         }
 
-        val probeEmbedding = generateEmbedding(probeText, cloudConfig)
-            ?: throw IllegalStateException(context.getString(R.string.memory_embedding_rebuild_probe_failed))
+        val probeEmbedding = try {
+            cloudEmbeddingService.generateEmbeddingOrThrow(cloudConfig, probeText)
+        } catch (e: CloudEmbeddingService.CloudEmbeddingException) {
+            throw IllegalStateException(e.message ?: context.getString(R.string.memory_embedding_rebuild_probe_failed), e)
+        }
         val targetDimension = probeEmbedding.vector.size
         if (targetDimension <= 0) {
             throw IllegalStateException(context.getString(R.string.memory_embedding_rebuild_probe_failed))

@@ -2682,10 +2682,8 @@ async function test_tts_playback(params) {
         const options = { ...(params ?? {}) };
         delete options.text;
         const result = await Tools.SoftwareSettings.testTtsPlayback(text, options);
-        const success = !!result?.success;
-        const detailMessage = (typeof result?.error === "string" && result.error) ||
-            (typeof result?.result?.errorMessage === "string" &&
-                result.result?.errorMessage) ||
+        const success = result.playbackTriggered;
+        const detailMessage = (typeof result.errorMessage === "string" && result.errorMessage.trim().length > 0 && result.errorMessage) ||
             "TTS playback test failed.";
         complete({
             success,

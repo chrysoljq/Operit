@@ -54,6 +54,7 @@ fun MemorySearchSettingsDialog(
     cloudConfig: CloudEmbeddingConfig,
     dimensionUsage: EmbeddingDimensionUsage,
     rebuildProgress: EmbeddingRebuildProgress,
+    error: String?,
     isRebuilding: Boolean,
     onDismiss: () -> Unit,
     onSave: (MemorySearchConfig, CloudEmbeddingConfig) -> Unit,
@@ -208,6 +209,14 @@ fun MemorySearchSettingsDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(stringResource(R.string.memory_embedding_rebuild_action))
+                    }
+
+                    if (!error.isNullOrBlank()) {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
 
                     if (isRebuilding || rebuildProgress.total > 0) {

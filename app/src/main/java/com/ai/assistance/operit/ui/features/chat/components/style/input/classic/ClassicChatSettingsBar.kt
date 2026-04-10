@@ -262,129 +262,19 @@ fun ClassicChatSettingsBar(
 
     // The passed modifier will align this Box within its parent.
     Box(modifier = modifier.padding(end = chatSettingsBarRightMargin.dp)) {
-        Row(
-            // This modifier just adds padding. The Row will wrap its content.
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-            verticalAlignment = Alignment.Bottom, // Align the icon column to the bottom.
-            horizontalArrangement = Arrangement.End
+        IconButton(
+            onClick = { showMenu = !showMenu },
+            modifier = Modifier
+                .padding(vertical = 8.dp, horizontal = 2.dp)
+                .size(28.dp)
+                .align(Alignment.BottomEnd)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                AnimatedVisibility(visible = enableMemoryQuery) {
-                    Icon(
-                        imageVector = Icons.Rounded.Link,
-                        contentDescription = stringResource(R.string.memory_attachment_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = enableThinkingMode) {
-                    Icon(
-                        imageVector = Icons.Rounded.Psychology,
-                        contentDescription = stringResource(R.string.thinking_mode_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = enableThinkingGuidance) {
-                    Icon(
-                        imageVector = Icons.Rounded.TipsAndUpdates,
-                        contentDescription = stringResource(R.string.thinking_guidance_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                inputMenuToggles.forEach { toggle ->
-                    AnimatedVisibility(visible = toggle.isChecked) {
-                        val toggleTitle =
-                            if (toggle.titleRes != 0) stringResource(toggle.titleRes)
-                            else toggle.title.orEmpty()
-                        Icon(
-                            imageVector = Icons.Outlined.Hub,
-                            contentDescription = toggleTitle,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-                AnimatedVisibility(visible = permissionLevel == PermissionLevel.ALLOW) {
-                    Icon(
-                        imageVector = Icons.Rounded.Security,
-                        contentDescription = stringResource(R.string.auto_approve_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = isAutoReadEnabled) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
-                        contentDescription = stringResource(R.string.auto_read_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = !enableTools) {
-                    Icon(
-                        imageVector = Icons.Outlined.Block,
-                        contentDescription = stringResource(R.string.tools_disabled),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = disableStreamOutput) {
-                    Icon(
-                        imageVector = Icons.Outlined.Block,
-                        contentDescription = stringResource(R.string.disable_stream_output),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = disableUserPreferenceDescription) {
-                    Icon(
-                        imageVector = Icons.Outlined.Block,
-                        contentDescription =
-                                stringResource(R.string.disable_user_preference_description),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = disableLatexDescription) {
-                    Icon(
-                        imageVector = Icons.Outlined.Block,
-                        contentDescription = stringResource(R.string.disable_latex_description),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                AnimatedVisibility(visible = disableStatusTags) {
-                    Icon(
-                        imageVector = Icons.Outlined.Block,
-                        contentDescription = stringResource(R.string.disable_status_tags),
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
- 
-                AnimatedVisibility(visible = enableMaxContextMode) {
-                    Icon(
-                        imageVector = Icons.Rounded.Whatshot,
-                        contentDescription = stringResource(R.string.max_mode_title),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                 IconButton(onClick = { showMenu = !showMenu }, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = Icons.Outlined.Tune,
-                        contentDescription = stringResource(R.string.settings_options),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp).scale(iconScale)
-                    )
-                }
-            }
+            Icon(
+                imageVector = Icons.Outlined.Tune,
+                contentDescription = stringResource(R.string.settings_options),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp).scale(iconScale)
+            )
         }
 
         if (showMenu) {

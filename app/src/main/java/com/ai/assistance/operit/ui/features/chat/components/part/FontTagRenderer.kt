@@ -1,11 +1,6 @@
 package com.ai.assistance.operit.ui.features.chat.components.part
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -14,7 +9,6 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object FontTagRenderer {
@@ -43,21 +37,12 @@ object FontTagRenderer {
             textDecoration = decoration ?: base.textDecoration
         )
 
-        val paddingModifier = if (bgColor != Color.Transparent) {
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 2.dp)
-                .background(bgColor.copy(alpha = 0.18f), shape = RoundedCornerShape(6.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-        } else {
-            Modifier.fillMaxWidth().padding(vertical = 2.dp)
-        }
-
-        Text(
+        CanvasFontTextBlock(
             text = innerText,
-            color = fontColor,
             style = resolvedStyle,
-            modifier = modifier.then(paddingModifier)
+            textColor = fontColor,
+            backgroundColor = bgColor,
+            modifier = modifier,
         )
     }
 

@@ -2,12 +2,10 @@ package com.ai.assistance.operit.ui.features.chat.components.style.cursor
 
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
+import com.ai.assistance.operit.ui.features.chat.components.ChatMessageHeightMemory
 import com.ai.assistance.operit.ui.features.chat.components.rememberRevisableTextStream
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.features.chat.components.part.ThinkToolsXmlNodeGrouper
@@ -31,8 +30,8 @@ import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.ToolCollapseMode
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
 import com.ai.assistance.operit.ui.theme.ProvideAiMarkdownTextLayoutSettings
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A composable function for rendering AI response messages in a Cursor IDE style. Supports text
@@ -47,7 +46,8 @@ fun AiMessageComposable(
     textColor: Color,
     onLinkClick: ((String) -> Unit)? = null,
     overrideStream: Stream<String>? = null,
-    enableDialogs: Boolean = true  // 新增参数：是否启用弹窗功能，默认启用
+    heightMemory: ChatMessageHeightMemory? = null,
+    enableDialogs: Boolean = true,  // 新增参数：是否启用弹窗功能，默认启用
 ) {
     val context = LocalContext.current
     val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
@@ -83,21 +83,6 @@ fun AiMessageComposable(
             toolCollapseMode = toolCollapseMode
         )
     }
-
-    // val recompositionCounter = remember(message.timestamp) { AtomicInteger(0) }
-    // SideEffect {
-    //     val count = recompositionCounter.incrementAndGet()
-    //     val streamObj = overrideStream ?: message.contentStream
-    //     val hasStream = streamObj != null
-    //     val messageHash = System.identityHashCode(message)
-    //     val streamHash = streamObj?.let { System.identityHashCode(it) }
-    //     val contentLen = message.content.length
-    //     Log.d(
-    //         "AiMessageComposable",
-    //         "recompose#$count ts=${message.timestamp} msgHash=$messageHash contentLen=$contentLen " +
-    //             "hasStream=$hasStream streamHash=${streamHash ?: "null"} enableDialogs=$enableDialogs"
-    //     )
-    // }
     val rememberedOnLinkClick = remember(context, onLinkClick, enableDialogs) {
         onLinkClick ?: { url ->
             // 如果启用了弹窗，显示链接预览；否则使用系统浏览器打开
@@ -117,9 +102,16 @@ fun AiMessageComposable(
         }
     }
 
-    // 移除Card背景，使用直接的Column布局
     ProvideAiMarkdownTextLayoutSettings {
-        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .onSizeChanged { size ->
+                        heightMemory?.updateMeasured(message.timestamp, size.height)
+                    }
+        ) {
         // 构建标题 - 分左右两部分显示
         Row(
             modifier = Modifier
@@ -186,7 +178,7 @@ fun AiMessageComposable(
                     nodeGrouper = nodeGrouper,
                     enableDialogs = enableDialogs,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    state = rendererState
+                    state = rendererState,
                 )
             } else {
                 // 对于已完成的静态消息，使用新的字符串渲染器以提高性能
@@ -200,7 +192,7 @@ fun AiMessageComposable(
                     nodeGrouper = nodeGrouper,
                     enableDialogs = enableDialogs,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    state = rendererState
+                    state = rendererState,
                 )
             }
         }

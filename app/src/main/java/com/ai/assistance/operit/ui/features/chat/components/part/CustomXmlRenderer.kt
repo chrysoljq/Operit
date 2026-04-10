@@ -302,36 +302,23 @@ class CustomXmlRenderer(
 
         var expanded by remember { mutableStateOf(false) }  // 默认收起
 
+        val rotation by
+            animateFloatAsState(
+                targetValue = if (expanded) 90f else 0f,
+                animationSpec = tween(durationMillis = 300),
+                label = "arrowRotation"
+            )
+
         Column(modifier = modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 4.dp)) {
-            Row(
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        expanded = !expanded
-                    },
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = Alignment.CenterVertically
-            ) {
-                val rotation by
-                        animateFloatAsState(
-                                targetValue = if (expanded) 90f else 0f,
-                                animationSpec = tween(durationMillis = 300),
-                                label = "arrowRotation"
-                        )
-
-                Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
-                )
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Text(
-                        text = stringResource(id = R.string.search_sources),  // 需要添加字符串资源
-                        style = MaterialTheme.typography.labelMedium,
-                        color = textColor.copy(alpha = 0.7f)
-                )
-            }
+            CanvasExpandableHeaderRow(
+                title = stringResource(id = R.string.search_sources),
+                semanticDescription =
+                    if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
+                expanded = expanded,
+                titleColor = textColor.copy(alpha = 0.7f),
+                rotationDegrees = rotation,
+                onClick = { expanded = !expanded },
+            )
 
             AnimatedVisibility(
                     visible = expanded,
@@ -373,7 +360,7 @@ class CustomXmlRenderer(
         // 这样用户取消后（最终消息 contentStream = null）会自动按完成态折叠。
         val isThinkingInProgress = (xmlStream != null) && !isXmlFullyClosed(content)
         val thinkingTitleBaseColor = textColor.copy(alpha = 0.7f)
-        val thinkingTitleModifier =
+        val thinkingTitleShimmerShiftPx =
             if (isThinkingInProgress) {
                 val titleHighlightTransition =
                     rememberInfiniteTransition(label = "thinkingTitleHighlight")
@@ -392,26 +379,9 @@ class CustomXmlRenderer(
                             ),
                         label = "thinkingTitleHighlightShift"
                     )
-                val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
-                Modifier.graphicsLayer(alpha = 0.99f).drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush =
-                            Brush.linearGradient(
-                                colors =
-                                    listOf(
-                                        thinkingTitleBaseColor.copy(alpha = 0.35f),
-                                        highlightColor,
-                                        thinkingTitleBaseColor.copy(alpha = 0.35f)
-                                    ),
-                                start = Offset(highlightShift - 140f, 0f),
-                                end = Offset(highlightShift + 140f, size.height)
-                            ),
-                        blendMode = BlendMode.SrcAtop
-                    )
-                }
+                highlightShift
             } else {
-                Modifier
+                null
             }
 
         var expanded by remember { mutableStateOf(false) }
@@ -520,47 +490,35 @@ class CustomXmlRenderer(
                         }
                     }
             ) {
-                Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            // 用户手动交互时始终保留动画
-                            skipCollapseAnimationOnce = false
-                            val newExpandedValue = !expanded
-                            if (newExpandedValue) {
-                                thinkExpandSession += 1
-                            }
-                            expanded = newExpandedValue
-                            if (isThinkingInProgress) {
-                                expandThinkingProcess = newExpandedValue
-                            }
-                        },
-                        horizontalArrangement = Arrangement.Start,
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val rotation by
-                            animateFloatAsState(
-                                    targetValue = if (expanded) 90f else 0f,
-                                    animationSpec =
-                                        if (skipCollapseAnimationOnce && !expanded) snap()
-                                        else tween(durationMillis = 300),
-                                    label = "arrowRotation"
-                            )
-
-                    Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
+                val rotation by
+                    animateFloatAsState(
+                        targetValue = if (expanded) 90f else 0f,
+                        animationSpec =
+                            if (skipCollapseAnimationOnce && !expanded) snap()
+                            else tween(durationMillis = 300),
+                        label = "arrowRotation"
                     )
 
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Text(
-                            text = stringResource(id = R.string.thinking_process),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = thinkingTitleBaseColor,
-                            modifier = thinkingTitleModifier
-                    )
-                }
+                CanvasExpandableHeaderRow(
+                    title = stringResource(id = R.string.thinking_process),
+                    semanticDescription =
+                        if (expanded) stringResource(R.string.common_collapse) else stringResource(R.string.common_expand),
+                    expanded = expanded,
+                    titleColor = thinkingTitleBaseColor,
+                    rotationDegrees = rotation,
+                    shimmerShiftPx = thinkingTitleShimmerShiftPx,
+                    onClick = {
+                        skipCollapseAnimationOnce = false
+                        val newExpandedValue = !expanded
+                        if (newExpandedValue) {
+                            thinkExpandSession += 1
+                        }
+                        expanded = newExpandedValue
+                        if (isThinkingInProgress) {
+                            expandThinkingProcess = newExpandedValue
+                        }
+                    },
+                )
 
                 AnimatedVisibility(
                     visibleState = thinkVisibilityState,
@@ -594,30 +552,10 @@ class CustomXmlRenderer(
                                         )
                                         .heightIn(max = 300.dp)
                             ) {
-                                Box(
-                                    modifier =
-                                        Modifier.matchParentSize()
-                                            .padding(start = 10.dp, top = 1.dp, bottom = 1.dp),
-                                    contentAlignment = Alignment.CenterStart
-                                ) {
-                                    Box(
-                                        modifier =
-                                            Modifier.fillMaxHeight()
-                                                .width(1.dp)
-                                                .background(
-                                                    brush =
-                                                        Brush.verticalGradient(
-                                                            colorStops =
-                                                                arrayOf(
-                                                                    0f to Color.Transparent,
-                                                                    0.16f to hierarchyLineColor,
-                                                                    0.84f to hierarchyLineColor,
-                                                                    1f to Color.Transparent
-                                                                )
-                                                        )
-                                                )
-                                    )
-                                }
+                                CanvasIndentedGuide(
+                                    modifier = Modifier.matchParentSize(),
+                                    lineColor = hierarchyLineColor,
+                                )
 
                                 Box(
                                     modifier =
@@ -979,7 +917,7 @@ class CustomXmlRenderer(
             WarningStatusDisplay(
                 summaryText = stringResource(R.string.status_warning_ai_error_summary),
                 detailText = statusContent,
-                modifier = modifier
+                modifier = modifier,
             )
             return
         }
@@ -1001,25 +939,18 @@ class CustomXmlRenderer(
                     else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                 }
 
-        Card(
-                modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = bgColor),
-                border = BorderStroke(width = 1.dp, color = borderColor),
-                shape = RoundedCornerShape(8.dp)
-        ) {
-            Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color =
-                            when (statusType) {
-                                "completion", "complete" -> MaterialTheme.colorScheme.primary
-                                "wait_for_user_need" -> MaterialTheme.colorScheme.tertiary
-                                else -> textColor
-                            },
-                    modifier = Modifier.padding(12.dp),
-                    maxLines = Int.MAX_VALUE
-            )
-        }
+        CanvasStatusCard(
+            text = statusText,
+            textColor =
+                when (statusType) {
+                    "completion", "complete" -> MaterialTheme.colorScheme.primary
+                    "wait_for_user_need" -> MaterialTheme.colorScheme.tertiary
+                    else -> textColor
+                },
+            backgroundColor = bgColor,
+            borderColor = borderColor,
+            modifier = modifier,
+        )
     }
 
     @Composable
@@ -1040,38 +971,16 @@ class CustomXmlRenderer(
             )
         }
 
-        Row(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = canOpenDetail) {
-                        showDetailDialog = true
-                    }
-                    .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .width(2.dp)
-                        .height(16.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(999.dp)
-                        )
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                text = summaryText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error.copy(alpha = 0.9f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        CanvasWarningStatusRow(
+            summaryText = summaryText,
+            modifier = modifier,
+            onClick =
+                if (canOpenDetail) {
+                    { showDetailDialog = true }
+                } else {
+                    null
+                },
+        )
     }
 
     /** 渲染 <html> 标签内容 - 使用WebView渲染，支持完整的HTML/CSS功能 */

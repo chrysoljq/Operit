@@ -4,6 +4,7 @@ runtime_helper/build/
 
 # Generated jars in this example tree.
 *.jar
+!resources/apktool/*.jar
 
 # Common local IDE noise.
 *.iml
