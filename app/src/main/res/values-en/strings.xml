@@ -4029,9 +4029,10 @@
     <string name="current_delay_format">Current: %dms/character</string>
     <string name="remove_punctuation">Remove End Punctuation</string>
     <string name="remove_punctuation_desc">Remove periods, question marks, and exclamation marks at the end of sentences</string>
-    <string name="disable_action_emoticons">Disable Action Emoticons</string>
-    <string name="disable_action_emoticons_desc">Prevent AI from using (action emoticon) format</string>
-    <string name="action_emoticons_notice">Note: This setting is only controlled by additional prompts, which can only reduce frequency and cannot guarantee 100% prevention. It is recommended to provide targeted instructions in prompt configuration</string>
+    <string name="waifu_custom_prompt">Waifu Prompt</string>
+    <string name="waifu_custom_prompt_desc">Customize extra prompts for Waifu mode.</string>
+    <string name="waifu_custom_prompt_placeholder">For example: Keep replies short and natural, no cutesy tone, no filler words, no action descriptions.</string>
+    <string name="waifu_custom_prompt_tip">This content is appended to the system prompt as an extra Waifu-mode rule.</string>
     <string name="enable_emoticons">Enable Emoticons</string>
     <string name="emoticons_desc">Insert emotional state tags in conversations to enhance expression</string>
     <string name="available_emoticons">Available emoticons: crying, like_you, happy, surprised, miss_you, speechless, angry, confused, sad</string>
@@ -4043,7 +4044,7 @@
     <string name="appearance_prompt_placeholder">e.g.: long hair, purple eyes, sweater vest...</string>
     <string name="appearance_prompt_tip">Tip: Use English keywords to describe appearance features, separate multiple keywords with commas</string>
     <string name="feature_explanation">Feature Explanation</string>
-    <string name="waifu_mode_explanation">• Normal Mode: AI responses sent all at once\n• Waifu Mode: AI responses split by sentences, each in separate bubbles\n• Smart Delay: Calculate delay time based on sentence length\n• Auto Cleanup: Remove status tags, show only plain text\n• Optional Features: Remove end punctuation, disable action emoticons, enable emoticons\n• Use Case: Simulate more natural conversation rhythm\n• Note: This mode may not adapt well to tool calls</string>
+    <string name="waifu_mode_explanation">• Normal Mode: AI responses sent all at once\n• Waifu Mode: AI responses split by sentences, each in separate bubbles\n• Smart Delay: Calculate delay time based on sentence length\n• Auto Cleanup: Remove status tags, show only plain text\n• Optional Features: Remove end punctuation, edit Waifu prompt, enable emoticons\n• Use Case: Simulate more natural conversation rhythm\n• Note: This mode may not adapt well to tool calls</string>
     <string name="settings_saved_message">Settings saved</string>
 
     <string name="settings_section_account">Account</string>

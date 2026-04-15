@@ -33,18 +33,18 @@ class WaifuPreferences private constructor(private val context: Context) {
         val ENABLE_WAIFU_MODE = booleanPreferencesKey("enable_waifu_mode")
         val WAIFU_CHAR_DELAY = intPreferencesKey("waifu_char_delay") // 每字符延迟（毫秒）
         val WAIFU_REMOVE_PUNCTUATION = booleanPreferencesKey("waifu_remove_punctuation") // 是否移除标点符号
-        val WAIFU_DISABLE_ACTIONS = booleanPreferencesKey("waifu_disable_actions") // 是否禁止动作表情
         val WAIFU_ENABLE_EMOTICONS = booleanPreferencesKey("waifu_enable_emoticons") // 是否启用表情包
         val WAIFU_ENABLE_SELFIE = booleanPreferencesKey("waifu_enable_selfie") // 是否启用自拍功能
+        val WAIFU_CUSTOM_PROMPT = stringPreferencesKey("waifu_custom_prompt") // Waifu模式额外提示词
         val WAIFU_SELFIE_PROMPT = stringPreferencesKey("waifu_selfie_prompt") // 自拍功能的外貌提示词
 
         // Default value for Waifu Mode
         const val DEFAULT_ENABLE_WAIFU_MODE = false
         const val DEFAULT_WAIFU_CHAR_DELAY = 500 // 500ms per character (2 chars per second)
         const val DEFAULT_WAIFU_REMOVE_PUNCTUATION = false // 默认保留标点符号
-        const val DEFAULT_WAIFU_DISABLE_ACTIONS = false // 默认允许动作表情
         const val DEFAULT_WAIFU_ENABLE_EMOTICONS = false // 默认不启用表情包
         const val DEFAULT_WAIFU_ENABLE_SELFIE = false // 默认不启用自拍功能
+        const val DEFAULT_WAIFU_CUSTOM_PROMPT = "你必须遵守：禁止使用动作表情，禁止描述动作表情，只允许使用纯文本进行对话。" // 默认Waifu附加提示词
         const val DEFAULT_WAIFU_SELFIE_PROMPT = "kipfel vrchat, long hair, Matcha color hair, purple eyes, sweater vest, black skirt, black necktie, collared shirt, long sleeves, black headwear, beanie, pleated skirt, hair bun, white shirt, hair ribbon, hairclip, hair between eyes, black footwear, blush, hair ornament, cat hat, very long hair, sweater, animal ear headwear, bag, bandaid on leg, socks" // 默认外貌提示词
     }
 
@@ -64,11 +64,6 @@ class WaifuPreferences private constructor(private val context: Context) {
             preferences[WAIFU_REMOVE_PUNCTUATION] ?: DEFAULT_WAIFU_REMOVE_PUNCTUATION
         }
 
-    val waifuDisableActionsFlow: Flow<Boolean> =
-        context.waifuDataStore.data.map { preferences ->
-            preferences[WAIFU_DISABLE_ACTIONS] ?: DEFAULT_WAIFU_DISABLE_ACTIONS
-        }
-
     val waifuEnableEmoticonsFlow: Flow<Boolean> =
         context.waifuDataStore.data.map { preferences ->
             preferences[WAIFU_ENABLE_EMOTICONS] ?: DEFAULT_WAIFU_ENABLE_EMOTICONS
@@ -77,6 +72,11 @@ class WaifuPreferences private constructor(private val context: Context) {
     val waifuEnableSelfieFlow: Flow<Boolean> =
         context.waifuDataStore.data.map { preferences ->
             preferences[WAIFU_ENABLE_SELFIE] ?: DEFAULT_WAIFU_ENABLE_SELFIE
+        }
+
+    val waifuCustomPromptFlow: Flow<String> =
+        context.waifuDataStore.data.map { preferences ->
+            preferences[WAIFU_CUSTOM_PROMPT] ?: DEFAULT_WAIFU_CUSTOM_PROMPT
         }
 
     val waifuSelfiePromptFlow: Flow<String> =
@@ -103,12 +103,6 @@ class WaifuPreferences private constructor(private val context: Context) {
         }
     }
 
-    suspend fun saveWaifuDisableActions(disableActions: Boolean) {
-        context.waifuDataStore.edit { preferences ->
-            preferences[WAIFU_DISABLE_ACTIONS] = disableActions
-        }
-    }
-
     suspend fun saveWaifuEnableEmoticons(enableEmoticons: Boolean) {
         context.waifuDataStore.edit { preferences ->
             preferences[WAIFU_ENABLE_EMOTICONS] = enableEmoticons
@@ -118,6 +112,12 @@ class WaifuPreferences private constructor(private val context: Context) {
     suspend fun saveWaifuEnableSelfie(enableSelfie: Boolean) {
         context.waifuDataStore.edit { preferences ->
             preferences[WAIFU_ENABLE_SELFIE] = enableSelfie
+        }
+    }
+
+    suspend fun saveWaifuCustomPrompt(prompt: String) {
+        context.waifuDataStore.edit { preferences ->
+            preferences[WAIFU_CUSTOM_PROMPT] = prompt
         }
     }
 
@@ -139,7 +139,6 @@ class WaifuPreferences private constructor(private val context: Context) {
         return listOf(
             ENABLE_WAIFU_MODE,
             WAIFU_REMOVE_PUNCTUATION,
-            WAIFU_DISABLE_ACTIONS,
             WAIFU_ENABLE_EMOTICONS,
             WAIFU_ENABLE_SELFIE
         )
@@ -153,6 +152,7 @@ class WaifuPreferences private constructor(private val context: Context) {
 
     private fun getAllStringWaifuKeys(): List<Preferences.Key<String>> {
         return listOf(
+            WAIFU_CUSTOM_PROMPT,
             WAIFU_SELFIE_PROMPT
         )
     }

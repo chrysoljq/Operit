@@ -3534,9 +3534,10 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="current_delay_format">Atual: %dms/caracteres</string>
     <string name="remove_punctuation">Remover pontuação final</string>
     <string name="remove_punctuation_desc">Remova pontos finais, pontos de interrogação e exclamação no final das frases</string>
-    <string name="disable_action_emoticons">Não são permitidos emoticons</string>
-    <string name="disable_action_emoticons_desc">IA proibida de usar o formato (emoticon de ação)</string>
-    <string name="action_emoticons_notice">Nota: Esta configuração é controlada apenas por palavras de prompt adicionais. Só pode reduzir a frequência e não pode garantir 100% de proibição. Recomenda-se fornecer instruções específicas na configuração do prompt word.</string>
+    <string name="waifu_custom_prompt">Prompt do modo Waifu</string>
+    <string name="waifu_custom_prompt_desc">Personalize prompts extras do modo Waifu.</string>
+    <string name="waifu_custom_prompt_placeholder">Exemplo: respostas curtas e naturais, sem tom fofo, sem muletas de linguagem, sem descrições de ação.</string>
+    <string name="waifu_custom_prompt_tip">Esse conteúdo será anexado ao prompt do sistema como regra extra do modo Waifu.</string>
     <string name="enable_emoticons">Habilitar emoticons</string>
     <string name="emoticons_desc">Insira tags de estado emocional em conversas para melhorar a expressão</string>
     <string name="available_emoticons">Expressões disponíveis: chorando, like_you, feliz, surpreso, sinto sua falta, sem palavras, irritado, confuso, triste</string>
@@ -3548,7 +3549,7 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="appearance_prompt_placeholder">Por exemplo: cabelo comprido, olhos roxos, colete suéter...</string>
     <string name="appearance_prompt_tip">Dica: Use palavras-chave em inglês para descrever características físicas. Separe várias palavras-chave com vírgulas.</string>
     <string name="feature_explanation">Descrição da função</string>
-    <string name="waifu_mode_explanation">• Modo normal: as respostas de IA são enviadas todas de uma vez\n• Modo Waifu: as respostas de IA são divididas por frases, cada frase tem um balão independente\n• Atraso inteligente: calcula o tempo de atraso com base no comprimento da frase\n• Limpeza automática: remove rótulos de status, exibe apenas texto simples\n• Funções opcionais: remover pontuação no final das frases, desativar emoticons de ação, ativar emoticons\n• Cenários aplicáveis: simular um ritmo de conversa mais natural\n• Observação: este modo pode não ser bem adaptado à ferramenta chamadas</string>
+    <string name="waifu_mode_explanation">• Modo normal: as respostas de IA são enviadas todas de uma vez\n• Modo Waifu: as respostas de IA são divididas por frases, cada frase tem um balão independente\n• Atraso inteligente: calcula o tempo de atraso com base no comprimento da frase\n• Limpeza automática: remove rótulos de status, exibe apenas texto simples\n• Funções opcionais: remover pontuação no final das frases, editar o prompt do modo Waifu, ativar emoticons\n• Cenários aplicáveis: simular um ritmo de conversa mais natural\n• Observação: este modo pode não ser bem adaptado à ferramenta chamadas</string>
     <string name="settings_saved_message">Configurações salvas</string>
     <string name="settings_section_account">conta</string>
     <string name="github_account_not_logged_in">Não logado</string>

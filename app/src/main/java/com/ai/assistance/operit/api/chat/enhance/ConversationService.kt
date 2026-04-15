@@ -833,16 +833,12 @@ class ConversationService(
      */
     private suspend fun buildWaifuRulesText(): String {
         val activePrompt = activePromptManager.getActivePrompt()
-        val waifuDisableActions = waifuPreferences.waifuDisableActionsFlow.first()
         val waifuEnableEmoticons = waifuPreferences.waifuEnableEmoticonsFlow.first()
         val waifuEnableSelfie = waifuPreferences.waifuEnableSelfieFlow.first()
+        val waifuCustomPrompt = waifuPreferences.waifuCustomPromptFlow.first()
         val waifuSelfiePrompt = waifuPreferences.waifuSelfiePromptFlow.first()
         val waifuRules = mutableListOf<String>()
-        
-        if (waifuDisableActions) {
-            waifuRules.add(FunctionalPrompts.waifuDisableActionsRule())
-        }
-        
+
         if (waifuEnableEmoticons) {
             // 动态获取当前可用的表情分组
             val availableCategories = try {
@@ -865,7 +861,11 @@ class ConversationService(
         if (waifuEnableSelfie) {
             waifuRules.add(FunctionalPrompts.waifuSelfieRule(waifuSelfiePrompt))
         }
-        
+
+        if (waifuCustomPrompt.isNotBlank()) {
+            waifuRules.add(FunctionalPrompts.waifuCustomPromptRule(waifuCustomPrompt))
+        }
+
         return if (waifuRules.isNotEmpty()) {
             buildString {
                 append("\n\n[Extra Rules]")

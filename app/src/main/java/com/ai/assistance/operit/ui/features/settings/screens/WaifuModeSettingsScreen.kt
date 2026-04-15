@@ -62,9 +62,9 @@ fun WaifuModeSettingsScreen(
     val isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.collectAsState(initial = false).value
     val charDelay = waifuPreferences.waifuCharDelayFlow.collectAsState(initial = 500).value
     val removePunctuation = waifuPreferences.waifuRemovePunctuationFlow.collectAsState(initial = false).value
-    val disableActions = waifuPreferences.waifuDisableActionsFlow.collectAsState(initial = false).value
     val enableEmoticons = waifuPreferences.waifuEnableEmoticonsFlow.collectAsState(initial = false).value
     val enableSelfie = waifuPreferences.waifuEnableSelfieFlow.collectAsState(initial = false).value
+    val waifuCustomPrompt = waifuPreferences.waifuCustomPromptFlow.collectAsState(initial = "").value
     val selfiePrompt = waifuPreferences.waifuSelfiePromptFlow.collectAsState(initial = "").value
     
     // 辅助保存函数，同时保存到角色卡
@@ -326,50 +326,60 @@ fun WaifuModeSettingsScreen(
                 }
             }
 
-            // 动作表情配置（仅在waifu模式启用时显示）
+            // Waifu提示词配置（仅在waifu模式启用时显示）
             if (isWaifuModeEnabled) {
+                var customPromptText by remember { mutableStateOf(waifuCustomPrompt) }
+
+                LaunchedEffect(waifuCustomPrompt) {
+                    if (customPromptText != waifuCustomPrompt) {
+                        customPromptText = waifuCustomPrompt
+                    }
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.disable_action_emoticons),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = stringResource(R.string.disable_action_emoticons_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = stringResource(R.string.action_emoticons_notice),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                )
-                            }
-                            
-                            Switch(
-                                checked = disableActions,
-                                onCheckedChange = { enabled ->
-                                    saveSettings {
-                                        waifuPreferences.saveWaifuDisableActions(enabled)
-                                    }
+                        Text(
+                            text = stringResource(R.string.waifu_custom_prompt),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.waifu_custom_prompt_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = customPromptText,
+                            onValueChange = { newText ->
+                                customPromptText = newText
+                                saveSettings {
+                                    waifuPreferences.saveWaifuCustomPrompt(newText)
                                 }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.waifu_custom_prompt)) },
+                            placeholder = { Text(stringResource(R.string.waifu_custom_prompt_placeholder)) },
+                            minLines = 4,
+                            maxLines = 8,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
                             )
-                        }
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.waifu_custom_prompt_tip),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
                     }
                 }
             }

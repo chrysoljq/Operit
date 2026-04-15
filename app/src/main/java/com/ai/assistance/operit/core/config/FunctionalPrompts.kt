@@ -245,16 +245,16 @@ object FunctionalPrompts {
         return if (useEnglish) "Please summarize the conversation as instructed." else "请按照要求总结对话内容"
     }
 
-    fun waifuDisableActionsRule(): String {
-        return "**你必须遵守:禁止使用动作表情，禁止描述动作表情，只允许使用纯文本进行对话，禁止使用括号将动作表情包裹起来，禁止输出括号'()',但是会使用更多'呐，嘛~，诶？，嗯…，唔…，昂？，哦'等语气词**"
-    }
-
     fun waifuEmotionRule(emotionListText: String): String {
         return "**表达情绪规则：你必须在每个句末判断句中包含的情绪或增强语气，并使用<emotion>标签在句末插入情绪状态。后续会根据情绪生成表情包。可用情绪包括：$emotionListText。例如：<emotion>happy</emotion>、<emotion>miss_you</emotion>等。如果没有这些情绪则不插入。**"
     }
 
     fun waifuNoCustomEmojiRule(): String {
         return "**当前没有可用的自定义表情，请不要使用<emotion>标签。**"
+    }
+
+    fun waifuCustomPromptRule(customPrompt: String): String {
+        return customPrompt.trim()
     }
 
     fun waifuSelfieRule(waifuSelfiePrompt: String): String {

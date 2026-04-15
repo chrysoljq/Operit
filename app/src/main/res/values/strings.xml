@@ -3907,9 +3907,10 @@
     <string name="current_delay_format">当前：%dms/字符</string>
     <string name="remove_punctuation">移除句末标点符号</string>
     <string name="remove_punctuation_desc">移除句子末尾的句号、问号、感叹号</string>
-    <string name="disable_action_emoticons">禁止动作表情</string>
-    <string name="disable_action_emoticons_desc">禁止AI使用（动作表情）格式</string>
-    <string name="action_emoticons_notice">注意：此项设置仅由额外提示词控制，只能减少频率并不能保证百分百禁止，建议在提示词配置中进行针对性说明</string>
+    <string name="waifu_custom_prompt">Waifu模式提示词</string>
+    <string name="waifu_custom_prompt_desc">自定义 Waifu 模式附加提示词。</string>
+    <string name="waifu_custom_prompt_placeholder">例如：回复简短自然，不要卖萌，不要加语气词，不要写动作描写。</string>
+    <string name="waifu_custom_prompt_tip">这段内容会作为 Waifu 模式的额外规则拼接到系统提示词中。</string>
     <string name="enable_emoticons">启用表情包</string>
     <string name="emoticons_desc">在对话中插入情绪状态标签，增强表达效果</string>
     <string name="available_emoticons">可用表情：crying, like_you, happy, surprised, miss_you, speechless, angry, confused, sad</string>
@@ -3921,7 +3922,7 @@
     <string name="appearance_prompt_placeholder">例如：long hair, purple eyes, sweater vest...</string>
     <string name="appearance_prompt_tip">提示：使用英文关键词描述外貌特征，多个关键词用逗号分隔</string>
     <string name="feature_explanation">功能说明</string>
-    <string name="waifu_mode_explanation">• 普通模式：AI回复一次性全部发送\n• Waifu模式：AI回复按句子分割，每句独立气泡\n• 智能延迟：根据句子长度计算延迟时间\n• 自动清理：移除状态标签，只显示纯文本\n• 可选功能：移除句末标点、禁止动作表情、启用表情包\n• 适用场景：模拟更自然的对话节奏\n• 注意：此模式对工具调用的适配可能不佳</string>
+    <string name="waifu_mode_explanation">• 普通模式：AI回复一次性全部发送\n• Waifu模式：AI回复按句子分割，每句独立气泡\n• 智能延迟：根据句子长度计算延迟时间\n• 自动清理：移除状态标签，只显示纯文本\n• 可选功能：移除句末标点、编辑 Waifu 提示词、启用表情包\n• 适用场景：模拟更自然的对话节奏\n• 注意：此模式对工具调用的适配可能不佳</string>
     <string name="settings_saved_message">设置已保存</string>
 
     <string name="settings_section_account">账号</string>
