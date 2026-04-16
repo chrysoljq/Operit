@@ -185,25 +185,6 @@ fun AppContent(
     // 包含其内部状态的字符串，从而实现通用且可靠的状态缓存。
     val currentScreenKey = currentScreen.toString()
 
-    // 这是一个对前一个屏幕的引用。我们用它来识别当向后导航时要从缓存中删除哪个屏幕。
-    // 在没有 `by` 委托的情况下使用 `mutableStateOf`，可以让我们在 `LaunchedEffect` 内部读写它，而不会导致父 Composable 重组。
-    val previousScreenState = remember { mutableStateOf<Screen?>(null) }
-
-    LaunchedEffect(currentScreen, isNavigatingBack) {
-        val previousScreen = previousScreenState.value
-        // 当 `isNavigatingBack` 为 true 时，表示 `currentScreen` 变为活动状态是因为用户向后导航了。
-        // 他们导航 *来自* 的屏幕是 `previousScreen`。我们应该从缓存中删除这个现在被丢弃的屏幕。
-        if (isNavigatingBack && previousScreen != null) {
-            val keyToRemove = previousScreen.toString()
-            // 作为保障，确保我们不会意外地删除当前屏幕。
-            if (keyToRemove != currentScreenKey) {
-                screenCache.remove(keyToRemove)
-            }
-        }
-        // 为下一次导航事件更新我们对前一个屏幕的引用。
-        previousScreenState.value = currentScreen
-    }
-
     CompositionLocalProvider(
         LocalAppBarContentColor provides appBarContentColor,
     ) {
@@ -371,6 +352,7 @@ fun AppContent(
                         var lastObservedCurrentKey by remember { mutableStateOf(currentScreenKey) }
                         var lastObservedScreen by remember { mutableStateOf(currentScreen) }
                         var transitionFromKey by remember { mutableStateOf<String?>(null) }
+                        var pendingRemovalKey by remember { mutableStateOf<String?>(null) }
                         var isTransitioning by remember { mutableStateOf(false) }
                         var transitionAllowsCrossfade by remember { mutableStateOf(true) }
 
@@ -398,14 +380,20 @@ fun AppContent(
                             val canCrossfade =
                                 lastObservedScreen.participatesInCrossfadeTransition &&
                                     currentScreen.participatesInCrossfadeTransition
+                            val removalKey = if (isNavigatingBack) fromKey else null
 
                             transitionAllowsCrossfade = canCrossfade
                             transitionFromKey = if (canCrossfade) fromKey else null
+                            pendingRemovalKey = removalKey
                             isTransitioning = canCrossfade
                             lastObservedCurrentKey = currentScreenKey
                             lastObservedScreen = currentScreen
 
                             if (!canCrossfade) {
+                                if (removalKey != null && removalKey != currentScreenKey) {
+                                    screenCache.remove(removalKey)
+                                }
+                                pendingRemovalKey = null
                                 return@LaunchedEffect
                             }
 
@@ -424,6 +412,12 @@ fun AppContent(
                             isTransitioning = false
                             transitionFromKey = null
                             transitionAllowsCrossfade = true
+                            pendingRemovalKey?.let { keyToRemove ->
+                                if (keyToRemove != currentScreenKey) {
+                                    screenCache.remove(keyToRemove)
+                                }
+                            }
+                            pendingRemovalKey = null
                         }
 
                         val renderKeys = buildList {

@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.fletchmckee.liquid.LiquidState
 import io.github.fletchmckee.liquid.liquid
-import io.github.fletchmckee.liquid.liquefiable
 
 val LocalWaterGlassState = compositionLocalOf<LiquidState?> { null }
 
@@ -61,7 +60,6 @@ fun Modifier.waterGlass(
             spotColor = shadowColor,
         )
         .border(width = borderWidth, color = borderColor, shape = shape)
-        .liquefiable(liquidState)
         .liquid(liquidState) {
             this.shape = shape
             this.frost = if (isLightGlass) 6.dp else 8.dp
