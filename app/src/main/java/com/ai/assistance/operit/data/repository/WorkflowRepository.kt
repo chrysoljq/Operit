@@ -647,6 +647,35 @@ class WorkflowRepository(private val context: Context) {
             }
         }
     }
+
+    suspend fun triggerWorkflowsByColdStartAppOpen(
+        extras: Map<String, String> = emptyMap()
+    ) = withContext(Dispatchers.IO) {
+        AppLogger.d(TAG, "Checking for cold-start app-open-triggered workflows")
+        val workflows = getAllWorkflows().getOrNull() ?: return@withContext
+        val triggerExtras =
+            buildMap {
+                put("trigger_source", "cold_start_app_open")
+                putAll(extras)
+            }
+
+        coroutineScope {
+            workflows.filter { it.enabled }.forEach { workflow ->
+                workflow.nodes.forEach { node ->
+                    if (node is TriggerNode && node.triggerType == "app_open") {
+                        AppLogger.d(
+                            TAG,
+                            "Cold-start app-open trigger matched for workflow '${workflow.name}' on node '${node.name}'. Triggering."
+                        )
+                        launch {
+                            triggerWorkflow(workflow.id, node.id, triggerExtras)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun triggerWorkflowsBySpeechEvent(text: String, isFinal: Boolean) = withContext(Dispatchers.IO) {
         val trimmed = text.trim()
         if (trimmed.isBlank()) return@withContext

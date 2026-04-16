@@ -335,6 +335,8 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                 var safeTimeoutSec = Math.max(1, Number(timeoutSec) || 1);
                 var safePreTimeoutMs = Math.max(1000, Number(preTimeoutMs) || 1000);
                 var callState = registerCallSession(callId, params);
+                var previousCallId = root.__operitCurrentCallId;
+                var previousCallRuntime = root.__operit_call_runtime_ref;
                 root.__operitCurrentCallId = callId;
 
                 function markStage(stage) {
@@ -380,7 +382,22 @@ internal fun buildExecutionRuntimeBridgeScript(): String {
                 function finalizeCall() {
                     clearExecutionTimeouts();
                     if (root.__operitCurrentCallId === callId) {
-                        root.__operitCurrentCallId = '';
+                        root.__operitCurrentCallId =
+                            typeof previousCallId === 'string' ? previousCallId : '';
+                    }
+                    if (root.__operit_call_runtime_ref === callRuntime) {
+                        if (
+                            previousCallRuntime &&
+                            typeof previousCallRuntime === 'object'
+                        ) {
+                            root.__operit_call_runtime_ref = previousCallRuntime;
+                        } else {
+                            try {
+                                delete root.__operit_call_runtime_ref;
+                            } catch (_deleteRuntimeError) {
+                                root.__operit_call_runtime_ref = null;
+                            }
+                        }
                     }
                     if (typeof root.__operitCleanupCallSession === 'function') {
                         root.__operitCleanupCallSession(callId);

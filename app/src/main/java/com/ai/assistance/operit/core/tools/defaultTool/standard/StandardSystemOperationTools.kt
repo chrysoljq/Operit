@@ -3,9 +3,12 @@ package com.ai.assistance.operit.core.tools.defaultTool.standard
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.widget.Toast
 import android.location.Geocoder
 import android.location.Location
@@ -14,6 +17,8 @@ import androidx.core.app.NotificationCompat
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AppListData
 import com.ai.assistance.operit.core.tools.AppOperationData
+import com.ai.assistance.operit.core.tools.AppUsageTimeEntry
+import com.ai.assistance.operit.core.tools.AppUsageTimeResultData
 import com.ai.assistance.operit.core.tools.LocationData
 import com.ai.assistance.operit.core.tools.NotificationData
 import com.ai.assistance.operit.core.tools.StringResultData
@@ -74,6 +79,27 @@ open class StandardSystemOperationTools(private val context: Context) {
         apkFile.copyTo(stagedFile, overwrite = true)
         AppLogger.d(TAG, "Staged internal apk for installer: $apkPath -> ${stagedFile.absolutePath}")
         return stagedFile
+    }
+
+    private fun hasUsageStatsAccess(): Boolean {
+        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.unsafeCheckOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    Process.myUid(),
+                    context.packageName
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                appOpsManager.checkOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    Process.myUid(),
+                    context.packageName
+                )
+            }
+
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
     open suspend fun toast(tool: AITool): ToolResult {
@@ -625,6 +651,160 @@ open class StandardSystemOperationTools(private val context: Context) {
                 success = false,
                 result = StringResultData(""),
                 error = "Error getting notifications: ${e.message}"
+            )
+        }
+    }
+
+    /** 获取应用使用时长（前台使用时间） */
+    open suspend fun getAppUsageTime(tool: AITool): ToolResult {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "App usage time is only supported on Android 5.0 and above."
+            )
+        }
+
+        val requestedPackageName =
+            tool.parameters.find { it.name == "package_name" }?.value?.trim().orEmpty()
+        val sinceHours = tool.parameters.find { it.name == "since_hours" }?.value?.toIntOrNull() ?: 24
+        val limit = tool.parameters.find { it.name == "limit" }?.value?.toIntOrNull() ?: 10
+        val includeSystemApps =
+            tool.parameters.find { it.name == "include_system_apps" }?.value?.toBoolean() ?: false
+
+        if (sinceHours <= 0) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "since_hours must be a positive integer."
+            )
+        }
+
+        if (limit <= 0) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "limit must be a positive integer."
+            )
+        }
+
+        if (!hasUsageStatsAccess()) {
+            try {
+                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "打开使用情况访问设置页面失败", e)
+            }
+
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Cannot read app usage time. This app needs Usage Access permission. Settings page opened for you."
+            )
+        }
+
+        return try {
+            val endTime = System.currentTimeMillis()
+            val startTime = endTime - sinceHours * 60L * 60L * 1000L
+            val usageStatsManager =
+                context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val rawStats =
+                usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY,
+                    startTime,
+                    endTime
+                ) ?: emptyList()
+
+            val aggregatedStats =
+                rawStats
+                    .groupBy { it.packageName.orEmpty() }
+                    .mapNotNull { (packageName, stats) ->
+                        if (packageName.isBlank()) {
+                            return@mapNotNull null
+                        }
+
+                        val totalForegroundTimeMs = stats.sumOf { it.totalTimeInForeground }
+                        if (totalForegroundTimeMs <= 0L) {
+                            return@mapNotNull null
+                        }
+
+                        val lastTimeUsed = stats.maxOfOrNull { it.lastTimeUsed } ?: 0L
+                        val applicationInfo =
+                            try {
+                                context.packageManager.getApplicationInfo(packageName, 0)
+                            } catch (_: PackageManager.NameNotFoundException) {
+                                null
+                            }
+                        val isSystemApp =
+                            applicationInfo?.let {
+                                (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                            } ?: false
+
+                        if (requestedPackageName.isBlank() && !includeSystemApps && isSystemApp) {
+                            return@mapNotNull null
+                        }
+
+                        if (requestedPackageName.isNotBlank() && requestedPackageName != packageName) {
+                            return@mapNotNull null
+                        }
+
+                        val appName =
+                            if (applicationInfo != null) {
+                                try {
+                                    applicationInfo.loadLabel(context.packageManager).toString()
+                                } catch (_: Exception) {
+                                    packageName
+                                }
+                            } else {
+                                packageName
+                            }
+
+                        AppUsageTimeEntry(
+                            packageName = packageName,
+                            appName = appName,
+                            totalForegroundTimeMs = totalForegroundTimeMs,
+                            lastTimeUsed = lastTimeUsed,
+                            isSystemApp = isSystemApp
+                        )
+                    }
+                    .sortedByDescending { it.totalForegroundTimeMs }
+
+            val limitedEntries =
+                if (requestedPackageName.isBlank()) aggregatedStats.take(limit) else aggregatedStats.take(1)
+
+            val resultData =
+                AppUsageTimeResultData(
+                    startTime = startTime,
+                    endTime = endTime,
+                    sinceHours = sinceHours,
+                    requestedPackageName = requestedPackageName.ifBlank { null },
+                    includesSystemApps = includeSystemApps,
+                    totalEntries = limitedEntries.size,
+                    entries = limitedEntries
+                )
+
+            ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
+        } catch (e: SecurityException) {
+            AppLogger.e(TAG, "读取应用使用时长时出现权限异常", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Security exception when reading app usage time: ${e.message}"
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "读取应用使用时长时出错", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Error getting app usage time: ${e.message}"
             )
         }
     }

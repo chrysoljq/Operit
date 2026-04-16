@@ -2491,6 +2491,40 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "get_app_usage_time",
+                            description = "Get foreground app usage time from Android Usage Access. If permission is missing, ask the user to grant Usage Access first.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "optional, exact app package name to query",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "since_hours",
+                                        type = "integer",
+                                        description = "optional, look back this many hours",
+                                        required = false,
+                                        default = "24"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "optional, max apps to return when package_name is not provided",
+                                        required = false,
+                                        default = "10"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_system_apps",
+                                        type = "boolean",
+                                        description = "optional, include system apps when package_name is not provided",
+                                        required = false,
+                                        default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "toast",
                             description = "Show a short toast message on the device.",
                             parametersStructured =
@@ -5106,6 +5140,40 @@ object SystemToolPromptsInternal {
                                         name = "include_ongoing",
                                         type = "boolean",
                                         description = "可选",
+                                        required = false,
+                                        default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_app_usage_time",
+                            description = "读取 Android 使用情况访问中的前台应用使用时长。若缺少权限，应先引导用户授予 Usage Access。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "可选，精确应用包名",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "since_hours",
+                                        type = "integer",
+                                        description = "可选，向前统计多少小时",
+                                        required = false,
+                                        default = "24"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "可选，不传 package_name 时最多返回多少个应用",
+                                        required = false,
+                                        default = "10"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_system_apps",
+                                        type = "boolean",
+                                        description = "可选，不传 package_name 时是否包含系统应用",
                                         required = false,
                                         default = "false"
                                     )

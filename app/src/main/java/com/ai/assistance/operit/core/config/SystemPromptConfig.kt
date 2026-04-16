@@ -306,12 +306,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           systemPrompt: String,
           customIntroPrompt: String
   ): String {
-    // Replace the default prompts with custom ones if provided and non-empty
+    // Always replace the introduction placeholder so an empty intro removes it cleanly.
     var result = systemPrompt
 
-    if (customIntroPrompt.isNotEmpty()) {
-      result = result.replace("BEGIN_SELF_INTRODUCTION_SECTION", customIntroPrompt)
-    }
+    result = result.replace("BEGIN_SELF_INTRODUCTION_SECTION", customIntroPrompt)
 
     return result
   }

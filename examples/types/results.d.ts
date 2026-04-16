@@ -316,6 +316,31 @@ export interface AppListData {
 }
 
 /**
+ * Single app usage time entry
+ */
+export interface AppUsageTimeEntry {
+    packageName: string;
+    appName: string;
+    totalForegroundTimeMs: number;
+    lastTimeUsed: number;
+    isSystemApp: boolean;
+}
+
+/**
+ * App usage time result data
+ */
+export interface AppUsageTimeResultData {
+    startTime: number;
+    endTime: number;
+    sinceHours: number;
+    requestedPackageName?: string;
+    includesSystemApps: boolean;
+    totalEntries: number;
+    entries: AppUsageTimeEntry[];
+    toString(): string;
+}
+
+/**
  * Notification data structure
  */
 export interface NotificationData {

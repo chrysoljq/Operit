@@ -316,9 +316,28 @@ private object ToolPkgMessageProcessingBridgePlugin : MessageProcessingPlugin {
                                     val intermediateDecoded =
                                         runCatching { decodeHookResult(intermediateRaw) }
                                             .getOrNull() ?: intermediateRaw
-                                    extractMessageChunks(intermediateDecoded)
-                                        .forEach { chunk ->
+                                    val intermediateChunks = extractMessageChunks(intermediateDecoded)
+                                    AppLogger.i(
+                                        TOOLPKG_LOG_TAG,
+                                        "message-processing intermediate hook=${
+                                            hook.containerPackageName
+                                        }:${hook.pluginId}:${hook.functionName} raw=${
+                                            summarizeHookValue(intermediateRaw)
+                                        } decoded=${
+                                            summarizeHookValue(intermediateDecoded)
+                                        } chunkCount=${intermediateChunks.size}"
+                                    )
+                                    intermediateChunks
+                                        .forEachIndexed { index, chunk ->
                                             if (chunk.isNotEmpty()) {
+                                                AppLogger.i(
+                                                    TOOLPKG_LOG_TAG,
+                                                    "message-processing intermediate chunk hook=${
+                                                        hook.containerPackageName
+                                                    }:${hook.pluginId}:${hook.functionName} index=$index length=${
+                                                        chunk.length
+                                                    } preview=${logPreview(chunk)}"
+                                                )
                                                 chunkQueue.trySend(chunk)
                                             }
                                         }
@@ -326,9 +345,23 @@ private object ToolPkgMessageProcessingBridgePlugin : MessageProcessingPlugin {
                             )
                         val parsed = parseMessageProcessingResult(finalDecoded)
                         if (parsed != null && parsed.matched && !emittedAny) {
+                            AppLogger.i(
+                                TOOLPKG_LOG_TAG,
+                                "message-processing final fallback hook=${
+                                    hook.containerPackageName
+                                }:${hook.pluginId}:${hook.functionName} chunkCount=${parsed.chunks.size}"
+                            )
                             parsed.chunks
                                 .filter { it.isNotEmpty() }
-                                .forEach { chunk ->
+                                .forEachIndexed { index, chunk ->
+                                    AppLogger.i(
+                                        TOOLPKG_LOG_TAG,
+                                        "message-processing final fallback chunk hook=${
+                                            hook.containerPackageName
+                                        }:${hook.pluginId}:${hook.functionName} index=$index length=${
+                                            chunk.length
+                                        } preview=${logPreview(chunk)}"
+                                    )
                                     chunkQueue.trySend(chunk)
                                 }
                         }
@@ -450,7 +483,11 @@ private object ToolPkgXmlRenderBridgePlugin : XmlRenderPlugin {
     internal fun replaceHooksByTag(
         updatedHooksByTag: Map<String, List<ToolPkgXmlRenderHookRegistration>>
     ) {
+        if (hooksByTag == updatedHooksByTag) {
+            return
+        }
         hooksByTag = updatedHooksByTag
+        XmlRenderPluginRegistry.notifyChanged()
     }
 
     override fun supports(tagName: String): Boolean {

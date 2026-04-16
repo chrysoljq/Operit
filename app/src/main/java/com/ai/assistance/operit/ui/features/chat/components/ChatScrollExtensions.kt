@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyListState as ComposeLazyListState
 import com.ai.assistance.operit.ui.features.chat.components.lazy.LazyListState
 
@@ -21,18 +22,13 @@ suspend fun LazyListState.animateScrollToEnd() {
     val contentViewportEnd =
         updatedLayoutInfo.viewportEndOffset - updatedLayoutInfo.afterContentPadding
     val targetItemEnd = targetItemInfo.offset + targetItemInfo.size
-    if (targetItemEnd <= contentViewportEnd && !canScrollBackward) {
+    val deltaToViewportEnd = (targetItemEnd - contentViewportEnd).toFloat()
+    if (deltaToViewportEnd < 0f && !canScrollBackward) {
         return
     }
 
-    val targetTopOffset = contentViewportEnd - targetItemInfo.size
-    val targetScrollOffset = -targetTopOffset
-
-    if (
-        firstVisibleItemIndex != lastIndex ||
-            firstVisibleItemScrollOffset != targetScrollOffset
-    ) {
-        scrollToItem(lastIndex, targetScrollOffset)
+    if (kotlin.math.abs(deltaToViewportEnd) > 0.5f) {
+        animateScrollBy(deltaToViewportEnd)
     }
 }
 
@@ -50,17 +46,12 @@ suspend fun ComposeLazyListState.animateScrollToEnd() {
     val contentViewportEnd =
         updatedLayoutInfo.viewportEndOffset - updatedLayoutInfo.afterContentPadding
     val targetItemEnd = targetItemInfo.offset + targetItemInfo.size
-    if (targetItemEnd <= contentViewportEnd && !canScrollBackward) {
+    val deltaToViewportEnd = (targetItemEnd - contentViewportEnd).toFloat()
+    if (deltaToViewportEnd < 0f && !canScrollBackward) {
         return
     }
 
-    val targetTopOffset = contentViewportEnd - targetItemInfo.size
-    val targetScrollOffset = -targetTopOffset
-
-    if (
-        firstVisibleItemIndex != lastIndex ||
-            firstVisibleItemScrollOffset != targetScrollOffset
-    ) {
-        scrollToItem(lastIndex, targetScrollOffset)
+    if (kotlin.math.abs(deltaToViewportEnd) > 0.5f) {
+        animateScrollBy(deltaToViewportEnd)
     }
 }

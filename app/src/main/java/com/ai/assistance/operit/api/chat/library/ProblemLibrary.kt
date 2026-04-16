@@ -492,6 +492,7 @@ object ProblemLibrary {
                 query = contextQuery,
                 scoreMode = searchConfig.scoreMode,
                 keywordWeight = searchConfig.keywordWeight,
+                tagWeight = searchConfig.tagWeight,
                 semanticWeight = searchConfig.vectorWeight,
                 edgeWeight = searchConfig.edgeWeight
             ).take(15)
@@ -500,7 +501,7 @@ object ProblemLibrary {
                 TAG,
                 "候选记忆检索完成: count=${candidateMemories.size}, " +
                     "mode=${searchConfig.scoreMode}, " +
-                    "keywordWeight=${searchConfig.keywordWeight}, vectorWeight=${searchConfig.vectorWeight}, edgeWeight=${searchConfig.edgeWeight}, " +
+                    "keywordWeight=${searchConfig.keywordWeight}, tagWeight=${searchConfig.tagWeight}, vectorWeight=${searchConfig.vectorWeight}, edgeWeight=${searchConfig.edgeWeight}, " +
                     "searchQueryLen=${contextQuery.length}"
             )
             AppLogger.d(TAG, "候选检索查询（截断）: ${contextQuery.take(220)}")

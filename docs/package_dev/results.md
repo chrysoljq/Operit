@@ -81,6 +81,7 @@
 - `SystemSettingData`
 - `AppOperationData`
 - `AppListData`
+- `AppUsageTimeResultData`
 - `NotificationData`
 - `LocationData`
 - `DeviceInfoResultData`
@@ -89,6 +90,7 @@
 
 - `SystemSettingData` 包含 `namespace`、`setting`、`value`
 - `AppOperationData` 包含 `operationType`、`packageName`、`success`、`details`
+- `AppUsageTimeResultData` 包含时间窗口、是否包含系统应用以及每个应用的前台使用时长条目
 - `NotificationData` 提供通知列表和抓取时间戳
 - `LocationData` 提供经纬度、精度、地址等信息
 

@@ -581,6 +581,26 @@ fun getJsToolsDefinition(): String {
                 // 获取设备通知
                 getNotifications: (limit = 10, includeOngoing = false) => 
                     toolCall("get_notifications", { limit: parseInt(limit), include_ongoing: !!includeOngoing }),
+                // 获取应用使用时长
+                getAppUsageTime: (options = {}) => {
+                    const params = { ...(options || {}) };
+                    if (params.packageName !== undefined && params.packageName !== null) {
+                        params.package_name = String(params.packageName);
+                        delete params.packageName;
+                    }
+                    if (params.sinceHours !== undefined && params.sinceHours !== null) {
+                        params.since_hours = parseInt(params.sinceHours);
+                        delete params.sinceHours;
+                    }
+                    if (params.includeSystemApps !== undefined) {
+                        params.include_system_apps = !!params.includeSystemApps;
+                        delete params.includeSystemApps;
+                    }
+                    if (params.limit !== undefined && params.limit !== null) {
+                        params.limit = parseInt(params.limit);
+                    }
+                    return toolCall("get_app_usage_time", params);
+                },
                 // 获取设备位置
                 getLocation: (highAccuracy = false, timeout = 10) => 
                     toolCall("get_device_location", { high_accuracy: !!highAccuracy, timeout: parseInt(timeout) }),

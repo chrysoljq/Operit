@@ -4,10 +4,9 @@ import { TaskExecutor } from "./task-executor";
 import { resolveDeepSearchI18n } from "../i18n";
 import { createPromptTurn, toKotlinPromptTurnList, type PromptTurn } from "../prompt-turns";
 
-const EnhancedAIService = Java.com.ai.assistance.operit.api.chat.EnhancedAIService;
 const FunctionType = Java.com.ai.assistance.operit.data.model.FunctionType;
+const PromptFunctionType = Java.com.ai.assistance.operit.data.model.PromptFunctionType;
 const Unit = Java.kotlin.Unit;
-const Collections = Java.java.util.Collections;
 const InputProcessingStateBase = "com.ai.assistance.operit.data.model.InputProcessingState$";
 
 const TAG = "PlanModeManager";
@@ -24,10 +23,44 @@ function getI18n() {
   return resolveDeepSearchI18n(locale);
 }
 
+function clipLogText(value: unknown, maxLength = 240): string {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) {
+    return "";
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function describeBridgeCapabilities(target: unknown, methodNames: string[]): string {
+  if (!target || (typeof target !== "object" && typeof target !== "function")) {
+    return "target=unavailable";
+  }
+  const record = target as Record<string, unknown>;
+  return methodNames
+    .map((name) => `${name}=${typeof record[name]}`)
+    .join(", ");
+}
+
+function toErrorDetail(error: unknown): string {
+  const text = String(error ?? "");
+  const stack = typeof (error as { stack?: unknown } | null)?.stack === "string"
+    ? String((error as { stack?: unknown }).stack)
+    : "";
+  return stack ? `${text} stack=${stack}` : text;
+}
+
 async function collectStreamToString(stream: unknown): Promise<string> {
   let buffer = "";
+  let chunkCount = 0;
+  console.log(
+    `${TAG} collectStreamToString start ${describeBridgeCapabilities(stream, ["callSuspend", "collect"])}`
+  );
   const collector = {
     emit: function (value: string) {
+      chunkCount += 1;
       buffer += String(value ?? "");
       return Unit.INSTANCE;
     }
@@ -35,6 +68,9 @@ async function collectStreamToString(stream: unknown): Promise<string> {
   await (stream as { callSuspend: (...args: unknown[]) => Promise<unknown> }).callSuspend(
     "collect",
     collector
+  );
+  console.log(
+    `${TAG} collectStreamToString done chunkCount=${chunkCount} textLength=${buffer.length}`
   );
   return buffer;
 }
@@ -53,24 +89,42 @@ function newInputProcessingState(kind: string, message?: string) {
 }
 
 async function sendPlanningMessage(
-  aiService: unknown,
-  context: unknown,
-  chatHistory: PromptTurn[]
+  enhancedAIService: unknown,
+  chatHistory: PromptTurn[],
+  maxTokens: number,
+  tokenUsageThreshold: number
 ): Promise<string> {
-  const emptyModelParams = Collections.emptyList();
-  const onTokensUpdated = (_a: number, _b: number, _c: number) => Unit.INSTANCE;
   const onNonFatalError = (_value: string) => Unit.INSTANCE;
-  const stream = await (aiService as { callSuspend: (...args: unknown[]) => Promise<unknown> }).callSuspend(
+  console.log(
+    `${TAG} sendPlanningMessage start historySize=${chatHistory.length} maxTokens=${maxTokens} tokenUsageThreshold=${tokenUsageThreshold} ${describeBridgeCapabilities(enhancedAIService, ["callSuspend", "sendMessage", "getModelConfigForFunction"])}`
+  );
+  const stream = await (enhancedAIService as { callSuspend: (...args: unknown[]) => Promise<unknown> }).callSuspend(
     "sendMessage",
-    context,
+    getI18n().planGenerateDetailedPlan,
+    null,
     toKotlinPromptTurnList(chatHistory),
-    emptyModelParams,
+    null,
+    null,
+    FunctionType.CHAT,
+    PromptFunctionType.CHAT,
     false,
+    false,
+    false,
+    maxTokens,
+    tokenUsageThreshold,
+    onNonFatalError,
+    null,
+    null,
     true,
     null,
+    null,
+    null,
     false,
-    onTokensUpdated,
-    onNonFatalError,
+    null,
+    "DeepSearch Planner",
+    null,
+    null,
+    null,
     true
   );
   return collectStreamToString(stream);
@@ -120,7 +174,6 @@ export class PlanModeManager {
   ): Promise<string> {
     this.isCancelled = false;
     let output = "";
-    this.taskExecutor.setChunkEmitter(onChunk);
     const append = (chunk: string) => {
       output += chunk;
       if (onChunk) {
@@ -129,6 +182,7 @@ export class PlanModeManager {
         } catch (_e) {}
       }
     };
+    this.taskExecutor.setChunkEmitter(append);
     try {
       const i18n = getI18n();
       const processingState = newInputProcessingState(
@@ -177,7 +231,7 @@ export class PlanModeManager {
         maxTokens,
         tokenUsageThreshold
       );
-      output += executionOutput;
+      console.log(`${TAG} executeDeepSearchMode subtasksOutputLength=${executionOutput.length}`);
 
       if (this.isCancelled) {
         append(`<log>🟡 ${i18n.planModeCancelling}</log>\n`);
@@ -203,7 +257,7 @@ export class PlanModeManager {
         maxTokens,
         tokenUsageThreshold
       );
-      output += summary;
+      console.log(`${TAG} executeDeepSearchMode summaryLength=${summary.length}`);
 
       const completedState = newInputProcessingState("Completed");
       (this.enhancedAIService as { setInputProcessingState: (s: unknown) => void })
@@ -233,32 +287,49 @@ export class PlanModeManager {
 
   private async generateExecutionPlan(
     userMessage: string,
-    _chatHistory: PromptTurn[],
-    _workspacePath: string | null | undefined,
-    _maxTokens: number,
-    _tokenUsageThreshold: number
+    chatHistory: PromptTurn[],
+    workspacePath: string | null | undefined,
+    maxTokens: number,
+    tokenUsageThreshold: number
   ): Promise<ExecutionGraph | null> {
+    let currentStep = "start";
     try {
+      console.log(
+        `${TAG} generateExecutionPlan start userMessageLength=${userMessage.length} historySize=${chatHistory.length} workspaceBound=${Boolean(workspacePath)} maxTokens=${maxTokens} tokenUsageThreshold=${tokenUsageThreshold}`
+      );
+      currentStep = "build_planning_request";
       const planningRequest = this.buildPlanningRequest(userMessage);
+      currentStep = "build_planning_history";
       const planningHistory: PromptTurn[] = [
         createPromptTurn("SYSTEM", planningRequest),
-        createPromptTurn("USER", getI18n().planGenerateDetailedPlan),
       ];
-
-      const aiService = await EnhancedAIService.callSuspend(
-        "getAIServiceForFunction",
-        this.context,
-        FunctionType.CHAT
+      console.log(
+        `${TAG} generateExecutionPlan planningHistoryBuilt turns=${planningHistory.length} requestLength=${planningRequest.length} requestPreview=${clipLogText(planningRequest)}`
+      );
+      currentStep = "send_planning_message";
+      const planResponseRaw = await sendPlanningMessage(
+        this.enhancedAIService,
+        planningHistory,
+        maxTokens,
+        tokenUsageThreshold
+      );
+      console.log(
+        `${TAG} generateExecutionPlan rawResponse length=${planResponseRaw.length} preview=${clipLogText(planResponseRaw)}`
+      );
+      currentStep = "sanitize_plan_response";
+      const planResponse = removeThinkingContent(String(planResponseRaw ?? "").trim());
+      console.log(
+        `${TAG} generateExecutionPlan sanitizedResponse length=${planResponse.length} preview=${clipLogText(planResponse)}`
       );
 
-      const planResponseRaw = await sendPlanningMessage(aiService, this.context, planningHistory);
-      const planResponse = removeThinkingContent(String(planResponseRaw ?? "").trim());
-      console.log(`${TAG} plan response`, planResponse);
-
+      currentStep = "parse_execution_graph";
       const graph = parseExecutionGraph(planResponse);
+      console.log(
+        `${TAG} generateExecutionPlan parsedGraph taskCount=${Array.isArray(graph?.tasks) ? graph.tasks.length : 0} hasFinalSummary=${Boolean(graph?.finalSummaryInstruction)}`
+      );
       return graph;
     } catch (e) {
-      console.log(`${TAG} generate plan error`, String(e));
+      console.log(`${TAG} generate plan error step=${currentStep} detail=${toErrorDetail(e)}`);
       return null;
     }
   }

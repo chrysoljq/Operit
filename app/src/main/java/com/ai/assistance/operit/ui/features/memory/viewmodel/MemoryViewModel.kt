@@ -147,6 +147,7 @@ class MemoryViewModel(
                             query = "",
                             scoreMode = config.scoreMode,
                             keywordWeight = config.keywordWeight,
+                            tagWeight = config.tagWeight,
                             semanticWeight = config.vectorWeight,
                             edgeWeight = config.edgeWeight
                         )
@@ -155,6 +156,7 @@ class MemoryViewModel(
                             query = query,
                             scoreMode = config.scoreMode,
                             keywordWeight = config.keywordWeight,
+                            tagWeight = config.tagWeight,
                             semanticWeight = config.vectorWeight,
                             edgeWeight = config.edgeWeight
                         )
@@ -229,6 +231,7 @@ class MemoryViewModel(
                     folderPath = folderPath,
                     scoreMode = config.scoreMode,
                     keywordWeight = config.keywordWeight,
+                    tagWeight = config.tagWeight,
                     semanticWeight = config.vectorWeight,
                     edgeWeight = config.edgeWeight
                 )

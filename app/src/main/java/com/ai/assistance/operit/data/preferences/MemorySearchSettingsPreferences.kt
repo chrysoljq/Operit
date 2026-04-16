@@ -19,6 +19,7 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
         val config = MemorySearchConfig(
             scoreMode = MemoryScoreMode.entries[searchPrefs.getInt(KEY_SCORE_MODE, MemoryScoreMode.BALANCED.ordinal)],
             keywordWeight = searchPrefs.getFloat(KEY_KEYWORD_WEIGHT, 10.0f),
+            tagWeight = searchPrefs.getFloat(KEY_TAG_WEIGHT, 0.0f),
             vectorWeight = searchPrefs.getFloat(KEY_VECTOR_WEIGHT, 0.0f),
             edgeWeight = searchPrefs.getFloat(KEY_EDGE_WEIGHT, 0.4f)
         )
@@ -30,6 +31,7 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
         searchPrefs.edit()
             .putInt(KEY_SCORE_MODE, normalized.scoreMode.ordinal)
             .putFloat(KEY_KEYWORD_WEIGHT, normalized.keywordWeight)
+            .putFloat(KEY_TAG_WEIGHT, normalized.tagWeight)
             .putFloat(KEY_VECTOR_WEIGHT, normalized.vectorWeight)
             .putFloat(KEY_EDGE_WEIGHT, normalized.edgeWeight)
             .apply()
@@ -65,6 +67,7 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
     companion object {
         private const val KEY_SCORE_MODE = "score_mode"
         private const val KEY_KEYWORD_WEIGHT = "keyword_weight"
+        private const val KEY_TAG_WEIGHT = "tag_weight"
         private const val KEY_VECTOR_WEIGHT = "vector_weight"
         private const val KEY_EDGE_WEIGHT = "edge_weight"
 

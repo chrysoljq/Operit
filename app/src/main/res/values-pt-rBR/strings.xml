@@ -228,6 +228,7 @@
     <string name="workflow_trigger_type_tasker">Gatilho Tasker</string>
     <string name="workflow_trigger_type_intent">Gatilho de intenção</string>
     <string name="workflow_trigger_type_speech">Gatilho de voz</string>
+    <string name="workflow_trigger_type_app_open">Ao abrir o app</string>
     <string name="workflow_trigger_fallback">acionar</string>
     <string name="workflow_execute_config_title">Executar configuração</string>
     <string name="workflow_tool_name_label">Nome da ferramenta</string>
@@ -276,6 +277,7 @@
     <string name="workflow_trigger_config_json_label">Configuração do gatilho (JSON)</string>
     <string name="workflow_trigger_config_json_placeholder">{"chave": "valor"}</string>
     <string name="workflow_speech_trigger_help">Descrição: O acionador de fala é baseado na saída do evento de texto (parcial/final) pelo reconhecimento de fala em segundo plano (STT) para corresponder ao padrão. "Sempre ouvindo" precisa estar ativado e o modo de identificação de despertar é "STT". Se "Ativação de modelo personalizado" for usado atualmente, esse acionador não terá efeito porque o evento de texto STT não será gerado.</string>
+    <string name="workflow_app_open_trigger_help">Observação: este gatilho dispara apenas na primeira entrada na tela após uma inicialização a frio, incluindo abertura pelo ícone ou por salto externo. Voltar do segundo plano não dispara.</string>
     <string name="workflow_select_predecessor_node">Selecione o nó anterior</string>
     <string name="workflow_no_available_predecessor_nodes">Nenhum nó anterior disponível</string>
     <string name="workflow_use_static_value">Use valores estáticos</string>
@@ -4915,6 +4917,7 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="memory_search_mode_keyword_first">Prioridade de palavras-chave</string>
     <string name="memory_search_mode_semantic_first">vetor primeiro</string>
     <string name="memory_search_keyword_weight">Peso da palavra-chave</string>
+    <string name="memory_search_tag_weight">Peso da tag</string>
     <string name="memory_search_vector_weight">peso do vetor</string>
     <string name="memory_search_edge_weight">Peso de propagação de borda</string>
     <string name="memory_search_reset_default">Restaurar padrão</string>
@@ -4925,15 +4928,15 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="memory_search_simulation_run">Executar simulação</string>
     <string name="memory_search_simulation_summary">Resumo da pesquisa</string>
     <string name="memory_search_simulation_scope_count">Memória no intervalo: %1$d</string>
-    <string name="memory_search_simulation_match_count">Número de ocorrências Palavra-chave:%1$d Inclusão reversa:%2$d Semântica:%3$d</string>
+    <string name="memory_search_simulation_match_count">Número de ocorrências Palavra-chave:%1$d Tag:%2$d Inclusão reversa:%3$d Semântica:%4$d</string>
     <string name="memory_search_simulation_result_count">Candidato pontuado: %1$d Limite aprovado: %2$d Limite: %3$.4f</string>
-    <string name="memory_search_simulation_weight_line">Palavra-chave de peso:%1$.2f semântica:%2$.2f borda:%3$.2f norma:%4$.4f</string>
+    <string name="memory_search_simulation_weight_line">Peso palavra-chave:%1$.2f tag:%2$.2f semântica:%3$.2f borda:%4$.2f norma:%5$.4f</string>
     <string name="memory_search_simulation_fragments">Fatiamento de palavras-chave</string>
     <string name="memory_search_simulation_raw_keywords">Palavra original(%1$d): %2$s</string>
     <string name="memory_search_simulation_lexical_tokens">Fragmentação lexical (%1$d): %2$s</string>
     <string name="memory_search_simulation_top_candidates">Resultados do candidato (exibir os primeiros %1$d resultados, total de %2$d resultados)</string>
     <string name="memory_search_simulation_candidate_title">%1$d. [%2$s] %3$s</string>
-    <string name="memory_search_simulation_candidate_scores">k:%1$.4f r:%2$.4f s:%3$.4f e:%4$.4f total:%5$.4f token:%6$d</string>
+    <string name="memory_search_simulation_candidate_scores">k:%1$.4f t:%2$.4f r:%3$.4f s:%4$.4f e:%5$.4f total:%6$.4f token:%7$d</string>
     <string name="memory_embedding_cloud_title">Modelo vetorial de nuvem</string>
     <string name="memory_embedding_cloud_enable">Habilitar modelos vetoriais de nuvem</string>
     <string name="memory_embedding_cloud_endpoint">Ponto de extremidade da API vetorial</string>

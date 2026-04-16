@@ -12,9 +12,21 @@ const ToolPkgMessageProcessingCancellationRegistry =
 
 const FEATURE_KEY = "ai_planning";
 const PROBE_LOG_TAG = "[deepsearching_probe]";
+const INTERMEDIATE_PREVIEW_LIMIT = 160;
 
 function logProbe(message: string) {
   console.log(`${PROBE_LOG_TAG} ${message}`);
+}
+
+function clipIntermediatePreview(chunk: string): string {
+  const normalized = String(chunk || "")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+  if (normalized.length <= INTERMEDIATE_PREVIEW_LIMIT) {
+    return normalized;
+  }
+  return `${normalized.slice(0, INTERMEDIATE_PREVIEW_LIMIT)}...`;
 }
 
 function getAppContext() {
@@ -160,6 +172,9 @@ export async function onMessageProcessing(
     const workspacePath = (payload.workspacePath as string | undefined) ?? null;
     const maxTokens = Number(payload.maxTokens ?? 0);
     const tokenUsageThreshold = Number(payload.tokenUsageThreshold ?? 0);
+    logProbe(
+      `executionContext historySize=${history.length} workspaceBound=${Boolean(workspacePath)} maxTokens=${maxTokens} tokenUsageThreshold=${tokenUsageThreshold}`
+    );
 
     if (!maxTokens || !tokenUsageThreshold) {
       console.log("deepsearching missing maxTokens/tokenUsageThreshold");
@@ -169,6 +184,9 @@ export async function onMessageProcessing(
 
     const emitIntermediateChunk = (chunk: string) => {
       if (!chunk) return;
+      logProbe(
+        `emitIntermediateChunk length=${chunk.length} preview=${clipIntermediatePreview(chunk)}`
+      );
       if (typeof sendIntermediateResult === "function") {
         sendIntermediateResult({ chunk });
       }

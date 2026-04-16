@@ -62,6 +62,7 @@ fun MemorySearchSettingsDialog(
     onSimulateSearch: () -> Unit
 ) {
     var keywordWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.keywordWeight) }
+    var tagWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.tagWeight) }
     var vectorWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.vectorWeight) }
     var edgeWeight by remember(currentConfig) { mutableFloatStateOf(currentConfig.edgeWeight) }
     var scoreMode by remember(currentConfig) { mutableStateOf(currentConfig.scoreMode) }
@@ -104,6 +105,13 @@ fun MemorySearchSettingsDialog(
                         valueText = String.format("%.2f", keywordWeight),
                         valueRange = 0.0f..20.0f,
                         onValueChange = { keywordWeight = it }
+                    )
+                    SliderSettingItem(
+                        title = stringResource(R.string.memory_search_tag_weight),
+                        value = tagWeight,
+                        valueText = String.format("%.2f", tagWeight),
+                        valueRange = 0.0f..20.0f,
+                        onValueChange = { tagWeight = it }
                     )
                     SliderSettingItem(
                         title = stringResource(R.string.memory_search_vector_weight),
@@ -262,6 +270,7 @@ fun MemorySearchSettingsDialog(
                         MemorySearchConfig(
                             scoreMode = scoreMode,
                             keywordWeight = keywordWeight,
+                            tagWeight = tagWeight,
                             vectorWeight = vectorWeight,
                             edgeWeight = edgeWeight
                         ).normalized(),
@@ -278,6 +287,7 @@ fun MemorySearchSettingsDialog(
                     onClick = {
                         scoreMode = MemoryScoreMode.BALANCED
                         keywordWeight = 10.0f
+                        tagWeight = 0.0f
                         vectorWeight = 0.0f
                         edgeWeight = 0.4f
                     }

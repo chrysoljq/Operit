@@ -4,7 +4,7 @@
 
 import {
     SleepResultData, SystemSettingData, AppOperationData, AppListData,
-    DeviceInfoResultData, NotificationData, LocationData,
+    AppUsageTimeResultData, DeviceInfoResultData, NotificationData, LocationData,
     ADBResultData, IntentResultData, TerminalCommandResultData, HiddenTerminalCommandResultData,
     TerminalSessionCreationResultData, TerminalSessionCloseResultData, TerminalSessionScreenResultData,
     StringResultData
@@ -98,6 +98,17 @@ export namespace System {
      * @returns Promise resolving to notification data
      */
     function getNotifications(limit?: number, includeOngoing?: boolean): Promise<NotificationData>;
+
+    /**
+     * Get app foreground usage time from Android Usage Access.
+     * @param options Query options
+     */
+    function getAppUsageTime(options?: {
+        packageName?: string;
+        sinceHours?: number | string;
+        limit?: number | string;
+        includeSystemApps?: boolean;
+    }): Promise<AppUsageTimeResultData>;
 
     /**
      * Get device location

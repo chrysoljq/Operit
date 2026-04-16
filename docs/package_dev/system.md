@@ -8,6 +8,7 @@
 
 - 睡眠与基础系统设置读写。
 - 应用安装、卸载、启动、停止、枚举。
+- 应用前台使用时长统计。
 - 设备信息、通知、定位。
 - Shell / Intent / Broadcast。
 - 持久终端会话。
@@ -75,6 +76,26 @@ sleep(milliseconds: string | number): Promise<SleepResultData>
 #### `startApp(packageName, activity?)`
 
 启动应用，可选指定 Activity，返回 `AppOperationData`。
+
+#### `getAppUsageTime(options?)`
+
+读取 Android Usage Access 提供的前台应用使用时长，返回 `AppUsageTimeResultData`。
+
+```ts
+getAppUsageTime({
+  packageName?,
+  sinceHours?,
+  limit?,
+  includeSystemApps?
+}): Promise<AppUsageTimeResultData>
+```
+
+说明：
+
+- 默认统计最近 `24` 小时。
+- 传 `packageName` 时，返回该应用的使用时长。
+- 不传 `packageName` 时，按使用时长降序返回前 `limit` 个应用。
+- 若没有“使用情况访问权限”，运行时会引导用户进入授权页面。
 
 ### 通知与定位
 
@@ -176,6 +197,16 @@ await Tools.System.toast('执行完成');
 
 ```ts
 await Tools.System.startApp('com.android.settings');
+```
+
+### 读取最近一天的应用使用时长
+
+```ts
+const usage = await Tools.System.getAppUsageTime({
+  sinceHours: 24,
+  limit: 5
+});
+console.log(usage.toString());
 ```
 
 ### 发送广播

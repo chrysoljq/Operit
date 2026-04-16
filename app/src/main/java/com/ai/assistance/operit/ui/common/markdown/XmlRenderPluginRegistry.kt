@@ -3,6 +3,7 @@ package com.ai.assistance.operit.ui.common.markdown
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +28,10 @@ import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.stream.Stream
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import android.content.Context
 
@@ -69,16 +74,26 @@ private fun buildXmlRenderComposeDslExecutionContextKey(
 object XmlRenderPluginRegistry {
     private const val TAG = "XmlRenderPluginRegistry"
     private val plugins = CopyOnWriteArrayList<XmlRenderPlugin>()
+    private val changeVersionMutable = MutableStateFlow(0)
+    val changeVersion: StateFlow<Int> = changeVersionMutable.asStateFlow()
 
     @Synchronized
     fun register(plugin: XmlRenderPlugin) {
         unregister(plugin.id)
         plugins.add(plugin)
+        notifyChanged()
     }
 
     @Synchronized
     fun unregister(pluginId: String) {
-        plugins.removeAll { it.id == pluginId }
+        val changed = plugins.removeAll { it.id == pluginId }
+        if (changed) {
+            notifyChanged()
+        }
+    }
+
+    fun notifyChanged() {
+        changeVersionMutable.update { current -> current + 1 }
     }
 
     @Composable
@@ -90,20 +105,21 @@ object XmlRenderPluginRegistry {
         xmlStream: Stream<String>?,
         renderInstanceKey: Any? = null
     ): Boolean {
+        val registryVersion = changeVersion.collectAsState().value
         val plugin = plugins.firstOrNull { it.supports(tagName) } ?: return false
 
         val context = LocalContext.current
-        var result by remember(renderInstanceKey, tagName, plugin.id) {
+        var result by remember(renderInstanceKey, tagName, plugin.id, registryVersion) {
             mutableStateOf<XmlRenderResult?>(null)
         }
-        var errorMessage by remember(renderInstanceKey, tagName, plugin.id) {
+        var errorMessage by remember(renderInstanceKey, tagName, plugin.id, registryVersion) {
             mutableStateOf<String?>(null)
         }
-        var resolutionFinished by remember(renderInstanceKey, tagName, plugin.id) {
+        var resolutionFinished by remember(renderInstanceKey, tagName, plugin.id, registryVersion) {
             mutableStateOf(false)
         }
 
-        LaunchedEffect(renderInstanceKey, xmlContent, tagName, plugin.id) {
+        LaunchedEffect(renderInstanceKey, xmlContent, tagName, plugin.id, registryVersion) {
             if (result == null && errorMessage.isNullOrBlank()) {
                 resolutionFinished = false
             }
@@ -146,6 +162,7 @@ object XmlRenderPluginRegistry {
                 RenderComposeDslScreen(
                     result = resolved,
                     modifier = modifier,
+                    xmlStream = xmlStream,
                     renderInstanceKey = renderInstanceKey
                 )
                 true
@@ -180,6 +197,7 @@ object XmlRenderPluginRegistry {
     private fun RenderComposeDslScreen(
         result: XmlRenderResult.ComposeDslScreen,
         modifier: Modifier,
+        xmlStream: Stream<String>?,
         renderInstanceKey: Any?
     ) {
         val context = LocalContext.current
@@ -201,6 +219,37 @@ object XmlRenderPluginRegistry {
         }
         var errorMessage by remember(renderInstanceKey, result.containerPackageName, result.screenPath) {
             mutableStateOf<String?>(null)
+        }
+        val initialXmlContent = remember(result.state) {
+            result.state["xmlContent"]?.toString().orEmpty()
+        }
+        var liveXmlContent by remember(
+            renderInstanceKey,
+            result.containerPackageName,
+            result.screenPath,
+            initialXmlContent
+        ) {
+            mutableStateOf(initialXmlContent)
+        }
+
+        LaunchedEffect(renderInstanceKey, result.containerPackageName, result.screenPath, xmlStream, initialXmlContent) {
+            if (xmlStream == null) {
+                liveXmlContent = initialXmlContent
+                return@LaunchedEffect
+            }
+
+            val builder = StringBuilder()
+            xmlStream.collect { chunk ->
+                builder.append(chunk)
+                val nextContent = builder.toString()
+                if (
+                    nextContent.isNotEmpty() &&
+                    nextContent.length >= liveXmlContent.length &&
+                    nextContent != liveXmlContent
+                ) {
+                    liveXmlContent = nextContent
+                }
+            }
         }
 
         fun buildModuleSpec(screenPath: String): Map<String, Any?> {
@@ -255,7 +304,7 @@ object XmlRenderPluginRegistry {
             )
         }
 
-        LaunchedEffect(renderInstanceKey, result.containerPackageName, result.screenPath, result.state, result.memo) {
+        LaunchedEffect(renderInstanceKey, result.containerPackageName, result.screenPath, liveXmlContent, result.state, result.memo) {
             errorMessage = null
             val screenPath = result.screenPath.trim()
             if (screenPath.isBlank()) {
@@ -274,9 +323,15 @@ object XmlRenderPluginRegistry {
                 return@LaunchedEffect
             }
 
+            val effectiveState = linkedMapOf<String, Any?>().apply {
+                putAll(result.state)
+                if (liveXmlContent.isNotEmpty()) {
+                    put("xmlContent", liveXmlContent)
+                }
+            }
             val mergedState = linkedMapOf<String, Any?>().apply {
                 putAll(renderResult?.state ?: emptyMap())
-                putAll(result.state)
+                putAll(effectiveState)
             }
             val mergedMemo = linkedMapOf<String, Any?>().apply {
                 putAll(renderResult?.memo ?: emptyMap())

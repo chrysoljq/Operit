@@ -100,6 +100,16 @@
             ]
         },
         {
+            "name": "get_app_usage_time",
+            "description": { "zh": "获取应用前台使用时长。需要授予“使用情况访问权限”。", "en": "Get app foreground usage time. Requires Usage Access permission." },
+            "parameters": [
+                { "name": "package_name", "description": { "zh": "可选：精确应用包名", "en": "Optional exact package name" }, "type": "string", "required": false },
+                { "name": "since_hours", "description": { "zh": "向前统计多少小时，默认24", "en": "How many hours to look back (default: 24)" }, "type": "number", "required": false },
+                { "name": "limit", "description": { "zh": "不传包名时最多返回多少个应用，默认10", "en": "Max apps to return when package_name is omitted (default: 10)" }, "type": "number", "required": false },
+                { "name": "include_system_apps", "description": { "zh": "不传包名时是否包含系统应用，默认false", "en": "Whether to include system apps when package_name is omitted (default: false)" }, "type": "boolean", "required": false }
+            ]
+        },
+        {
             "name": "get_device_location",
             "description": { "zh": "获取设备当前位置信息。", "en": "Get current device location." },
             "parameters": [
@@ -175,6 +185,15 @@ const SystemTools = (function () {
         const result = await Tools.System.getNotifications(params.limit || 10, params.include_ongoing || false);
         return { success: true, message: '成功获取通知', data: result };
     }
+    async function get_app_usage_time(params) {
+        const result = await Tools.System.getAppUsageTime({
+            packageName: params.package_name,
+            sinceHours: params.since_hours || 24,
+            limit: params.limit || 10,
+            includeSystemApps: params.include_system_apps || false
+        });
+        return { success: true, message: '成功获取应用使用时长', data: result };
+    }
     async function get_device_location(params) {
         const result = await Tools.System.getLocation(params.high_accuracy || false, params.timeout || 10);
         return { success: true, message: '成功获取位置信息', data: result };
@@ -230,8 +249,23 @@ const SystemTools = (function () {
                 console.log("⚠ get_notifications 测试失败:", error.message, "\n");
                 results.push({ tool: 'get_notifications', result: { success: false, message: error.message } });
             }
-            // 3. 测试 get_device_location
-            console.log("3. 测试 get_device_location...");
+            // 3. 测试 get_app_usage_time
+            console.log("3. 测试 get_app_usage_time...");
+            try {
+                const usageResult = await get_app_usage_time({ since_hours: 24, limit: 5, include_system_apps: false });
+                results.push({ tool: 'get_app_usage_time', result: usageResult });
+                console.log("✓ get_app_usage_time 测试完成");
+                if (usageResult.data) {
+                    console.log(`  返回条目数: ${usageResult.data.entries ? usageResult.data.entries.length : 0}`);
+                }
+                console.log();
+            }
+            catch (error) {
+                console.log("⚠ get_app_usage_time 测试失败（可能需要使用情况访问权限）:", error.message, "\n");
+                results.push({ tool: 'get_app_usage_time', result: { success: false, message: error.message } });
+            }
+            // 4. 测试 get_device_location
+            console.log("4. 测试 get_device_location...");
             try {
                 const locationResult = await get_device_location({ high_accuracy: false, timeout: 5 });
                 results.push({ tool: 'get_device_location', result: locationResult });
@@ -245,8 +279,8 @@ const SystemTools = (function () {
                 console.log("⚠ get_device_location 测试失败（可能需要位置权限）:", error.message, "\n");
                 results.push({ tool: 'get_device_location', result: { success: false, message: error.message } });
             }
-            // 4. 测试 list_installed_apps
-            console.log("4. 测试 list_installed_apps...");
+            // 5. 测试 list_installed_apps
+            console.log("5. 测试 list_installed_apps...");
             try {
                 const appsResult = await list_installed_apps({ include_system_apps: false });
                 results.push({ tool: 'list_installed_apps', result: appsResult });
@@ -260,8 +294,8 @@ const SystemTools = (function () {
                 console.log("⚠ list_installed_apps 测试失败（可能需要用户授权）:", error.message, "\n");
                 results.push({ tool: 'list_installed_apps', result: { success: false, message: error.message } });
             }
-            // 5. 测试 get_system_setting（读取一个常见的系统设置）
-            console.log("5. 测试 get_system_setting...");
+            // 6. 测试 get_system_setting（读取一个常见的系统设置）
+            console.log("6. 测试 get_system_setting...");
             try {
                 const settingResult = await get_system_setting({ setting: 'screen_brightness', namespace: 'system' });
                 results.push({ tool: 'get_system_setting', result: settingResult });
@@ -275,8 +309,8 @@ const SystemTools = (function () {
                 console.log("⚠ get_system_setting 测试失败:", error.message, "\n");
                 results.push({ tool: 'get_system_setting', result: { success: false, message: error.message } });
             }
-            // 6-10. 其他需要用户授权或可能造成系统变更的工具，仅做说明不实际执行
-            console.log("6-10. 跳过破坏性/需要特殊权限的工具测试:");
+            // 7-11. 其他需要用户授权或可能造成系统变更的工具，仅做说明不实际执行
+            console.log("7-11. 跳过破坏性/需要特殊权限的工具测试:");
             console.log("  ⊘ modify_system_setting - 需要WRITE_SETTINGS权限，会修改系统设置");
             console.log("  ⊘ install_app - 需要INSTALL_PACKAGES权限");
             console.log("  ⊘ uninstall_app - 需要DELETE_PACKAGES权限");
@@ -331,6 +365,7 @@ const SystemTools = (function () {
         send_broadcast: (params) => wrapToolExecution(send_broadcast, params),
         execute_intent: (params) => wrapToolExecution(execute_intent, params),
         get_notifications: (params) => wrapToolExecution(get_notifications, params),
+        get_app_usage_time: (params) => wrapToolExecution(get_app_usage_time, params),
         get_device_location: (params) => wrapToolExecution(get_device_location, params),
         get_device_info: (params) => wrapToolExecution(get_device_info, params),
         main,
@@ -346,6 +381,7 @@ exports.stop_app = SystemTools.stop_app;
 exports.send_broadcast = SystemTools.send_broadcast;
 exports.execute_intent = SystemTools.execute_intent;
 exports.get_notifications = SystemTools.get_notifications;
+exports.get_app_usage_time = SystemTools.get_app_usage_time;
 exports.get_device_location = SystemTools.get_device_location;
 exports.get_device_info = SystemTools.get_device_info;
 exports.main = SystemTools.main;

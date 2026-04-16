@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.common.markdown
 
-import android.content.Context
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -103,7 +102,7 @@ internal fun CanvasMonospaceCodeBlockBody(
     val verticalFlingAnim = remember { Animatable(0f) }
     val horizontalFlingAnim = remember { Animatable(0f) }
     val flingDecay = rememberSplineBasedDecay<Float>()
-    val codeTypeface = remember(context) { loadCodeBlockTypeface(context) }
+    val codeTypeface = remember(context) { getMarkdownCodeTypeface(context) }
     val textSizePx = with(density) { 12.sp.toPx() }
     val textPaint =
         remember(codeTypeface, textSizePx) {
@@ -884,14 +883,6 @@ private fun drawCodeBlockRow(
     }
 
     flushRun()
-}
-
-private fun loadCodeBlockTypeface(context: Context): Typeface {
-    return try {
-        context.resources.getFont(com.ai.assistance.operit.terminal.R.font.jetbrains_mono_nerd_font_regular)
-    } catch (_: Exception) {
-        Typeface.MONOSPACE
-    }
 }
 
 private fun shouldRenderWithSystemGlyphs(codePoint: Int): Boolean {

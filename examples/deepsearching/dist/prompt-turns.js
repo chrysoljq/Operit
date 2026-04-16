@@ -3,8 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createPromptTurn = createPromptTurn;
 exports.normalizePromptTurnList = normalizePromptTurnList;
 exports.toKotlinPromptTurnList = toKotlinPromptTurnList;
-const ArrayList = Java.type("java.util.ArrayList");
-const LinkedHashMap = Java.type("java.util.LinkedHashMap");
 const PromptTurnKindClass = Java.type("com.ai.assistance.operit.core.chat.hooks.PromptTurnKind");
 function createPromptTurn(kind, content, toolName, metadata) {
     const turn = {
@@ -38,11 +36,7 @@ function normalizePromptTurnList(value) {
     return turns;
 }
 function toKotlinPromptTurnList(history) {
-    const list = new ArrayList();
-    for (const turn of history || []) {
-        list.add(Java.newInstance("com.ai.assistance.operit.core.chat.hooks.PromptTurn", resolvePromptTurnKind(turn.kind), String(turn.content ?? ""), typeof turn.toolName === "string" ? turn.toolName : null, toJavaJsonObject(turn.metadata)));
-    }
-    return list;
+    return (history || []).map((turn) => Java.newInstance("com.ai.assistance.operit.core.chat.hooks.PromptTurn", resolvePromptTurnKind(turn.kind), String(turn.content ?? ""), typeof turn.toolName === "string" ? turn.toolName : null, toJavaJsonObject(turn.metadata)));
 }
 function normalizePromptTurnKind(kind) {
     const normalized = String(kind ?? "").trim().toUpperCase();
@@ -80,11 +74,11 @@ function isJsonObject(value) {
 }
 function toJavaJsonObject(value) {
     if (!value) {
-        return new LinkedHashMap();
+        return {};
     }
-    const map = new LinkedHashMap();
+    const map = {};
     for (const [key, item] of Object.entries(value)) {
-        map.put(String(key), toJavaValue(item));
+        map[String(key)] = toJavaValue(item);
     }
     return map;
 }
@@ -93,11 +87,7 @@ function toJavaValue(value) {
         return null;
     }
     if (Array.isArray(value)) {
-        const list = new ArrayList();
-        for (const item of value) {
-            list.add(toJavaValue(item));
-        }
-        return list;
+        return value.map((item) => toJavaValue(item));
     }
     if (typeof value === "object") {
         return toJavaJsonObject(value);

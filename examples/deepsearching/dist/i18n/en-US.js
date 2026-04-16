@@ -21,9 +21,12 @@ exports.DEEPSEARCH_EN_US = {
     planModeSummarizingResults: "Summarizing results",
     planModeCancelled: "Cancelled",
     planModeExecutionFailed: "Execution failed",
-    planGenerateDetailedPlan: "Please generate a detailed execution plan",
+    planGenerateDetailedPlan: "Output the execution plan as raw JSON only. Do not ask questions, do not explain, and do not use Markdown code fences.",
     planGenerationPrompt: `
 You are a task planning expert. The user will describe a complex task or problem, and you need to break it down into multiple subtasks that can be executed in parallel or in sequence.
+You must output a JSON object that can be parsed successfully by JSON.parse. Do not output any text outside the JSON object. Do not add explanations, apologies, clarifying questions, or Markdown code fences.
+If the user's request is short, ambiguous, or underspecified, make the smallest reasonable assumptions needed to continue planning. Never ask the user for more information.
+Do not say things like "I need more information" or "please clarify".
 Please return the execution plan in the following JSON format:
 \n\`\`\`json
 {
@@ -53,6 +56,8 @@ Please return the execution plan in the following JSON format:
 4. Set all task types to "chat"
 5. Each instruction should be a complete, independently executable directive
 6. The final summary instruction should integrate results from all subtasks
+7. If the request is short, continue planning based on the most likely intent instead of asking a follow-up question
+8. The output must be valid JSON, and the top level must be a single object
 Analyze the user's request and generate an execution plan.`.trim(),
     planGenerationUserRequestPrefix: "User request:\n",
     planErrorGraphValidationFailed: "Execution graph validation failed",

@@ -119,6 +119,7 @@ private fun SummaryCard(result: MemorySearchDebugInfo) {
                 text = stringResource(
                     R.string.memory_search_simulation_match_count,
                     result.keywordMatchesCount,
+                    result.tagMatchesCount,
                     result.reverseContainmentMatchesCount,
                     result.semanticMatchesCount
                 ),
@@ -137,6 +138,7 @@ private fun SummaryCard(result: MemorySearchDebugInfo) {
                 text = stringResource(
                     R.string.memory_search_simulation_weight_line,
                     result.effectiveKeywordWeight,
+                    result.effectiveTagWeight,
                     result.effectiveSemanticWeight,
                     result.effectiveEdgeWeight,
                     result.semanticKeywordNormFactor
@@ -223,6 +225,7 @@ private fun CandidatesCard(result: MemorySearchDebugInfo) {
                     text = stringResource(
                         R.string.memory_search_simulation_candidate_scores,
                         candidate.keywordScore,
+                        candidate.tagScore,
                         candidate.reverseContainmentScore,
                         candidate.semanticScore,
                         candidate.edgeScore,

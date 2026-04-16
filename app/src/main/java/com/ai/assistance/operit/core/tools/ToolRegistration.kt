@@ -1859,6 +1859,23 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    // 获取应用使用时长
+    handler.registerTool(
+            name = "get_app_usage_time",
+            descriptionGenerator = { tool ->
+                val packageName = tool.parameters.find { it.name == "package_name" }?.value.orEmpty()
+                val sinceHours = tool.parameters.find { it.name == "since_hours" }?.value ?: "24"
+                if (packageName.isNotBlank()) {
+                    "Get app usage time for $packageName in the last ${sinceHours} hours"
+                } else {
+                    "Get app usage time ranking in the last ${sinceHours} hours"
+                }
+            },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { systemOperationTools.getAppUsageTime(tool) }
+            }
+    )
+
     // 获取设备位置
     handler.registerTool(
             name = "get_device_location",

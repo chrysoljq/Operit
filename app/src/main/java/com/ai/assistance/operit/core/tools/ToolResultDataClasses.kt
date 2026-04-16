@@ -616,6 +616,63 @@ data class AppListData(val includesSystemApps: Boolean, val packages: List<Strin
     }
 }
 
+/** 单个应用的使用时长统计 */
+@Serializable
+data class AppUsageTimeEntry(
+        val packageName: String,
+        val appName: String,
+        val totalForegroundTimeMs: Long,
+        val lastTimeUsed: Long,
+        val isSystemApp: Boolean
+)
+
+/** 应用使用时长数据 */
+@Serializable
+data class AppUsageTimeResultData(
+        val startTime: Long,
+        val endTime: Long,
+        val sinceHours: Int,
+        val requestedPackageName: String? = null,
+        val includesSystemApps: Boolean,
+        val totalEntries: Int,
+        val entries: List<AppUsageTimeEntry>
+) : ToolResultData() {
+    override fun toString(): String {
+        val header =
+                buildString {
+                    append("App usage time")
+                    append(" (last ${sinceHours}h)")
+                    requestedPackageName?.takeIf { it.isNotBlank() }?.let {
+                        append(" for $it")
+                    }
+                }
+
+        if (entries.isEmpty()) {
+            return "$header\nNo app usage found in the selected time window."
+        }
+
+        val lines =
+                entries.joinToString("\n") { entry ->
+                    "- ${entry.appName} (${entry.packageName}): ${formatDuration(entry.totalForegroundTimeMs)}"
+                }
+
+        return "$header\n$lines"
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        if (durationMs <= 0L) return "0s"
+        val totalSeconds = durationMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        val parts = mutableListOf<String>()
+        if (hours > 0) parts.add("${hours}h")
+        if (minutes > 0) parts.add("${minutes}m")
+        if (seconds > 0 || parts.isEmpty()) parts.add("${seconds}s")
+        return parts.joinToString(" ")
+    }
+}
+
 /** Represents UI node structure for hierarchical display */
 @Serializable
 data class SimplifiedUINode(

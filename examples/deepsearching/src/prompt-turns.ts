@@ -1,7 +1,5 @@
 import type { JavaBridgeValue } from "../../types/java-bridge";
 
-const ArrayList = Java.type("java.util.ArrayList");
-const LinkedHashMap = Java.type("java.util.LinkedHashMap");
 const PromptTurnKindClass = Java.type("com.ai.assistance.operit.core.chat.hooks.PromptTurnKind");
 
 export type PromptTurn = ToolPkg.PromptTurn;
@@ -56,19 +54,15 @@ export function normalizePromptTurnList(value: unknown): PromptTurn[] {
 }
 
 export function toKotlinPromptTurnList(history: PromptTurn[]): JavaBridgeValue {
-  const list = new ArrayList();
-  for (const turn of history || []) {
-    list.add(
-      Java.newInstance(
-        "com.ai.assistance.operit.core.chat.hooks.PromptTurn",
-        resolvePromptTurnKind(turn.kind),
-        String(turn.content ?? ""),
-        typeof turn.toolName === "string" ? turn.toolName : null,
-        toJavaJsonObject(turn.metadata)
-      )
-    );
-  }
-  return list;
+  return (history || []).map((turn) =>
+    Java.newInstance(
+      "com.ai.assistance.operit.core.chat.hooks.PromptTurn",
+      resolvePromptTurnKind(turn.kind),
+      String(turn.content ?? ""),
+      typeof turn.toolName === "string" ? turn.toolName : null,
+      toJavaJsonObject(turn.metadata)
+    )
+  );
 }
 
 function normalizePromptTurnKind(kind: unknown): PromptTurnKind | null {
@@ -110,12 +104,11 @@ function isJsonObject(value: unknown): value is ToolPkg.JsonObject {
 
 function toJavaJsonObject(value: ToolPkg.JsonObject | undefined): JavaBridgeValue {
   if (!value) {
-    return new LinkedHashMap();
+    return {};
   }
-
-  const map = new LinkedHashMap();
+  const map: Record<string, ToolPkg.JsonValue | null> = {};
   for (const [key, item] of Object.entries(value)) {
-    map.put(String(key), toJavaValue(item));
+    map[String(key)] = toJavaValue(item) as ToolPkg.JsonValue | null;
   }
   return map;
 }
@@ -125,11 +118,7 @@ function toJavaValue(value: ToolPkg.JsonValue | undefined): JavaBridgeValue {
     return null;
   }
   if (Array.isArray(value)) {
-    const list = new ArrayList();
-    for (const item of value) {
-      list.add(toJavaValue(item));
-    }
-    return list;
+    return value.map((item) => toJavaValue(item));
   }
   if (typeof value === "object") {
     return toJavaJsonObject(value as ToolPkg.JsonObject);

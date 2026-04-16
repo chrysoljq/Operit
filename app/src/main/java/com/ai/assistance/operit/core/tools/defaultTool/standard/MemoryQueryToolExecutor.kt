@@ -253,7 +253,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
 
         AppLogger.d(
             TAG,
-            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', snapshot_id=${snapshotState.id}, snapshot_created=$snapshotCreated, start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, limit: $validLimit, threshold=${threshold ?: DEFAULT_RELEVANCE_THRESHOLD}, mode=${settings.scoreMode}, keywordWeight=${settings.keywordWeight}, vectorWeight=${settings.vectorWeight}, edgeWeight=${settings.edgeWeight}"
+            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', snapshot_id=${snapshotState.id}, snapshot_created=$snapshotCreated, start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, limit: $validLimit, threshold=${threshold ?: DEFAULT_RELEVANCE_THRESHOLD}, mode=${settings.scoreMode}, keywordWeight=${settings.keywordWeight}, tagWeight=${settings.tagWeight}, vectorWeight=${settings.vectorWeight}, edgeWeight=${settings.edgeWeight}"
         )
 
         return try {
@@ -262,6 +262,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
                 folderPath = folderPath,
                 scoreMode = settings.scoreMode,
                 keywordWeight = settings.keywordWeight,
+                tagWeight = settings.tagWeight,
                 semanticWeight = settings.vectorWeight,
                 edgeWeight = settings.edgeWeight,
                 relevanceThreshold = threshold ?: DEFAULT_RELEVANCE_THRESHOLD,

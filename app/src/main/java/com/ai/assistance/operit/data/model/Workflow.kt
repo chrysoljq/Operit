@@ -58,7 +58,7 @@ data class TriggerNode(
     override var name: String = "",
     override var description: String = "",
     override var position: NodePosition = NodePosition(0f, 0f),
-    var triggerType: String = "manual", // manual, schedule, event
+    var triggerType: String = "manual", // manual, schedule, tasker, intent, speech, app_open(cold start)
     var triggerConfig: Map<String, String> = emptyMap() // 触发器配置参数
 ) : WorkflowNode()
 

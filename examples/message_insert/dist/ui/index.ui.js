@@ -146,6 +146,9 @@ function Screen(ctx) {
     const injectBatteryState = useStateValue(ctx, "injectBattery", initial.injectBattery);
     const injectWeatherState = useStateValue(ctx, "injectWeather", initial.injectWeather);
     const injectLocationState = useStateValue(ctx, "injectLocation", initial.injectLocation);
+    const injectCurrentScreenAppState = useStateValue(ctx, "injectCurrentScreenApp", initial.injectCurrentScreenApp);
+    const injectRecentAppUsageState = useStateValue(ctx, "injectRecentAppUsage", initial.injectRecentAppUsage);
+    const injectScreenTextState = useStateValue(ctx, "injectScreenText", initial.injectScreenText);
     const injectNotificationsState = useStateValue(ctx, "injectNotifications", initial.injectNotifications);
     const injectMemoryState = useStateValue(ctx, "injectMemory", initial.injectMemory);
     const allowRepeatedMemorySearchState = useStateValue(ctx, "allowRepeatedMemorySearch", initial.allowRepeatedMemorySearch);
@@ -163,6 +166,9 @@ function Screen(ctx) {
         injectBatteryState.set(next.injectBattery);
         injectWeatherState.set(next.injectWeather);
         injectLocationState.set(next.injectLocation);
+        injectCurrentScreenAppState.set(next.injectCurrentScreenApp);
+        injectRecentAppUsageState.set(next.injectRecentAppUsage);
+        injectScreenTextState.set(next.injectScreenText);
         injectNotificationsState.set(next.injectNotifications);
         injectMemoryState.set(next.injectMemory);
         allowRepeatedMemorySearchState.set(next.allowRepeatedMemorySearch);
@@ -211,6 +217,15 @@ function Screen(ctx) {
         injectBatteryState.value ? text.summaryBatteryEnabled : text.summaryBatteryDisabled,
         injectWeatherState.value ? text.summaryWeatherEnabled : text.summaryWeatherDisabled,
         injectLocationState.value ? text.summaryLocationEnabled : text.summaryLocationDisabled,
+        injectCurrentScreenAppState.value
+            ? text.summaryCurrentScreenAppEnabled
+            : text.summaryCurrentScreenAppDisabled,
+        injectRecentAppUsageState.value
+            ? text.summaryRecentAppUsageEnabled
+            : text.summaryRecentAppUsageDisabled,
+        injectScreenTextState.value
+            ? text.summaryScreenTextEnabled
+            : text.summaryScreenTextDisabled,
         injectNotificationsState.value
             ? text.summaryNotificationsEnabled
             : text.summaryNotificationsDisabled,
@@ -290,6 +305,30 @@ function Screen(ctx) {
                 checked: injectLocationState.value,
                 onCheckedChange: checked => {
                     persistSettings({ injectLocation: checked });
+                },
+            },
+            {
+                title: text.currentScreenAppToggleTitle,
+                subtitle: text.currentScreenAppToggleDescription,
+                checked: injectCurrentScreenAppState.value,
+                onCheckedChange: checked => {
+                    persistSettings({ injectCurrentScreenApp: checked });
+                },
+            },
+            {
+                title: text.recentAppUsageToggleTitle,
+                subtitle: text.recentAppUsageToggleDescription,
+                checked: injectRecentAppUsageState.value,
+                onCheckedChange: checked => {
+                    persistSettings({ injectRecentAppUsage: checked });
+                },
+            },
+            {
+                title: text.screenTextToggleTitle,
+                subtitle: text.screenTextToggleDescription,
+                checked: injectScreenTextState.value,
+                onCheckedChange: checked => {
+                    persistSettings({ injectScreenText: checked });
                 },
             },
             {

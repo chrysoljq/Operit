@@ -5,6 +5,8 @@ import android.app.Activity
 import android.net.Uri
 import android.os.Build
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.compose.foundation.Image
@@ -438,18 +440,27 @@ fun OperitTheme(content: @Composable () -> Unit) {
                         )
                     } else {
                         exoPlayer?.let { player ->
+                            val videoBackgroundColor =
+                                if (darkTheme) {
+                                    android.graphics.Color.BLACK
+                                } else {
+                                    android.graphics.Color.WHITE
+                                }
                             AndroidView(
                                 factory = { ctx ->
-                                    StyledPlayerView(ctx).apply {
+                                    (LayoutInflater.from(ctx).inflate(
+                                        R.layout.view_background_texture_player,
+                                        null,
+                                        false,
+                                    ) as StyledPlayerView).apply {
                                         this.player = player
                                         useController = false
                                         layoutParams =
                                             ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                        setBackgroundColor(
-                                            if (darkTheme) android.graphics.Color.BLACK
-                                            else android.graphics.Color.WHITE,
-                                        )
+                                        setBackgroundColor(videoBackgroundColor)
+                                        setShutterBackgroundColor(videoBackgroundColor)
+                                        setKeepContentOnPlayerReset(true)
                                         foreground =
                                             android.graphics.drawable.ColorDrawable(
                                                 android.graphics.Color.argb(
@@ -466,6 +477,9 @@ fun OperitTheme(content: @Composable () -> Unit) {
                                         view.player = player
                                     }
 
+                                    view.setBackgroundColor(videoBackgroundColor)
+                                    view.setShutterBackgroundColor(videoBackgroundColor)
+                                    view.setKeepContentOnPlayerReset(true)
                                     view.foreground =
                                         android.graphics.drawable.ColorDrawable(
                                             android.graphics.Color.argb(

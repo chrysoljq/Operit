@@ -2,6 +2,7 @@ package com.ai.assistance.operit.ui.features.settings.sections
 
 import android.content.Context
 import android.net.Uri
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.Toast
@@ -238,13 +239,19 @@ internal fun ThemeSettingsBackgroundSection(
 
                             AndroidView(
                                 factory = { ctx ->
-                                    StyledPlayerView(ctx).apply {
+                                    (LayoutInflater.from(ctx).inflate(
+                                        R.layout.view_background_texture_player,
+                                        null,
+                                        false,
+                                    ) as StyledPlayerView).apply {
                                         player = exoPlayer
                                         useController = false
                                         layoutParams =
                                             ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                         setBackgroundColor(backgroundColor)
+                                        setShutterBackgroundColor(backgroundColor)
+                                        setKeepContentOnPlayerReset(true)
                                         foreground =
                                             android.graphics.drawable.ColorDrawable(
                                                 android.graphics.Color.argb(
@@ -258,6 +265,9 @@ internal fun ThemeSettingsBackgroundSection(
                                     }
                                 },
                                 update = { view ->
+                                    view.setBackgroundColor(backgroundColor)
+                                    view.setShutterBackgroundColor(backgroundColor)
+                                    view.setKeepContentOnPlayerReset(true)
                                     view.foreground =
                                         android.graphics.drawable.ColorDrawable(
                                             android.graphics.Color.argb(

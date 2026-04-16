@@ -166,6 +166,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
     private data class SearchScoreParts(
         var matchedKeywordTokenCount: Int = 0,
         var keywordScore: Double = 0.0,
+        var tagScore: Double = 0.0,
         var reverseContainmentScore: Double = 0.0,
         var semanticScore: Double = 0.0,
         var edgeScore: Double = 0.0
@@ -179,6 +180,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
     private data class ResolvedSearchWeights(
         val scoreMode: MemoryScoreMode,
         val effectiveKeywordWeight: Double,
+        val effectiveTagWeight: Double,
         val effectiveSemanticWeight: Float,
         val effectiveEdgeWeight: Double,
         val semanticKeywordNormFactor: Double
@@ -215,11 +217,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
     private fun resolveSearchWeights(
         scoreMode: MemoryScoreMode,
         keywordWeight: Float,
+        tagWeight: Float,
         semanticWeight: Float,
         edgeWeight: Float,
         keywordCount: Int
     ): ResolvedSearchWeights {
         val normalizedKeywordWeight = keywordWeight.coerceAtLeast(0.0f).toDouble()
+        val normalizedTagWeight = tagWeight.coerceAtLeast(0.0f).toDouble()
         val normalizedSemanticWeight = semanticWeight.coerceAtLeast(0.0f)
         val normalizedEdgeWeight = edgeWeight.coerceAtLeast(0.0f).toDouble()
         val (modeKeywordMultiplier, modeSemanticMultiplier, modeEdgeMultiplier) = when (scoreMode) {
@@ -233,6 +237,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         return ResolvedSearchWeights(
             scoreMode = scoreMode,
             effectiveKeywordWeight = normalizedKeywordWeight * modeKeywordMultiplier,
+            effectiveTagWeight = normalizedTagWeight * modeKeywordMultiplier,
             effectiveSemanticWeight = normalizedSemanticWeight * modeSemanticMultiplier.toFloat(),
             effectiveEdgeWeight = normalizedEdgeWeight * modeEdgeMultiplier,
             semanticKeywordNormFactor = semanticKeywordNormFactor
@@ -723,6 +728,35 @@ class MemoryRepository(private val context: Context, profileId: String) {
                     .thenByDescending { it.memory.updatedAt.time }
             )
     }
+
+    private fun queryTagCandidatesByFragments(
+        fragments: List<String>,
+        scopedMemories: List<Memory>
+    ): List<TitleMatchCandidate> {
+        if (fragments.isEmpty() || scopedMemories.isEmpty()) return emptyList()
+
+        return scopedMemories
+            .mapNotNull { memory ->
+                memory.tags.reset()
+                val tagNames = memory.tags.map { it.name }
+                if (tagNames.isEmpty()) return@mapNotNull null
+
+                val matchedTokenCount = fragments.count { fragment ->
+                    tagNames.any { tagName -> textMatchesLexicalToken(tagName, fragment) }
+                }
+                if (matchedTokenCount <= 0) return@mapNotNull null
+
+                TitleMatchCandidate(
+                    memory = memory,
+                    matchedTokenCount = matchedTokenCount
+                )
+            }
+            .sortedWith(
+                compareByDescending<TitleMatchCandidate> { it.matchedTokenCount }
+                    .thenByDescending { it.memory.importance }
+                    .thenByDescending { it.memory.updatedAt.time }
+            )
+    }
     
     /**
      * 从外部文档创建记忆。
@@ -1097,6 +1131,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         folderPath: String? = null,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
+        tagWeight: Float = 0.0f,
         semanticWeight: Float = 0.5f,
         edgeWeight: Float = 0.4f,
         relevanceThreshold: Double = SEARCH_RELEVANCE_THRESHOLD,
@@ -1108,6 +1143,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
             folderPath = folderPath,
             scoreMode = scoreMode,
             keywordWeight = keywordWeight,
+            tagWeight = tagWeight,
             semanticWeight = semanticWeight,
             edgeWeight = edgeWeight,
             relevanceThreshold = relevanceThreshold,
@@ -1121,6 +1157,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         folderPath: String? = null,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
+        tagWeight: Float = 0.0f,
         semanticWeight: Float = 0.5f,
         edgeWeight: Float = 0.4f,
         relevanceThreshold: Double = SEARCH_RELEVANCE_THRESHOLD,
@@ -1132,6 +1169,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
             folderPath = folderPath,
             scoreMode = scoreMode,
             keywordWeight = keywordWeight,
+            tagWeight = tagWeight,
             semanticWeight = semanticWeight,
             edgeWeight = edgeWeight,
             relevanceThreshold = relevanceThreshold,
@@ -1145,6 +1183,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         folderPath: String? = null,
         scoreMode: MemoryScoreMode = MemoryScoreMode.BALANCED,
         keywordWeight: Float = 10.0f,
+        tagWeight: Float = 0.0f,
         semanticWeight: Float = 0.5f,
         edgeWeight: Float = 0.4f,
         relevanceThreshold: Double = SEARCH_RELEVANCE_THRESHOLD,
@@ -1179,11 +1218,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val resolvedWeights = resolveSearchWeights(
             scoreMode = scoreMode,
             keywordWeight = keywordWeight,
+            tagWeight = tagWeight,
             semanticWeight = semanticWeight,
             edgeWeight = edgeWeight,
             keywordCount = keywords.size
         )
         val effectiveKeywordWeight = resolvedWeights.effectiveKeywordWeight
+        val effectiveTagWeight = resolvedWeights.effectiveTagWeight
         val effectiveSemanticWeight = resolvedWeights.effectiveSemanticWeight
         val effectiveEdgeWeight = resolvedWeights.effectiveEdgeWeight
         val semanticKeywordNormFactor = resolvedWeights.semanticKeywordNormFactor
@@ -1194,6 +1235,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
             lexicalTokens: List<String> = emptyList(),
             debugSemanticKeywordNormFactor: Double = resolvedWeights.semanticKeywordNormFactor,
             keywordMatchesCount: Int = 0,
+            tagMatchesCount: Int = 0,
             reverseContainmentMatchesCount: Int = 0,
             semanticMatchesCount: Int = 0,
             graphEdgesTraversed: Int = 0,
@@ -1209,11 +1251,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 scoreMode = scoreMode,
                 relevanceThreshold = effectiveRelevanceThreshold,
                 effectiveKeywordWeight = effectiveKeywordWeight,
+                effectiveTagWeight = effectiveTagWeight,
                 effectiveSemanticWeight = effectiveSemanticWeight,
                 semanticKeywordNormFactor = debugSemanticKeywordNormFactor,
                 effectiveEdgeWeight = effectiveEdgeWeight,
                 memoriesInScopeCount = timeFilteredMemoriesInScope.size,
                 keywordMatchesCount = keywordMatchesCount,
+                tagMatchesCount = tagMatchesCount,
                 reverseContainmentMatchesCount = reverseContainmentMatchesCount,
                 semanticMatchesCount = semanticMatchesCount,
                 graphEdgesTraversed = graphEdgesTraversed,
@@ -1255,6 +1299,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         com.ai.assistance.operit.util.AppLogger.d(
             "MemoryRepo",
             "search settings => mode=${resolvedWeights.scoreMode}, keyword=${String.format("%.2f", effectiveKeywordWeight)}, " +
+                "tag=${String.format("%.2f", effectiveTagWeight)}, " +
                 "semantic=${String.format("%.2f", effectiveSemanticWeight)}, " +
                 "semanticNorm=${String.format("%.4f", semanticKeywordNormFactor)}, edge=${String.format("%.2f", effectiveEdgeWeight)}"
         )
@@ -1301,19 +1346,49 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 "Keyword search (title fragments): ${keywordResults.size} matches"
             )
         }
-        keywordResults.forEachIndexed { index, candidate ->
-            val memory = candidate.memory
-            val rank = index + 1
-            val baseScore = computeRrfBaseScore(rank)
-            val coverageMultiplier = computeKeywordCoverageMultiplier(
-                matchedTokenCount = candidate.matchedTokenCount,
-                totalTokenCount = keywordTokensForLexicalMatch.size
+        if (effectiveKeywordWeight > 0.0) {
+            keywordResults.forEachIndexed { index, candidate ->
+                val memory = candidate.memory
+                val rank = index + 1
+                val baseScore = computeRrfBaseScore(rank)
+                val coverageMultiplier = computeKeywordCoverageMultiplier(
+                    matchedTokenCount = candidate.matchedTokenCount,
+                    totalTokenCount = keywordTokensForLexicalMatch.size
+                )
+                val weightedScore = baseScore * memory.importance * effectiveKeywordWeight * coverageMultiplier
+                scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
+                val parts = getScoreParts(memory.id)
+                parts.keywordScore += weightedScore
+                parts.matchedKeywordTokenCount = maxOf(parts.matchedKeywordTokenCount, candidate.matchedTokenCount)
+            }
+        }
+
+        val tagResults = queryTagCandidatesByFragments(
+            fragments = keywordTokensForLexicalMatch,
+            scopedMemories = memoriesToSearch
+        )
+
+        if (tagResults.isNotEmpty()) {
+            com.ai.assistance.operit.util.AppLogger.d(
+                "MemoryRepo",
+                "Tag search: ${tagResults.size} matches"
             )
-            val weightedScore = baseScore * memory.importance * effectiveKeywordWeight * coverageMultiplier
-            scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
-            val parts = getScoreParts(memory.id)
-            parts.keywordScore += weightedScore
-            parts.matchedKeywordTokenCount = maxOf(parts.matchedKeywordTokenCount, candidate.matchedTokenCount)
+        }
+        if (effectiveTagWeight > 0.0) {
+            tagResults.forEachIndexed { index, candidate ->
+                val memory = candidate.memory
+                val rank = index + 1
+                val baseScore = computeRrfBaseScore(rank)
+                val coverageMultiplier = computeKeywordCoverageMultiplier(
+                    matchedTokenCount = candidate.matchedTokenCount,
+                    totalTokenCount = keywordTokensForLexicalMatch.size
+                )
+                val weightedScore = baseScore * memory.importance * effectiveTagWeight * coverageMultiplier
+                scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
+                val parts = getScoreParts(memory.id)
+                parts.tagScore += weightedScore
+                parts.matchedKeywordTokenCount = maxOf(parts.matchedKeywordTokenCount, candidate.matchedTokenCount)
+            }
         }
 
         // 2. Reverse Containment Search (Query contains Memory Title)
@@ -1324,13 +1399,15 @@ class MemoryRepository(private val context: Context, profileId: String) {
         if (reverseContainmentResults.isNotEmpty()) {
             com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Reverse containment: ${reverseContainmentResults.size} matches")
         }
-        reverseContainmentResults.forEachIndexed { index, memory ->
-            val rank = index + 1
-            // Use the same RRF formula to add to the score
-            val baseScore = computeRrfBaseScore(rank)
-            val weightedScore = baseScore * memory.importance * effectiveKeywordWeight
-            scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
-            getScoreParts(memory.id).reverseContainmentScore += weightedScore
+        if (effectiveKeywordWeight > 0.0) {
+            reverseContainmentResults.forEachIndexed { index, memory ->
+                val rank = index + 1
+                // Use the same RRF formula to add to the score
+                val baseScore = computeRrfBaseScore(rank)
+                val weightedScore = baseScore * memory.importance * effectiveKeywordWeight
+                scores[memory.id] = scores.getOrDefault(memory.id, 0.0) + weightedScore
+                getScoreParts(memory.id).reverseContainmentScore += weightedScore
+            }
         }
 
         // 3. Semantic search (for conceptual matches)
@@ -1439,6 +1516,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
                     lexicalTokens = keywordTokensForLexicalMatch,
                     debugSemanticKeywordNormFactor = semanticKeywordNormFactor,
                     keywordMatchesCount = keywordResults.size,
+                    tagMatchesCount = tagResults.size,
                     reverseContainmentMatchesCount = reverseContainmentResults.size,
                     semanticMatchesCount = semanticMatchedIds.size,
                     graphEdgesTraversed = edgesTraversed
@@ -1470,6 +1548,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 folderPath = memory?.folderPath,
                 matchedKeywordTokenCount = parts.matchedKeywordTokenCount,
                 keywordScore = parts.keywordScore,
+                tagScore = parts.tagScore,
                 reverseContainmentScore = parts.reverseContainmentScore,
                 semanticScore = parts.semanticScore,
                 edgeScore = parts.edgeScore,
@@ -1483,6 +1562,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
             lexicalTokens = keywordTokensForLexicalMatch,
             debugSemanticKeywordNormFactor = semanticKeywordNormFactor,
             keywordMatchesCount = keywordResults.size,
+            tagMatchesCount = tagResults.size,
             reverseContainmentMatchesCount = reverseContainmentResults.size,
             semanticMatchesCount = semanticMatchedIds.size,
             graphEdgesTraversed = edgesTraversed,
@@ -1591,11 +1671,13 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val resolvedWeights = resolveSearchWeights(
             scoreMode = searchConfig.scoreMode,
             keywordWeight = searchConfig.keywordWeight,
+            tagWeight = searchConfig.tagWeight,
             semanticWeight = searchConfig.vectorWeight,
             edgeWeight = searchConfig.edgeWeight,
             keywordCount = keywords.size
         )
         val effectiveKeywordWeight = resolvedWeights.effectiveKeywordWeight
+        val effectiveTagWeight = resolvedWeights.effectiveTagWeight
         val effectiveSemanticWeight = resolvedWeights.effectiveSemanticWeight
         val keywordTokensForLexicalMatch = buildLexicalQueryTokens(query, keywords)
         val scores = mutableMapOf<Long, Double>()
@@ -1604,6 +1686,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
             "MemoryRepo",
             "Document chunk search settings => mode=${resolvedWeights.scoreMode}, " +
                 "keyword=${String.format("%.2f", effectiveKeywordWeight)}, " +
+                "tag=${String.format("%.2f", effectiveTagWeight)} (ignored for chunks), " +
                 "semantic=${String.format("%.2f", effectiveSemanticWeight)}, " +
                 "semanticNorm=${String.format("%.4f", resolvedWeights.semanticKeywordNormFactor)}, " +
                 "edge=${String.format("%.2f", resolvedWeights.effectiveEdgeWeight)} (ignored for chunks)"
