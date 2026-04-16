@@ -42,10 +42,14 @@ import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.common.displays.FpsCounter
+import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.screens.Screen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Scaffold
@@ -94,6 +98,8 @@ fun AppContent(
         scope: CoroutineScope,
         drawerState: androidx.compose.material3.DrawerState,
         showFpsCounter: Boolean,
+        enableNavigationAnimation: Boolean,
+        navigationTransitionSource: NavigationTransitionSource,
         onScreenChange: (Screen) -> Unit,
         onNavItemChange: (NavItem) -> Unit,
         onToggleSidebar: () -> Unit,
@@ -110,6 +116,12 @@ fun AppContent(
     val context = LocalContext.current
     val density = LocalDensity.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    val pageTransitionDurationMillis = if (enableNavigationAnimation) 280 else 400
+    val drawerRelayTransitionDurationMillis = 320
+    val pageTransitionOffsetPx =
+        with(density) { if (useTabletLayout) 28.dp.toPx() else 20.dp.toPx() }
+    val drawerNavigationOffsetPx =
+        with(density) { if (useTabletLayout) 40.dp.toPx() else 30.dp.toPx() }
     LaunchedEffect(imeVisible) {
         AIForegroundService.setWakeListeningSuspendedForIme(context, imeVisible)
     }
@@ -398,7 +410,16 @@ fun AppContent(
                             }
 
                             // 等待动画完成后停止过渡状态
-                            kotlinx.coroutines.delay(400) // 与动画时长一致
+                            val transitionDurationMillis =
+                                if (!useTabletLayout &&
+                                    navigationTransitionSource == NavigationTransitionSource.DRAWER &&
+                                    !isNavigatingBack
+                                ) {
+                                    drawerRelayTransitionDurationMillis
+                                } else {
+                                    pageTransitionDurationMillis
+                                }
+                            kotlinx.coroutines.delay(transitionDurationMillis.toLong())
 
                             isTransitioning = false
                             transitionFromKey = null
@@ -415,6 +436,11 @@ fun AppContent(
                         renderKeys.forEach { screenKey ->
                             val screenContent = screenCache[screenKey] ?: return@forEach
                             val isCurrentScreen = screenKey == currentScreenKey
+                            val isDrawerRelayTransition =
+                                !useTabletLayout &&
+                                    navigationTransitionSource == NavigationTransitionSource.DRAWER &&
+                                    !isNavigatingBack &&
+                                    allowCrossfadeForActiveTransition
 
                             key(screenKey) {
                                 // 为每个屏幕维护一个独立的可见性状态
@@ -425,31 +451,121 @@ fun AppContent(
                                     visibility = if (isCurrentScreen) ScreenVisibility.VISIBLE else ScreenVisibility.HIDDEN
                                 }
 
-                                val alpha =
+                                val transition = updateTransition(
+                                    targetState = visibility,
+                                    label = "ScreenVisibilityTransition"
+                                )
+
+                                val alpha by transition.animateFloat(
+                                    transitionSpec = {
+                                        tween(
+                                            durationMillis =
+                                                if (isDrawerRelayTransition) drawerRelayTransitionDurationMillis
+                                                else pageTransitionDurationMillis,
+                                            easing =
+                                                if (isDrawerRelayTransition) {
+                                                    if (targetState == ScreenVisibility.VISIBLE) {
+                                                        LinearOutSlowInEasing
+                                                    } else {
+                                                        FastOutLinearInEasing
+                                                    }
+                                                } else if (enableNavigationAnimation) {
+                                                    if (targetState == ScreenVisibility.VISIBLE) {
+                                                        LinearOutSlowInEasing
+                                                    } else {
+                                                        FastOutLinearInEasing
+                                                    }
+                                                } else {
+                                                    FastOutSlowInEasing
+                                                }
+                                        )
+                                    },
+                                    label = "ScreenAlphaAnimation"
+                                ) { currentVisibility ->
                                     if (!allowCrossfadeForActiveTransition) {
                                         1f
+                                    } else if (currentVisibility == ScreenVisibility.VISIBLE) {
+                                        1f
                                     } else {
-                                        // 使用 updateTransition 来处理动画状态
-                                        val transition = updateTransition(
-                                            targetState = visibility,
-                                            label = "ScreenVisibilityTransition"
-                                        )
-
-                                        transition.animateFloat(
-                                            transitionSpec = {
-                                                tween(durationMillis = 400)
-                                            },
-                                            label = "ScreenAlphaAnimation"
-                                        ) { currentVisibility ->
-                                            if (currentVisibility == ScreenVisibility.VISIBLE) 1f else 0f
-                                        }.value
+                                        0f
                                     }
+                                }
+
+                                val translationX by transition.animateFloat(
+                                    transitionSpec = {
+                                        tween(
+                                            durationMillis =
+                                                if (isDrawerRelayTransition) drawerRelayTransitionDurationMillis
+                                                else pageTransitionDurationMillis,
+                                            easing = FastOutSlowInEasing
+                                        )
+                                    },
+                                    label = "ScreenTranslationXAnimation"
+                                ) { currentVisibility ->
+                                    if (!allowCrossfadeForActiveTransition) {
+                                        0f
+                                    } else if (isDrawerRelayTransition) {
+                                        if (currentVisibility == ScreenVisibility.VISIBLE) {
+                                            0f
+                                        } else if (isCurrentScreen) {
+                                            -drawerNavigationOffsetPx
+                                        } else {
+                                            drawerNavigationOffsetPx * 0.18f
+                                        }
+                                    } else if (!enableNavigationAnimation) {
+                                        0f
+                                    } else if (currentVisibility == ScreenVisibility.VISIBLE) {
+                                        0f
+                                    } else if (isCurrentScreen) {
+                                        if (isNavigatingBack) -pageTransitionOffsetPx else pageTransitionOffsetPx
+                                    } else {
+                                        if (isNavigatingBack) pageTransitionOffsetPx * 0.45f
+                                        else -pageTransitionOffsetPx * 0.45f
+                                    }
+                                }
+
+                                val scale by transition.animateFloat(
+                                    transitionSpec = {
+                                        tween(
+                                            durationMillis =
+                                                if (isDrawerRelayTransition) drawerRelayTransitionDurationMillis
+                                                else pageTransitionDurationMillis,
+                                            easing = FastOutSlowInEasing
+                                        )
+                                    },
+                                    label = "ScreenScaleAnimation"
+                                ) { currentVisibility ->
+                                    if (!allowCrossfadeForActiveTransition) {
+                                        1f
+                                    } else if (isDrawerRelayTransition) {
+                                        if (currentVisibility == ScreenVisibility.VISIBLE) {
+                                            1f
+                                        } else if (isCurrentScreen) {
+                                            0.975f
+                                        } else {
+                                            0.995f
+                                        }
+                                    } else if (!enableNavigationAnimation) {
+                                        1f
+                                    } else if (currentVisibility == ScreenVisibility.VISIBLE) {
+                                        1f
+                                    } else if (isCurrentScreen) {
+                                        0.985f
+                                    } else {
+                                        0.992f
+                                    }
+                                }
 
                                 Box(
                                     modifier =
                                         Modifier.fillMaxSize()
                                             .zIndex(if (isCurrentScreen) 1f else 0f)
-                                            .graphicsLayer { this.alpha = alpha }
+                                            .graphicsLayer {
+                                                this.alpha = alpha
+                                                this.translationX = translationX
+                                                scaleX = scale
+                                                scaleY = scale
+                                            }
                                 ) {
                                     Box(modifier = Modifier.fillMaxSize()) {
                                         CompositionLocalProvider(LocalIsCurrentScreen provides isCurrentScreen) {

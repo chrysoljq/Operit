@@ -52,6 +52,11 @@ val LocalTopBarActions = compositionLocalOf<(@Composable (RowScope.() -> Unit)) 
 
 data class NavGroup(@StringRes val titleResId: Int, val items: List<NavItem>)
 
+enum class NavigationTransitionSource {
+    DEFAULT,
+    DRAWER
+}
+
 @Composable
 fun OperitApp(
     initialNavItem: NavItem = NavItem.AiChat,
@@ -76,6 +81,9 @@ fun OperitApp(
 
     // 跟踪是否是返回操作
     var isNavigatingBack by remember { mutableStateOf(false) }
+    var navigationTransitionSource by remember {
+        mutableStateOf(NavigationTransitionSource.DEFAULT)
+    }
 
     // 用于存储由子屏幕提供的TopAppBar Actions
     var topBarActions by remember { mutableStateOf<@Composable RowScope.() -> Unit>({}) }
@@ -94,6 +102,7 @@ fun OperitApp(
 
         backStack.clear()
         isNavigatingBack = false
+        navigationTransitionSource = NavigationTransitionSource.DEFAULT
         selectedItem = requestNavItem
         currentScreen = targetScreen
         lastHandledShortcutRequestId = shortcutNavRequestId
@@ -114,6 +123,9 @@ fun OperitApp(
 
         // 设置为前进导航
         isNavigatingBack = false
+        navigationTransitionSource =
+            if (fromDrawer) NavigationTransitionSource.DRAWER
+            else NavigationTransitionSource.DEFAULT
 
         if (fromDrawer) {
             // 从抽屉导航时，清除整个返回栈
@@ -148,6 +160,7 @@ fun OperitApp(
         if (backStack.isNotEmpty()) {
             // 设置为返回导航
             isNavigatingBack = true
+            navigationTransitionSource = NavigationTransitionSource.DEFAULT
 
             val previousScreen = backStack.removeAt(backStack.lastIndex)
             currentScreen = previousScreen
@@ -156,6 +169,7 @@ fun OperitApp(
         } else if (currentScreen !is Screen.AiChat) {
             // 一级页面（如设置）在无返回栈时，返回到聊天首页而不是直接退出应用
             isNavigatingBack = true
+            navigationTransitionSource = NavigationTransitionSource.DEFAULT
             currentScreen = Screen.AiChat
             selectedItem = NavItem.AiChat
         }
@@ -258,6 +272,10 @@ fun OperitApp(
     // Get FPS counter display setting
     val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val showFpsCounter = displayPreferencesManager.showFpsCounter.collectAsState(initial = false).value
+    val enableNavigationAnimation =
+        displayPreferencesManager.enableNavigationAnimation
+            .collectAsState(initial = true)
+            .value
 
     // Create an instance of MCPRepository
     val mcpRepository = remember { MCPRepository(context) }
@@ -293,6 +311,8 @@ fun OperitApp(
                     scope = scope,
                     drawerState = drawerState,
                     showFpsCounter = showFpsCounter,
+                    enableNavigationAnimation = enableNavigationAnimation,
+                    navigationTransitionSource = navigationTransitionSource,
                     tabletSidebarWidth = tabletSidebarWidth,
                     collapsedTabletSidebarWidth = collapsedTabletSidebarWidth,
                     onScreenChange = { screen -> navigateTo(screen) },
@@ -325,6 +345,8 @@ fun OperitApp(
                     scope = scope,
                     drawerState = drawerState,
                     showFpsCounter = showFpsCounter,
+                    enableNavigationAnimation = enableNavigationAnimation,
+                    navigationTransitionSource = navigationTransitionSource,
                     onScreenChange = { screen -> navigateTo(screen) },
                     onNavItemChange = { item ->
                         selectedItem = item

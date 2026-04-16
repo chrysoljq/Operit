@@ -92,7 +92,8 @@ class TokenCacheManager {
      */
     fun calculateInputTokens(
         chatHistory: List<Pair<String, String>>,
-        toolsJson: String? = null
+        toolsJson: String? = null,
+        updateState: Boolean = true
     ): Int {
         // 构建包含工具定义的历史记录列表
         // 策略：将toolsJson拼接到System Prompt前面，或者作为第一条System消息
@@ -120,9 +121,12 @@ class TokenCacheManager {
         
         AppLogger.d("TokenCacheManager", "聊天历史比较: 当前=${historyWithTools.size}, 之前=${previousChatHistory.size}, 公共前缀=${commonPrefixLength}")
         
+        val cachedTokens: Int
+        val newTokens: Int
+
         if (commonPrefixLength > 0) {
             // 有公共前缀，可以使用缓存
-            val cachedTokens = if (commonPrefixLength == previousChatHistory.size) {
+            cachedTokens = if (commonPrefixLength == previousChatHistory.size) {
                 // 完全匹配之前的历史，直接使用缓存
                 previousHistoryTokenCount
             } else {
@@ -133,33 +137,40 @@ class TokenCacheManager {
             
             // 计算新增部分的token数量 (history剩下的部分 + 当前消息)
             val newPart = historyWithTools.drop(commonPrefixLength)
-            val newTokens = calculateTokensForHistory(newPart)
-            
-            _cachedInputTokenCount = cachedTokens
-            _currentInputTokenCount = newTokens
-            
-            // 更新缓存的历史记录 token 数量
-            previousHistoryTokenCount = cachedTokens + newTokens
-            
-            AppLogger.d("TokenCacheManager", "使用token缓存: 缓存=${_cachedInputTokenCount}, 新增=${_currentInputTokenCount}")
+            newTokens = calculateTokensForHistory(newPart)
         } else {
             // 没有公共前缀，重新计算所有token
             val historyTokens = calculateTokensForHistory(historyWithTools)
-            _cachedInputTokenCount = 0
-            _currentInputTokenCount = historyTokens
-            
+            cachedTokens = 0
+            newTokens = historyTokens
+        }
+
+        if (updateState) {
+            _cachedInputTokenCount = cachedTokens
+            _currentInputTokenCount = newTokens
+
             // 更新缓存的历史记录 token 数量
-            previousHistoryTokenCount = historyTokens
-            
-            AppLogger.d("TokenCacheManager", "重新计算所有tokens: ${_currentInputTokenCount}")
+            previousHistoryTokenCount = cachedTokens + newTokens
+
+            // 更新缓存的历史记录列表（包含工具定义）
+            if (chatHistory.isNotEmpty()) {
+                previousChatHistory = historyWithTools
+            }
+
+            if (cachedTokens > 0) {
+                AppLogger.d("TokenCacheManager", "使用token缓存: 缓存=${_cachedInputTokenCount}, 新增=${_currentInputTokenCount}")
+            } else {
+                AppLogger.d("TokenCacheManager", "重新计算所有tokens: ${_currentInputTokenCount}")
+            }
+        } else {
+            if (cachedTokens > 0) {
+                AppLogger.d("TokenCacheManager", "只读预估token缓存: 缓存=$cachedTokens, 新增=$newTokens")
+            } else {
+                AppLogger.d("TokenCacheManager", "只读预估所有tokens: $newTokens")
+            }
         }
-        
-        // 更新缓存的历史记录列表（包含工具定义）
-        if (chatHistory.isNotEmpty()) {
-            previousChatHistory = historyWithTools
-        }
-        
-        return totalInputTokenCount
+
+        return cachedTokens + newTokens
     }
     
     /**

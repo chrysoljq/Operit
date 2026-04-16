@@ -78,6 +78,8 @@
     <string name="colorpicker_select_primary">Escolha a cor principal</string>
     <string name="colorpicker_select_secondary">Escolha a cor secundária</string>
     <string name="colorpicker_select_statusbar">Escolha a cor da barra de status</string>
+    <string name="colorpicker_select_navigation_drawer_background">Escolha a cor de fundo do menu lateral</string>
+    <string name="colorpicker_select_navigation_drawer_accent">Escolha a cor de destaque do menu lateral</string>
     <string name="colorpicker_select_history_icon">Escolha a cor do ícone do histórico</string>
     <string name="colorpicker_select_pip_icon">Selecione a cor do ícone da janela flutuante</string>
     <string name="colorpicker_select_cursor_user_bubble">Selecione a cor da caixa de mensagem do usuário do comando</string>
@@ -675,6 +677,17 @@
     <string name="theme_appbar_color">Cor da barra superior</string>
     <string name="theme_use_custom_appbar_color">Personalize a cor da barra superior</string>
     <string name="theme_use_custom_appbar_color_desc">Depois de ligá-lo, você pode personalizar a cor da barra superior</string>
+    <string name="theme_navigation_drawer_title">Configurações do menu lateral</string>
+    <string name="theme_navigation_drawer_water_glass">Menu lateral com vidro liquido</string>
+    <string name="theme_navigation_drawer_water_glass_desc">Quando ativado, o menu lateral esquerdo exibirá um efeito de vidro liquido.</string>
+    <string name="theme_navigation_drawer_button_liquid_glass">Fundo de vidro fosco nos botões laterais</string>
+    <string name="theme_navigation_drawer_button_liquid_glass_desc">Quando ativado, cada botão da barra lateral exibirá um fundo de vidro fosco.</string>
+    <string name="theme_navigation_drawer_background_color">Cor de fundo do menu lateral</string>
+    <string name="theme_navigation_drawer_accent_color">Cor de destaque do menu lateral</string>
+    <string name="theme_use_custom_navigation_drawer_background_color">Personalizar a cor de fundo do menu lateral</string>
+    <string name="theme_use_custom_navigation_drawer_background_color_desc">Depois de ativar, você poderá personalizar a cor de fundo do menu lateral esquerdo.</string>
+    <string name="theme_use_custom_navigation_drawer_accent_color">Personalizar a cor de destaque do menu lateral</string>
+    <string name="theme_use_custom_navigation_drawer_accent_color_desc">Quando ativado, voce podera personalizar em conjunto a marca, os subtitulos, o estado da rede e a linha divisoria.</string>
     <string name="theme_statusbar_color">cor da barra de status</string>
     <string name="theme_use_custom_statusbar_color">Personalize a cor da barra de status</string>
     <string name="theme_use_custom_statusbar_color_desc">Depois de ligá-lo, você pode personalizar a cor da barra de status.</string>
@@ -4382,6 +4395,8 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="enable_reply_notification_vibration_description">Lembrete vibratório quando a notificação de resposta for acionada</string>
     <string name="keep_screen_on">Tela sempre ligada</string>
     <string name="keep_screen_on_description">Mantenha a tela sempre ligada e evite que ela bloqueie automaticamente durante conversas</string>
+    <string name="enable_navigation_animation">Nova animação de navegação</string>
+    <string name="enable_navigation_animation_description">Ativa o conjunto aprimorado de animações para a barra lateral do celular e para as transições de página. Desative para usar uma navegação mais simples.</string>
     <string name="app_icon_switch_title">ícone de software</string>
     <string name="app_icon_switch_description">Mude o ícone do aplicativo exibido na área de trabalho (alguns desktops podem demorar para atualizar).</string>
     <string name="app_icon_option_default">Ícone padrão</string>

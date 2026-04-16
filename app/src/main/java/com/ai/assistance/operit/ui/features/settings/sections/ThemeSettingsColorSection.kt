@@ -44,6 +44,16 @@ internal fun ThemeSettingsColorCustomizationSection(
     useCustomAppBarColorInput: Boolean,
     onUseCustomAppBarColorInputChange: (Boolean) -> Unit,
     customAppBarColorInput: Int,
+    navigationDrawerWaterGlassInput: Boolean,
+    onNavigationDrawerWaterGlassInputChange: (Boolean) -> Unit,
+    navigationDrawerButtonLiquidGlassInput: Boolean,
+    onNavigationDrawerButtonLiquidGlassInputChange: (Boolean) -> Unit,
+    useCustomNavigationDrawerBackgroundColorInput: Boolean,
+    onUseCustomNavigationDrawerBackgroundColorInputChange: (Boolean) -> Unit,
+    navigationDrawerBackgroundColorInput: Int,
+    useCustomNavigationDrawerAccentColorInput: Boolean,
+    onUseCustomNavigationDrawerAccentColorInputChange: (Boolean) -> Unit,
+    navigationDrawerAccentColorInput: Int,
     chatHeaderTransparentInput: Boolean,
     onChatHeaderTransparentInputChange: (Boolean) -> Unit,
     chatHeaderOverlayModeInput: Boolean,
@@ -110,8 +120,6 @@ internal fun ThemeSettingsColorCustomizationSection(
                     },
                 )
             }
-
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -283,6 +291,175 @@ internal fun ThemeSettingsColorCustomizationSection(
                     enabled = true,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onShowColorPicker("appBar") },
+                )
+            }
+        }
+    }
+
+    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), colors = cardColors) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(id = R.string.theme_navigation_drawer_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(id = R.string.theme_navigation_drawer_water_glass),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_navigation_drawer_water_glass_desc,
+                            ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = navigationDrawerWaterGlassInput,
+                    onCheckedChange = {
+                        onNavigationDrawerWaterGlassInputChange(it)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                navigationDrawerWaterGlass = it,
+                            )
+                        }
+                    },
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(id = R.string.theme_navigation_drawer_button_liquid_glass),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_navigation_drawer_button_liquid_glass_desc,
+                            ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = navigationDrawerButtonLiquidGlassInput,
+                    onCheckedChange = {
+                        onNavigationDrawerButtonLiquidGlassInputChange(it)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                navigationDrawerButtonLiquidGlass = it,
+                            )
+                        }
+                    },
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_use_custom_navigation_drawer_background_color,
+                            ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_use_custom_navigation_drawer_background_color_desc,
+                            ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = useCustomNavigationDrawerBackgroundColorInput,
+                    onCheckedChange = {
+                        onUseCustomNavigationDrawerBackgroundColorInputChange(it)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                useCustomNavigationDrawerBackgroundColor = it,
+                            )
+                        }
+                    },
+                )
+            }
+
+            if (useCustomNavigationDrawerBackgroundColorInput) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                ColorSelectionItem(
+                    title = stringResource(id = R.string.theme_navigation_drawer_background_color),
+                    color = Color(navigationDrawerBackgroundColorInput),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onShowColorPicker("navigationDrawerBackground") },
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_use_custom_navigation_drawer_accent_color,
+                            ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text =
+                            stringResource(
+                                id = R.string.theme_use_custom_navigation_drawer_accent_color_desc,
+                            ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = useCustomNavigationDrawerAccentColorInput,
+                    onCheckedChange = {
+                        onUseCustomNavigationDrawerAccentColorInputChange(it)
+                        saveThemeSettingsWithCharacterCard {
+                            preferencesManager.saveThemeSettings(
+                                useCustomNavigationDrawerAccentColor = it,
+                            )
+                        }
+                    },
+                )
+            }
+
+            if (useCustomNavigationDrawerAccentColorInput) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                ColorSelectionItem(
+                    title = stringResource(id = R.string.theme_navigation_drawer_accent_color),
+                    color = Color(navigationDrawerAccentColorInput),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onShowColorPicker("navigationDrawerAccent") },
                 )
             }
         }

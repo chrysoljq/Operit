@@ -56,6 +56,8 @@ class DisplayPreferencesManager private constructor(private val context: Context
         private val KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION =
             booleanPreferencesKey("enable_reply_notification_vibration")
         private val KEY_ENABLE_ENTER_TO_SEND = booleanPreferencesKey("enable_enter_to_send")
+        private val KEY_ENABLE_NAVIGATION_ANIMATION =
+            booleanPreferencesKey("enable_navigation_animation")
 
         // 自动化显示与行为相关设置的 Key
         private val KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY =
@@ -172,6 +174,15 @@ class DisplayPreferencesManager private constructor(private val context: Context
             preferences[KEY_ENABLE_ENTER_TO_SEND] ?: false
         }
 
+    /**
+     * 是否启用新版导航动画
+     * 默认值：true
+     */
+    val enableNavigationAnimation: Flow<Boolean> =
+        context.displayPreferencesDataStore.data.map { preferences ->
+            preferences[KEY_ENABLE_NAVIGATION_ANIMATION] ?: true
+        }
+
     val enableExperimentalVirtualDisplay: Flow<Boolean> =
         context.displayPreferencesDataStore.data.map { preferences ->
             preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] ?: true
@@ -227,6 +238,7 @@ class DisplayPreferencesManager private constructor(private val context: Context
         enableReplyNotificationSound: Boolean? = null,
         enableReplyNotificationVibration: Boolean? = null,
         enableEnterToSend: Boolean? = null,
+        enableNavigationAnimation: Boolean? = null,
         enableExperimentalVirtualDisplay: Boolean? = null,
         hideRuntimeTaskView: Boolean? = null,
         screenshotFormat: String? = null,
@@ -252,6 +264,9 @@ class DisplayPreferencesManager private constructor(private val context: Context
                 preferences[KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION] = it
             }
             enableEnterToSend?.let { preferences[KEY_ENABLE_ENTER_TO_SEND] = it }
+            enableNavigationAnimation?.let {
+                preferences[KEY_ENABLE_NAVIGATION_ANIMATION] = it
+            }
             enableExperimentalVirtualDisplay?.let {
                 preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = it
             }
@@ -319,6 +334,7 @@ class DisplayPreferencesManager private constructor(private val context: Context
             preferences[KEY_ENABLE_REPLY_NOTIFICATION_SOUND] = false
             preferences[KEY_ENABLE_REPLY_NOTIFICATION_VIBRATION] = false
             preferences[KEY_ENABLE_ENTER_TO_SEND] = false
+            preferences.remove(KEY_ENABLE_NAVIGATION_ANIMATION)
             preferences[KEY_ENABLE_EXPERIMENTAL_VIRTUAL_DISPLAY] = true
             preferences[KEY_HIDE_RUNTIME_TASK_VIEW] = false
             preferences.remove(KEY_SCREENSHOT_FORMAT)

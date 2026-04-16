@@ -4896,6 +4896,8 @@
     <string name="enable_reply_notification_vibration_description">Vibrate when a reply notification is triggered</string>
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_description">Keep screen awake to prevent auto-lock during conversations</string>
+    <string name="enable_navigation_animation">New Navigation Animation</string>
+    <string name="enable_navigation_animation_description">Turns on the enhanced animation set for both the phone sidebar and page transitions. Turn it off to use simpler navigation motion.</string>
     <string name="app_icon_switch_title">App Icon</string>
     <string name="app_icon_switch_description">Switch the launcher icon shown on your home screen (some launchers refresh with delay).</string>
     <string name="app_icon_option_default">Default Icon</string>

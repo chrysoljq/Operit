@@ -28,6 +28,7 @@ import kotlin.math.ceil
 import ru.noties.jlatexmath.JLatexMathDrawable
 
 private const val TAG = "MarkdownInlineSpannable"
+private const val INLINE_LATEX_PLACEHOLDER = '\uFFFC'
 
 private object NestedInlineNodeCache {
     private const val MAX_ENTRIES = 256
@@ -292,7 +293,7 @@ private fun appendInlineNode(
                     drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
 
                     val start = builder.length
-                    builder.append(" ")
+                    builder.append(INLINE_LATEX_PLACEHOLDER)
                     val end = builder.length
                     builder.setSpan(
                         ImageSpan(drawable, ImageSpan.ALIGN_BASELINE),

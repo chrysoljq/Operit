@@ -91,6 +91,24 @@ class UserPreferencesManager private constructor(private val context: Context) {
 
         // 工具栏透明度设置
         private val TOOLBAR_TRANSPARENT = booleanPreferencesKey("toolbar_transparent")
+
+        // 侧滑菜单玻璃效果设置
+        private val NAVIGATION_DRAWER_WATER_GLASS =
+            booleanPreferencesKey("navigation_drawer_water_glass")
+        private val NAVIGATION_DRAWER_BUTTON_LIQUID_GLASS =
+            booleanPreferencesKey("navigation_drawer_button_liquid_glass")
+
+        // 侧滑菜单背景色设置
+        private val USE_CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR =
+            booleanPreferencesKey("use_custom_navigation_drawer_background_color")
+        private val CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR =
+            intPreferencesKey("custom_navigation_drawer_background_color")
+
+        // 侧滑菜单强调色设置（品牌标识/小标题/网络状态/分隔线共用）
+        private val USE_CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR =
+            booleanPreferencesKey("use_custom_navigation_drawer_accent_color")
+        private val CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR =
+            intPreferencesKey("custom_navigation_drawer_accent_color")
         
         // AppBar 自定义颜色设置
         private val USE_CUSTOM_APP_BAR_COLOR = booleanPreferencesKey("use_custom_app_bar_color")
@@ -417,6 +435,36 @@ class UserPreferencesManager private constructor(private val context: Context) {
     val toolbarTransparent: Flow<Boolean> =
             context.userPreferencesDataStore.data.map { preferences ->
                 preferences[TOOLBAR_TRANSPARENT] ?: false
+            }
+
+    val navigationDrawerWaterGlass: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[NAVIGATION_DRAWER_WATER_GLASS] ?: false
+            }
+
+    val navigationDrawerButtonLiquidGlass: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[NAVIGATION_DRAWER_BUTTON_LIQUID_GLASS] ?: false
+            }
+
+    val useCustomNavigationDrawerBackgroundColor: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[USE_CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR] ?: false
+            }
+
+    val customNavigationDrawerBackgroundColor: Flow<Int?> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR]
+            }
+
+    val customNavigationDrawerAccentColor: Flow<Int?> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR]
+            }
+
+    val useCustomNavigationDrawerAccentColor: Flow<Boolean> =
+            context.userPreferencesDataStore.data.map { preferences ->
+                preferences[USE_CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR] ?: false
             }
 
     val useCustomAppBarColor: Flow<Boolean> =
@@ -1033,6 +1081,12 @@ class UserPreferencesManager private constructor(private val context: Context) {
             videoBackgroundMuted: Boolean? = null,
             videoBackgroundLoop: Boolean? = null,
             toolbarTransparent: Boolean? = null,
+            navigationDrawerWaterGlass: Boolean? = null,
+            navigationDrawerButtonLiquidGlass: Boolean? = null,
+            useCustomNavigationDrawerBackgroundColor: Boolean? = null,
+            customNavigationDrawerBackgroundColor: Int? = null,
+            useCustomNavigationDrawerAccentColor: Boolean? = null,
+            customNavigationDrawerAccentColor: Int? = null,
             useCustomAppBarColor: Boolean? = null,
             customAppBarColor: Int? = null,
             useCustomStatusBarColor: Boolean? = null,
@@ -1137,6 +1191,22 @@ class UserPreferencesManager private constructor(private val context: Context) {
             videoBackgroundMuted?.let { preferences[VIDEO_BACKGROUND_MUTED] = it }
             videoBackgroundLoop?.let { preferences[VIDEO_BACKGROUND_LOOP] = it }
             toolbarTransparent?.let { preferences[TOOLBAR_TRANSPARENT] = it }
+            navigationDrawerWaterGlass?.let { preferences[NAVIGATION_DRAWER_WATER_GLASS] = it }
+            navigationDrawerButtonLiquidGlass?.let {
+                preferences[NAVIGATION_DRAWER_BUTTON_LIQUID_GLASS] = it
+            }
+            useCustomNavigationDrawerBackgroundColor?.let {
+                preferences[USE_CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR] = it
+            }
+            customNavigationDrawerBackgroundColor?.let {
+                preferences[CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR] = it
+            }
+            useCustomNavigationDrawerAccentColor?.let {
+                preferences[USE_CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR] = it
+            }
+            customNavigationDrawerAccentColor?.let {
+                preferences[CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR] = it
+            }
             useCustomAppBarColor?.let { preferences[USE_CUSTOM_APP_BAR_COLOR] = it }
             customAppBarColor?.let { preferences[CUSTOM_APP_BAR_COLOR] = it }
             useCustomStatusBarColor?.let { preferences[USE_CUSTOM_STATUS_BAR_COLOR] = it }
@@ -1287,6 +1357,12 @@ class UserPreferencesManager private constructor(private val context: Context) {
             preferences.remove(VIDEO_BACKGROUND_MUTED)
             preferences.remove(VIDEO_BACKGROUND_LOOP)
             preferences.remove(TOOLBAR_TRANSPARENT)
+            preferences.remove(NAVIGATION_DRAWER_WATER_GLASS)
+            preferences.remove(NAVIGATION_DRAWER_BUTTON_LIQUID_GLASS)
+            preferences.remove(USE_CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR)
+            preferences.remove(CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR)
+            preferences.remove(USE_CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR)
+            preferences.remove(CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR)
             preferences.remove(USE_CUSTOM_STATUS_BAR_COLOR)
             preferences.remove(CUSTOM_STATUS_BAR_COLOR)
             preferences.remove(STATUS_BAR_TRANSPARENT)
@@ -1630,7 +1706,11 @@ class UserPreferencesManager private constructor(private val context: Context) {
     private fun getAllBooleanThemeKeys(): List<Preferences.Key<Boolean>> {
         return listOf(
             USE_SYSTEM_THEME, USE_CUSTOM_COLORS, USE_BACKGROUND_IMAGE, VIDEO_BACKGROUND_MUTED,
-            VIDEO_BACKGROUND_LOOP, TOOLBAR_TRANSPARENT, USE_CUSTOM_APP_BAR_COLOR, USE_CUSTOM_STATUS_BAR_COLOR,
+            VIDEO_BACKGROUND_LOOP, TOOLBAR_TRANSPARENT, NAVIGATION_DRAWER_WATER_GLASS,
+            NAVIGATION_DRAWER_BUTTON_LIQUID_GLASS,
+            USE_CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR,
+            USE_CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR,
+            USE_CUSTOM_APP_BAR_COLOR, USE_CUSTOM_STATUS_BAR_COLOR,
             STATUS_BAR_TRANSPARENT, STATUS_BAR_HIDDEN, CHAT_HEADER_TRANSPARENT, CHAT_INPUT_TRANSPARENT, CHAT_INPUT_FLOATING,
             CHAT_INPUT_LIQUID_GLASS,
             CHAT_INPUT_WATER_GLASS,
@@ -1647,7 +1727,8 @@ class UserPreferencesManager private constructor(private val context: Context) {
 
     private fun getAllIntThemeKeys(): List<Preferences.Key<Int>> {
         return listOf(
-            CUSTOM_PRIMARY_COLOR, CUSTOM_SECONDARY_COLOR, CUSTOM_APP_BAR_COLOR,
+            CUSTOM_PRIMARY_COLOR, CUSTOM_SECONDARY_COLOR, CUSTOM_NAVIGATION_DRAWER_BACKGROUND_COLOR,
+            CUSTOM_NAVIGATION_DRAWER_ACCENT_COLOR, CUSTOM_APP_BAR_COLOR,
             CUSTOM_STATUS_BAR_COLOR, CHAT_HEADER_HISTORY_ICON_COLOR, CHAT_HEADER_PIP_ICON_COLOR,
             CURSOR_USER_BUBBLE_COLOR, BUBBLE_USER_BUBBLE_COLOR, BUBBLE_AI_BUBBLE_COLOR,
             BUBBLE_USER_TEXT_COLOR, BUBBLE_AI_TEXT_COLOR

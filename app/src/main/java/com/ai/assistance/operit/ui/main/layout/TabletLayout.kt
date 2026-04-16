@@ -12,14 +12,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
+import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.CollapsedDrawerContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
+import com.ai.assistance.operit.ui.main.components.rememberNavigationDrawerAppearance
 import com.ai.assistance.operit.ui.main.screens.Screen
+import com.ai.assistance.operit.ui.theme.waterGlass
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.foundation.layout.RowScope
 
@@ -38,6 +42,8 @@ fun TabletLayout(
         scope: CoroutineScope,
         drawerState: androidx.compose.material3.DrawerState,
         showFpsCounter: Boolean,
+        enableNavigationAnimation: Boolean,
+        navigationTransitionSource: NavigationTransitionSource,
         tabletSidebarWidth: androidx.compose.ui.unit.Dp,
         collapsedTabletSidebarWidth: androidx.compose.ui.unit.Dp,
         onScreenChange: (Screen) -> Unit,
@@ -50,6 +56,8 @@ fun TabletLayout(
         isNavigatingBack: Boolean = false,
         topBarActions: @Composable RowScope.() -> Unit = {}
 ) {
+        val drawerAppearance = rememberNavigationDrawerAppearance()
+
         // 计算侧边栏的动画宽度，轻微调整动画时间为280ms，保持原有效果但稍快
         val animatedSidebarWidth by
                 animateDpAsState(
@@ -85,9 +93,19 @@ fun TabletLayout(
                         modifier =
                                 Modifier.width(animatedSidebarWidth)
                                         .fillMaxHeight()
+                                        .waterGlass(
+                                                enabled = drawerAppearance.waterGlassEnabled,
+                                                shape = MaterialTheme.shapes.medium,
+                                                containerColor = drawerAppearance.containerColor,
+                                                shadowElevation = 4.dp,
+                                                borderWidth = 0.7.dp,
+                                                overlayAlphaBoost = 0.04f
+                                        )
                                         .zIndex(2f), // 确保侧边栏在主内容之上
-                        shadowElevation = 4.dp,
-                        color = MaterialTheme.colorScheme.surface
+                        shadowElevation = if (drawerAppearance.waterGlassEnabled) 0.dp else 4.dp,
+                        color =
+                                if (drawerAppearance.waterGlassEnabled) Color.Transparent
+                                else drawerAppearance.containerColor
                 ) {
                         // 根据展开状态显示不同内容，保持原有逻辑稳定性
                         if (isTabletSidebarExpanded) {
@@ -97,6 +115,7 @@ fun TabletLayout(
                                         selectedItem = selectedItem,
                                         isNetworkAvailable = isNetworkAvailable,
                                         networkType = networkType,
+                                        appearance = drawerAppearance,
                                         scope = scope,
                                         drawerState = drawerState,
                                         onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
@@ -106,6 +125,7 @@ fun TabletLayout(
                                         navItems = navItems,
                                         selectedItem = selectedItem,
                                         isNetworkAvailable = isNetworkAvailable,
+                                        appearance = drawerAppearance,
                                         onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
                                 )
                         }
@@ -129,6 +149,8 @@ fun TabletLayout(
                                 scope = scope,
                                 drawerState = drawerState,
                                 showFpsCounter = showFpsCounter,
+                                enableNavigationAnimation = enableNavigationAnimation,
+                                navigationTransitionSource = navigationTransitionSource,
                                 onScreenChange = onScreenChange,
                                 onNavItemChange = onNavItemChange,
                                 onToggleSidebar = onToggleSidebar,

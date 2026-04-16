@@ -151,7 +151,11 @@ class GeminiProvider(
                     comparableRole to comparableContent
                 }
             )
-        return tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
+        return tokenCacheManager.calculateInputTokens(
+            comparableHistory,
+            toolsJson,
+            updateState = false
+        )
     }
     
     /**

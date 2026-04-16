@@ -788,14 +788,19 @@ private fun UnifiedCanvasRenderer(
 
         val revealInstruction = layoutResult.instructions.filterIsInstance<DrawInstruction.TextLayout>().firstOrNull()
         val targetLength = revealInstruction?.layout?.text?.length ?: 0
+        val revealHasImageSpans =
+            (revealInstruction?.text as? Spanned)
+                ?.getSpans(0, targetLength, ImageSpan::class.java)
+                ?.isNotEmpty() == true
+        val shouldAnimateTypewriter = enableTypewriter && !revealHasImageSpans
         val revealAnim = remember(nodeKey) { Animatable(0f) }
-        LaunchedEffect(enableTypewriter) {
-            if (!enableTypewriter) {
+        LaunchedEffect(shouldAnimateTypewriter) {
+            if (!shouldAnimateTypewriter) {
                 revealAnim.snapTo(targetLength.toFloat())
             }
         }
-        LaunchedEffect(targetLength, enableTypewriter) {
-            if (!enableTypewriter) {
+        LaunchedEffect(targetLength, shouldAnimateTypewriter) {
+            if (!shouldAnimateTypewriter) {
                 return@LaunchedEffect
             }
             if (targetLength <= 0) {
@@ -820,9 +825,9 @@ private fun UnifiedCanvasRenderer(
             }
         }
 
-        val revealValue = if (enableTypewriter) revealAnim.value else targetLength.toFloat()
+        val revealValue = if (shouldAnimateTypewriter) revealAnim.value else targetLength.toFloat()
         val baseLen = floor(revealValue).toInt().coerceIn(0, targetLength)
-        val partial = if (enableTypewriter) {
+        val partial = if (shouldAnimateTypewriter) {
             (revealValue - baseLen.toFloat()).coerceIn(0f, 1f)
         } else {
             1f
@@ -967,7 +972,7 @@ private fun UnifiedCanvasRenderer(
                                     canvas.nativeCanvas.save()
                                     canvas.nativeCanvas.translate(instruction.x, instruction.y)
 
-                                    if (enableTypewriter && revealInstruction === instruction && targetLength > 0 && baseLen < targetLength) {
+                                    if (shouldAnimateTypewriter && revealInstruction === instruction && targetLength > 0 && baseLen < targetLength) {
                                         val layout = instruction.layout
 
                                         val offsetForLine = baseLen.coerceIn(0, (targetLength - 1).coerceAtLeast(0))

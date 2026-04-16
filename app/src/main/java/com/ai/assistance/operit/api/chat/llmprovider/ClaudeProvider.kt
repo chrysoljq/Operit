@@ -930,7 +930,11 @@ class ClaudeProvider(
                 systemBlocks = serializedHistory.systemBlocks,
                 messagesArray = serializedHistory.messagesArray
             )
-        return tokenCacheManager.calculateInputTokens(comparableHistory, toolsJson)
+        return tokenCacheManager.calculateInputTokens(
+            comparableHistory,
+            toolsJson,
+            updateState = false
+        )
     }
 
     // 创建Claude API请求体

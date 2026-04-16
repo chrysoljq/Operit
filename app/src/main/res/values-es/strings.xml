@@ -1395,4 +1395,6 @@
     <string name="mcp_config_invalid_missing_endpoint">Inválido: falta endpoint</string>
     <string name="mcp_config_invalid_missing_server_entry">Inválido: falta mcpServers.%1$s</string>
     <string name="mcp_config_invalid_missing_command">Inválido: falta comando</string>
+    <string name="enable_navigation_animation">Nueva animación de navegación</string>
+    <string name="enable_navigation_animation_description">Activa el conjunto mejorado de animaciones para la barra lateral del móvil y las transiciones de página. Desactívela para usar una navegación más simple.</string>
 </resources>

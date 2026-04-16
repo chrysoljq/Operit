@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.main.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -13,18 +14,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,6 +39,7 @@ import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
 import com.ai.assistance.operit.ui.main.screens.OperitRouter
 import com.ai.assistance.operit.ui.main.screens.Screen
+import com.ai.assistance.operit.ui.theme.liquidGlass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -44,6 +51,7 @@ fun DrawerContent(
         selectedItem: NavItem,
         isNetworkAvailable: Boolean,
         networkType: String,
+        appearance: NavigationDrawerAppearance,
         scope: CoroutineScope,
         drawerState: androidx.compose.material3.DrawerState,
         onScreenSelected: (Screen, NavItem) -> Unit
@@ -66,7 +74,7 @@ fun DrawerContent(
                 Text(
                         text = stringResource(id = R.string.app_name),
                         style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = appearance.titleColor,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                 )
@@ -81,39 +89,48 @@ fun DrawerContent(
                                         if (isNetworkAvailable) Icons.Default.Wifi
                                         else Icons.Default.WifiOff,
                                 contentDescription = stringResource(id = R.string.network_status_label),
-                                tint =
-                                        if (isNetworkAvailable) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.error,
+                                tint = appearance.statusAvailableColor,
                                 modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                                 text = networkType,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color =
-                                        if (isNetworkAvailable) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.error
+                                color = appearance.statusAvailableColor
                         )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = appearance.dividerColor
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // 分组导航菜单
                 navGroups.forEach { group ->
-                        NavigationDrawerItemHeader(stringResource(id = group.titleResId))
+                        NavigationDrawerItemHeader(
+                                title = stringResource(id = group.titleResId),
+                                appearance = appearance
+                        )
                         group.items.forEach { item ->
                                 CompactNavigationDrawerItem(
                                         icon = item.icon,
                                         label = stringResource(id = item.titleResId),
                                         selected = selectedItem == item,
+                                        appearance = appearance,
                                         onClick = {
-                                                onScreenSelected(
-                                                        OperitRouter.getScreenForNavItem(item),
-                                                        item
-                                                )
-                                                scope.launch { drawerState.close() }
+                                                val targetScreen = OperitRouter.getScreenForNavItem(item)
+                                                val shouldCloseBeforeNavigate =
+                                                        drawerState.currentValue == DrawerValue.Open ||
+                                                                drawerState.targetValue == DrawerValue.Open
+
+                                                scope.launch {
+                                                        if (shouldCloseBeforeNavigate) {
+                                                                drawerState.close()
+                                                        }
+                                                        onScreenSelected(targetScreen, item)
+                                                }
                                         }
                                 )
                         }
@@ -130,6 +147,7 @@ fun CollapsedDrawerContent(
         navItems: List<NavItem>,
         selectedItem: NavItem,
         isNetworkAvailable: Boolean,
+        appearance: NavigationDrawerAppearance,
         onScreenSelected: (Screen, NavItem) -> Unit
 ) {
         // 折叠状态下只显示图标
@@ -144,43 +162,100 @@ fun CollapsedDrawerContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // 网络状态图标 - 与其他图标保持一致
-                IconButton(onClick = { /* 点击图标操作可选 */}) {
+                Surface(
+                        modifier =
+                                Modifier.size(44.dp)
+                                        .liquidGlass(
+                                                enabled = appearance.buttonLiquidGlassEnabled,
+                                                shape = CircleShape,
+                                                containerColor = appearance.buttonContainerColor,
+                                                shadowElevation = 5.dp,
+                                                borderWidth = 0.5.dp,
+                                                blurRadius = 14.dp,
+                                                overlayAlphaBoost = 0.05f,
+                                                enableLens = false
+                                        )
+                                        .clip(CircleShape),
+                        color =
+                                if (appearance.buttonLiquidGlassEnabled) {
+                                        Color.Transparent
+                                } else {
+                                        Color.Transparent
+                                },
+                        shape = CircleShape
+                ) {
+                    IconButton(onClick = { /* 点击图标操作可选 */ }) {
                         Icon(
                                 imageVector =
                                         if (isNetworkAvailable) Icons.Default.Wifi
                                         else Icons.Default.WifiOff,
                                 contentDescription = stringResource(id = R.string.network_status_label),
-                                tint =
-                                        if (isNetworkAvailable) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.error,
+                                tint = appearance.statusAvailableColor,
                                 modifier = Modifier.size(24.dp) // 与其他图标大小一致
                         )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(modifier = Modifier.fillMaxWidth(0.6f))
+                HorizontalDivider(
+                        modifier = Modifier.fillMaxWidth(0.6f),
+                        color = appearance.dividerColor
+                )
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 图标列表 - 只显示图标按钮
                 for (item in navItems) {
-                        IconButton(
-                                onClick = {
-                                        onScreenSelected(
-                                                OperitRouter.getScreenForNavItem(item),
-                                                item
-                                        )
-                                },
-                                modifier = Modifier.padding(vertical = 8.dp)
+                        val selectedGlassOverlayColor =
+                                if (selectedItem == item) {
+                                        appearance.selectedContainerColor.copy(alpha = 0.18f)
+                                } else {
+                                        Color.Transparent
+                                }
+                        Surface(
+                                modifier =
+                                        Modifier.padding(vertical = 8.dp)
+                                                .size(44.dp)
+                                                .liquidGlass(
+                                                        enabled = appearance.buttonLiquidGlassEnabled,
+                                                        shape = CircleShape,
+                                                        containerColor =
+                                                                appearance.buttonContainerColor,
+                                                        shadowElevation =
+                                                                if (selectedItem == item) 6.dp else 5.dp,
+                                                        borderWidth = 0.5.dp,
+                                                        blurRadius = 14.dp,
+                                                        overlayAlphaBoost = 0.05f,
+                                                        enableLens = false
+                                                )
+                                                .clip(CircleShape)
+                                                .background(selectedGlassOverlayColor),
+                                color = Color.Transparent,
+                                shape = CircleShape
                         ) {
-                                Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = stringResource(id = item.titleResId),
-                                        tint =
-                                                if (selectedItem == item)
-                                                        MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp)
-                                )
+                                IconButton(
+                                        onClick = {
+                                                onScreenSelected(
+                                                        OperitRouter.getScreenForNavItem(item),
+                                                        item
+                                                )
+                                        }
+                                ) {
+                                        Icon(
+                                                imageVector = item.icon,
+                                                contentDescription = stringResource(id = item.titleResId),
+                                                tint =
+                                                        if (selectedItem == item) {
+                                                                if (appearance.buttonLiquidGlassEnabled) {
+                                                                        appearance.selectedContentColor
+                                                                } else {
+                                                                        appearance.titleColor
+                                                                }
+                                                        } else {
+                                                                appearance.itemColor
+                                                        },
+                                                modifier = Modifier.size(24.dp)
+                                        )
+                                }
                         }
                 }
 

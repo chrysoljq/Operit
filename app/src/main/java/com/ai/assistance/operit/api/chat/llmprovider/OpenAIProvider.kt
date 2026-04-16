@@ -139,7 +139,12 @@ open class OpenAIProvider(
     ) {
         val parsed = OpenAIResponsesPayloadAdapter.parseUsageCounts(usage) ?: return
         tokenCacheManager.updateActualTokens(parsed.actualInputTokens, parsed.cachedInputTokens)
-        onTokensUpdated(parsed.totalInputTokens, parsed.cachedInputTokens, parsed.outputTokens)
+        tokenCacheManager.setOutputTokens(parsed.outputTokens)
+        onTokensUpdated(
+            parsed.totalInputTokens,
+            parsed.cachedInputTokens,
+            tokenCacheManager.outputTokenCount
+        )
     }
 
     private fun buildOpenAiErrorDetail(error: JSONObject, fallback: String): String {
@@ -1069,7 +1074,8 @@ open class OpenAIProvider(
         // 使用TokenCacheManager计算token数量
         return tokenCacheManager.calculateInputTokens(
             buildComparableHistory(chatHistory, preserveThinkInHistory = false),
-            toolsJson
+            toolsJson,
+            updateState = false
         )
     }
 
@@ -2028,8 +2034,12 @@ open class OpenAIProvider(
         emitter: StreamEmitter,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit
     ) {
-        val choices = jsonResponse.getJSONArray("choices")
-        if (choices.length() == 0) return
+        val usage = jsonResponse.optJSONObject("usage")
+        val choices = jsonResponse.optJSONArray("choices")
+        if (choices == null || choices.length() == 0) {
+            applyUsageToCounters(usage, onTokensUpdated)
+            return
+        }
 
         val choice = choices.getJSONObject(0)
 
@@ -2081,6 +2091,8 @@ open class OpenAIProvider(
                 }
             }
         }
+
+        applyUsageToCounters(usage, onTokensUpdated)
     }
 
     /**

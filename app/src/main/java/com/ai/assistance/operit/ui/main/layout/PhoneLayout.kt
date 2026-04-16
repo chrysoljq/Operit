@@ -1,12 +1,8 @@
 package com.ai.assistance.operit.ui.main.layout
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDp
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,13 +13,14 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,20 +28,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.ui.common.NavItem
 import com.ai.assistance.operit.ui.main.NavGroup
+import com.ai.assistance.operit.ui.main.NavigationTransitionSource
 import com.ai.assistance.operit.ui.main.components.AppContent
 import com.ai.assistance.operit.ui.main.components.DrawerContent
+import com.ai.assistance.operit.ui.main.components.rememberNavigationDrawerAppearance
 import com.ai.assistance.operit.ui.main.screens.GestureStateHolder
 import com.ai.assistance.operit.ui.main.screens.Screen
+import com.ai.assistance.operit.ui.theme.waterGlass
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.RowScope
 
 /** Layout for phone devices with a modal navigation drawer */
 @Composable
@@ -60,6 +60,8 @@ fun PhoneLayout(
         scope: CoroutineScope,
         drawerState: androidx.compose.material3.DrawerState,
         showFpsCounter: Boolean,
+        enableNavigationAnimation: Boolean,
+        navigationTransitionSource: NavigationTransitionSource,
         onScreenChange: (Screen) -> Unit,
         onNavItemChange: (NavItem) -> Unit,
         onDrawerItemSelected: (Screen, NavItem) -> Unit,
@@ -72,9 +74,9 @@ fun PhoneLayout(
         // 使用 updateTransition 来创建更复杂的动画
         val transition = updateTransition(drawerState.targetValue, label = "drawer_transition")
 
-        val animatedOffset by
-                transition.animateDp(
-                        label = "contentOffset",
+        val drawerProgress by
+                transition.animateFloat(
+                        label = "drawerProgress",
                         transitionSpec = {
                                 if (targetState == DrawerValue.Open) {
                                         spring(
@@ -88,60 +90,73 @@ fun PhoneLayout(
                                         )
                                 }
                         }
-                ) { state -> if (state == DrawerValue.Open) drawerWidth else 0.dp }
+                ) { state -> if (state == DrawerValue.Open) 1f else 0f }
 
         // 抽屉动画状态
         val isDrawerOpen =
                 drawerState.currentValue == DrawerValue.Open ||
                         drawerState.targetValue == DrawerValue.Open
 
-        val drawerOffset by
-                transition.animateDp(
-                        label = "drawerOffset",
-                        transitionSpec = {
-                                if (targetState == DrawerValue.Open) {
-                                        spring(
-                                                dampingRatio = Spring.DampingRatioLowBouncy,
-                                                stiffness = 1000f
-                                        )
-                                } else {
-                                        spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = 1000f
-                                        )
-                                }
-                        }
-                ) { state -> if (state == DrawerValue.Open) 0.dp else -drawerWidth }
+        val contentTranslationX =
+                if (enableNavigationAnimation) {
+                        drawerWidth * (0.82f * drawerProgress)
+                } else {
+                        drawerWidth * drawerProgress
+                }
+        val contentTranslationY =
+                if (enableNavigationAnimation) 12.dp * drawerProgress else 0.dp
+        val contentScale =
+                if (enableNavigationAnimation) 1f - (0.08f * drawerProgress) else 1f
+        val contentRotationY =
+                if (enableNavigationAnimation) -7f * drawerProgress else 0f
+        val contentCornerRadius =
+                if (enableNavigationAnimation) 24.dp * drawerProgress else 0.dp
+        val contentShadowElevation =
+                if (enableNavigationAnimation) 18.dp * drawerProgress else 0.dp
 
-        // 阴影大小动画
-        val sidebarElevation by
-                animateDpAsState(
-                        targetValue = if (isDrawerOpen) 3.dp else 0.dp,
-                        animationSpec = spring(stiffness = Spring.StiffnessLow),
-                        label = "sidebarElevation"
-                )
-
-        // 侧边栏内容透明度动画 - 使抽屉内容更流畅
-        val drawerContentAlpha by
-                animateFloatAsState(
-                        targetValue = if (isDrawerOpen) 1f else 0.8f,
-                        animationSpec = spring(stiffness = Spring.StiffnessLow),
-                        label = "drawerContentAlpha"
-                )
+        val drawerOffset = -drawerWidth * (1f - drawerProgress)
+        val sidebarElevation =
+                if (enableNavigationAnimation) 16.dp * drawerProgress
+                else 3.dp * drawerProgress
+        val drawerScale =
+                if (enableNavigationAnimation) 0.92f + (0.08f * drawerProgress)
+                else 1f
+        val drawerContentAlpha =
+                if (enableNavigationAnimation) 0.72f + (0.28f * drawerProgress)
+                else 0.8f + (0.2f * drawerProgress)
+        val scrimColor =
+                if (enableNavigationAnimation) {
+                        MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f * drawerProgress)
+                } else {
+                        Color.Transparent
+                }
 
         // 侧边栏相关拖拽状态
         var currentDrag by remember { mutableStateOf(0f) }
         var verticalDrag by remember { mutableStateOf(0f) }
         val dragThreshold = 40f
 
-        // 添加内部手势消费状态
-        var internalGestureConsumed by remember { mutableStateOf(false) }
+        val drawerAppearance = rememberNavigationDrawerAppearance()
+        val drawerShape =
+                MaterialTheme.shapes.medium.copy(
+                        topEnd = CornerSize(16.dp),
+                        bottomEnd = CornerSize(16.dp),
+                        topStart = CornerSize(0.dp),
+                        bottomStart = CornerSize(0.dp)
+                )
 
         // 缓存抽屉内容以避免重组
         var cachedDrawerContent by remember { mutableStateOf<@Composable () -> Unit>({}) }
 
         // 仅在相关数据变化时更新抽屉内容
-        LaunchedEffect(navGroups, currentScreen, selectedItem, isNetworkAvailable, networkType) {
+        LaunchedEffect(
+                navGroups,
+                currentScreen,
+                selectedItem,
+                isNetworkAvailable,
+                networkType,
+                drawerAppearance
+        ) {
                 cachedDrawerContent = {
                         DrawerContent(
                                 navGroups = navGroups,
@@ -149,6 +164,7 @@ fun PhoneLayout(
                                 selectedItem = selectedItem,
                                 isNetworkAvailable = isNetworkAvailable,
                                 networkType = networkType,
+                                appearance = drawerAppearance,
                                 scope = scope,
                                 drawerState = drawerState,
                                 onScreenSelected = { screen, item -> onDrawerItemSelected(screen, item) }
@@ -211,10 +227,21 @@ fun PhoneLayout(
         ) {
                 // 主内容区域 - 使用自定义布局修饰符优化性能
                 // 该修饰符只会影响布局，不会触发内容重组
-                Box(
+                Surface(
                     modifier =
-                    Modifier.fillMaxSize()
-                        .graphicsLayer { translationX = animatedOffset.toPx() }
+                            Modifier.fillMaxSize()
+                                    .graphicsLayer {
+                                            translationX = contentTranslationX.toPx()
+                                            translationY = contentTranslationY.toPx()
+                                            scaleX = contentScale
+                                            scaleY = contentScale
+                                            rotationY = contentRotationY
+                                            transformOrigin = TransformOrigin(0f, 0.5f)
+                                    }
+                                    .zIndex(1f),
+                    shape = RoundedCornerShape(contentCornerRadius),
+                    color = Color.Transparent,
+                    shadowElevation = contentShadowElevation
                 ) {
                     // 普通调用AppContent，但由于我们的优化，它不会在动画时重组
                     AppContent(
@@ -227,6 +254,8 @@ fun PhoneLayout(
                         scope = scope,
                         drawerState = drawerState,
                         showFpsCounter = showFpsCounter,
+                        enableNavigationAnimation = enableNavigationAnimation,
+                        navigationTransitionSource = navigationTransitionSource,
                         onScreenChange = onScreenChange,
                         onNavItemChange = onNavItemChange,
                         onToggleSidebar = { /* Not used in phone layout */},
@@ -253,17 +282,29 @@ fun PhoneLayout(
                         modifier =
                                 Modifier.width(drawerWidth)
                                         .fillMaxHeight()
-                                        .graphicsLayer { translationX = drawerOffset.toPx() }
+                                        .graphicsLayer {
+                                                translationX = drawerOffset.toPx()
+                                                scaleX = drawerScale
+                                                scaleY = drawerScale
+                                                alpha = drawerContentAlpha
+                                                transformOrigin = TransformOrigin(0f, 0.5f)
+                                        }
+                                        .waterGlass(
+                                                enabled = drawerAppearance.waterGlassEnabled,
+                                                shape = drawerShape,
+                                                containerColor = drawerAppearance.containerColor,
+                                                shadowElevation = sidebarElevation,
+                                                borderWidth = 0.7.dp,
+                                                overlayAlphaBoost =
+                                                        if (enableNavigationAnimation) 0.07f
+                                                        else 0.04f
+                                        )
                                         .zIndex(2f),
-                        shape =
-                                MaterialTheme.shapes.medium.copy(
-                                        topEnd = CornerSize(16.dp),
-                                        bottomEnd = CornerSize(16.dp),
-                                        topStart = CornerSize(0.dp),
-                                        bottomStart = CornerSize(0.dp)
-                                ),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = sidebarElevation
+                        shape = drawerShape,
+                        color =
+                                if (drawerAppearance.waterGlassEnabled) Color.Transparent
+                                else drawerAppearance.containerColor,
+                        shadowElevation = if (drawerAppearance.waterGlassEnabled) 0.dp else sidebarElevation
                 ) {
                         // 使用缓存的抽屉内容
                         Box(modifier = Modifier.fillMaxSize()) { cachedDrawerContent() }
@@ -275,6 +316,7 @@ fun PhoneLayout(
                                 modifier =
                                         Modifier.fillMaxSize()
                                                 .offset(x = drawerWidth)
+                                                .background(scrimColor)
                                                 .zIndex(0.5f)
                                                 .clickable(
                                                         interactionSource =
