@@ -168,8 +168,13 @@ class ChatServiceCore(
             speakMessageHandler = { text, _ ->
                 AppLogger.d(TAG, "朗读消息: $text")
             },
-            onTokenLimitExceeded = { chatId ->
-                messageCoordinationDelegate.handleTokenLimitExceeded(chatId)
+            onTokenLimitExceeded = { chatId, roleCardId, isGroupOrchestrationTurn, groupParticipantNamesText ->
+                messageCoordinationDelegate.handleTokenLimitExceeded(
+                    chatId = chatId,
+                    roleCardId = roleCardId,
+                    isGroupOrchestrationTurn = isGroupOrchestrationTurn,
+                    groupParticipantNamesText = groupParticipantNamesText
+                )
             }
         )
 

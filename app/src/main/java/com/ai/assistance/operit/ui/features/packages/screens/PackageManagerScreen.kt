@@ -70,7 +70,15 @@ private data class ExternalPackageImportResult(
     val availablePackages: Map<String, ToolPackage>,
     val importedPackages: List<String>,
     val packageLoadErrors: Map<String, String>,
+    val packageLoadErrorInfos: List<PackageManager.PackageLoadErrorInfo>,
     val newPackageLoadErrors: Map<String, String>
+)
+
+private data class PackageManagerSnapshot(
+    val availablePackages: Map<String, ToolPackage>,
+    val importedPackages: List<String>,
+    val packageLoadErrors: Map<String, String>,
+    val packageLoadErrorInfos: List<PackageManager.PackageLoadErrorInfo>
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -119,6 +127,8 @@ fun PackageManagerScreen(
     var envVariables by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     val packageLoadErrors = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val packageLoadErrorInfos =
+        remember { mutableStateOf<List<PackageManager.PackageLoadErrorInfo>>(emptyList()) }
     var showPackageLoadErrorsDialog by remember { mutableStateOf(false) }
     var importErrorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -202,6 +212,7 @@ fun PackageManagerScreen(
                                             val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
                                             val imported = packageManager.getImportedPackages()
                                             val errors = packageManager.getPackageLoadErrors()
+                                            val errorInfos = packageManager.getPackageLoadErrorInfos()
                                             val newErrors =
                                                 errors.filter { (key, value) -> errorsBeforeImport[key] != value }
 
@@ -210,6 +221,7 @@ fun PackageManagerScreen(
                                                 availablePackages = available,
                                                 importedPackages = imported,
                                                 packageLoadErrors = errors,
+                                                packageLoadErrorInfos = errorInfos,
                                                 newPackageLoadErrors = newErrors
                                             )
                                         } finally {
@@ -222,6 +234,7 @@ fun PackageManagerScreen(
                                 availablePackages.value = loadResult.availablePackages
                                 importedPackages.value = loadResult.importedPackages
                                 packageLoadErrors.value = loadResult.packageLoadErrors
+                                packageLoadErrorInfos.value = loadResult.packageLoadErrorInfos
                                 visibleImportedPackages.value = importedPackages.value.toList()
                                 isLoading = false
 
@@ -278,12 +291,19 @@ fun PackageManagerScreen(
                     val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
                     val imported = packageManager.getImportedPackages()
                     val errors = packageManager.getPackageLoadErrors()
-                    Triple(available, imported, errors)
+                    val errorInfos = packageManager.getPackageLoadErrorInfos()
+                    PackageManagerSnapshot(
+                        availablePackages = available,
+                        importedPackages = imported,
+                        packageLoadErrors = errors,
+                        packageLoadErrorInfos = errorInfos
+                    )
                 }
 
-            availablePackages.value = loadResult.first
-            importedPackages.value = loadResult.second
-            packageLoadErrors.value = loadResult.third
+            availablePackages.value = loadResult.availablePackages
+            importedPackages.value = loadResult.importedPackages
+            packageLoadErrors.value = loadResult.packageLoadErrors
+            packageLoadErrorInfos.value = loadResult.packageLoadErrorInfos
             // 初始化UI显示状态
             visibleImportedPackages.value = importedPackages.value.toList()
         } catch (e: Exception) {
@@ -765,7 +785,43 @@ fun PackageManagerScreen(
 
             if (showPackageLoadErrorsDialog) {
                 PackageLoadErrorsDialog(
-                    errors = packageLoadErrors.value,
+                    errorInfos = packageLoadErrorInfos.value,
+                    onDeleteSource = { sourcePath ->
+                        scope.launch {
+                            val deleted =
+                                withContext(Dispatchers.IO) {
+                                    packageManager.deleteExternalPackageSource(sourcePath)
+                                }
+                            if (!deleted) {
+                                snackbarHostState.showSnackbar(
+                                    message = context.getString(R.string.package_conflict_delete_failed)
+                                )
+                                return@launch
+                            }
+
+                            val refreshed =
+                                withContext(Dispatchers.IO) {
+                                    PackageManagerSnapshot(
+                                        availablePackages = packageManager.getTopLevelAvailablePackages(forceRefresh = true),
+                                        importedPackages = packageManager.getImportedPackages(),
+                                        packageLoadErrors = packageManager.getPackageLoadErrors(),
+                                        packageLoadErrorInfos = packageManager.getPackageLoadErrorInfos()
+                                    )
+                                }
+                            availablePackages.value = refreshed.availablePackages
+                            importedPackages.value = refreshed.importedPackages
+                            packageLoadErrors.value = refreshed.packageLoadErrors
+                            packageLoadErrorInfos.value = refreshed.packageLoadErrorInfos
+                            visibleImportedPackages.value = refreshed.importedPackages.toList()
+
+                            if (packageLoadErrorInfos.value.isEmpty()) {
+                                showPackageLoadErrorsDialog = false
+                            }
+                            snackbarHostState.showSnackbar(
+                                message = context.getString(R.string.package_conflict_delete_success)
+                            )
+                        }
+                    },
                     onDismiss = { showPackageLoadErrorsDialog = false }
                 )
             }
@@ -782,7 +838,8 @@ fun PackageManagerScreen(
 
 @Composable
 private fun PackageLoadErrorsDialog(
-    errors: Map<String, String>,
+    errorInfos: List<PackageManager.PackageLoadErrorInfo>,
+    onDeleteSource: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -797,18 +854,34 @@ private fun PackageLoadErrorsDialog(
                     .heightIn(max = 420.dp)
                     .verticalScroll(scrollState)
             ) {
-                errors.toSortedMap().forEach { (packageName, errorText) ->
+                errorInfos.forEach { errorInfo ->
                     Text(
-                        text = packageName,
+                        text = errorInfo.packageName,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.error
                     )
                     Spacer(modifier = Modifier.height(6.dp))
+                    errorInfo.sourcePath?.let { sourcePath ->
+                        Text(
+                            text = sourcePath,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                     Text(
-                        text = errorText,
+                        text = errorInfo.message,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (errorInfo.isExternalSource && errorInfo.sourcePath != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { onDeleteSource(errorInfo.sourcePath) }
+                        ) {
+                            Text(text = stringResource(R.string.package_conflict_delete_source))
+                        }
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }

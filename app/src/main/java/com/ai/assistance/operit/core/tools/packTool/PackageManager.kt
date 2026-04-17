@@ -125,6 +125,13 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val moduleSpec: Map<String, Any?>
     )
 
+    data class PackageLoadErrorInfo(
+        val packageName: String,
+        val message: String,
+        val sourcePath: String?,
+        val isExternalSource: Boolean
+    )
+
     private data class PackageScanSnapshot(
         val packageLoadErrors: Map<String, String>,
         val availablePackages: Map<String, ToolPackage>,
@@ -135,7 +142,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     private data class PackageScanCandidateResult(
         val packageLoadErrors: Map<String, String> = emptyMap(),
         val toolPackage: ToolPackage? = null,
-        val toolPkgLoadResult: ToolPkgLoadResult? = null
+        val toolPkgLoadResult: ToolPkgLoadResult? = null,
+        val sourcePath: String? = null
     )
 
     private data class ExternalPackageScanCacheEntry(
@@ -399,6 +407,58 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             AppLogger.d(TAG, "External packages directory: ${dir.absolutePath}")
             return dir
         }
+
+    private fun formatPackageLoadError(
+        message: String,
+        sourcePath: String? = null
+    ): String {
+        val normalizedSourcePath = sourcePath?.trim().orEmpty()
+        return if (normalizedSourcePath.isBlank()) {
+            message
+        } else {
+            "Source: $normalizedSourcePath\n$message"
+        }
+    }
+
+    private fun extractPackageLoadErrorSourcePath(errorText: String): String? {
+        val sourcePrefix = "Source: "
+        val firstLine = errorText.lineSequence().firstOrNull()?.trim().orEmpty()
+        return firstLine
+            .takeIf { it.startsWith(sourcePrefix) }
+            ?.removePrefix(sourcePrefix)
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun stripPackageLoadErrorSourcePath(errorText: String): String {
+        val sourcePrefix = "Source: "
+        val lines = errorText.lines()
+        return if (lines.firstOrNull()?.trim()?.startsWith(sourcePrefix) == true) {
+            lines.drop(1).joinToString("\n").trim()
+        } else {
+            errorText
+        }
+    }
+
+    private fun isExternalPackageSourcePath(sourcePath: String?): Boolean {
+        if (sourcePath.isNullOrBlank()) {
+            return false
+        }
+
+        val candidateCanonicalPath =
+            runCatching { File(sourcePath).canonicalPath }.getOrElse { return false }
+        val externalRootCanonicalPath =
+            runCatching { externalPackagesDir.canonicalPath }.getOrElse { externalPackagesDir.absolutePath }
+        val externalRootPrefix =
+            if (externalRootCanonicalPath.endsWith(File.separator)) {
+                externalRootCanonicalPath
+            } else {
+                externalRootCanonicalPath + File.separator
+            }
+
+        return candidateCanonicalPath.equals(externalRootCanonicalPath, ignoreCase = true) ||
+            candidateCanonicalPath.startsWith(externalRootPrefix, ignoreCase = true)
+    }
 
     private val toolPkgCacheRootDir: File
         get() {
@@ -736,7 +796,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                         }
                     PackageScanCandidateResult(
                         packageLoadErrors = stagedPackageLoadErrors,
-                        toolPackage = packageMetadata
+                        toolPackage = packageMetadata,
+                        sourcePath = candidate.sourcePath
                     )
                 }
                 candidate.fileName.endsWith(TOOLPKG_EXTENSION, ignoreCase = true) &&
@@ -747,21 +808,27 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                         }
                     PackageScanCandidateResult(
                         packageLoadErrors = stagedPackageLoadErrors,
-                        toolPkgLoadResult = loadResult
+                        toolPkgLoadResult = loadResult,
+                        sourcePath = candidate.sourcePath
                     )
                 }
                 else ->
                     PackageScanCandidateResult(
-                        packageLoadErrors = stagedPackageLoadErrors
+                        packageLoadErrors = stagedPackageLoadErrors,
+                        sourcePath = candidate.sourcePath
                     )
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Unexpected error while loading $phase package: ${candidate.sourcePath}", e)
             logToolPkgError("loadAvailablePackages $phase parse failed, source=${candidate.sourcePath}", e)
             stagedPackageLoadErrors[candidate.fileName.substringBeforeLast('.')] =
-                "${candidate.sourcePath}: ${e.stackTraceToString()}"
+                formatPackageLoadError(
+                    message = e.stackTraceToString(),
+                    sourcePath = candidate.sourcePath
+                )
             PackageScanCandidateResult(
-                packageLoadErrors = stagedPackageLoadErrors
+                packageLoadErrors = stagedPackageLoadErrors,
+                sourcePath = candidate.sourcePath
             )
         }
     }
@@ -778,7 +845,15 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         candidateResults.forEach { result ->
             stagedPackageLoadErrors.putAll(result.packageLoadErrors)
             result.toolPackage?.let { packageMetadata ->
-                stagedAvailablePackages[packageMetadata.name] = packageMetadata
+                if (stagedAvailablePackages.containsKey(packageMetadata.name)) {
+                    stagedPackageLoadErrors[packageMetadata.name] =
+                        formatPackageLoadError(
+                            message = "Duplicate package name: ${packageMetadata.name}",
+                            sourcePath = result.sourcePath
+                        )
+                } else {
+                    stagedAvailablePackages[packageMetadata.name] = packageMetadata
+                }
             }
             result.toolPkgLoadResult?.let { loadResult ->
                 registerToolPkgInto(
@@ -1150,7 +1225,11 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     ): Boolean {
         val containerName = loadResult.containerPackage.name
         if (availablePackagesTarget.containsKey(containerName)) {
-            packageLoadErrorsTarget[containerName] = "Duplicate package name: $containerName"
+            packageLoadErrorsTarget[containerName] =
+                formatPackageLoadError(
+                    message = "Duplicate package name: $containerName",
+                    sourcePath = loadResult.containerRuntime.sourcePath
+                )
             AppLogger.w(TAG, "Skipped duplicated toolpkg container: $containerName")
             return false
         }
@@ -1162,7 +1241,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
         if (duplicateSubpackages.isNotEmpty()) {
             packageLoadErrorsTarget[containerName] =
-                "Duplicate subpackage names: ${duplicateSubpackages.joinToString(", ")}"
+                formatPackageLoadError(
+                    message = "Duplicate subpackage names: ${duplicateSubpackages.joinToString(", ")}",
+                    sourcePath = loadResult.containerRuntime.sourcePath
+                )
             AppLogger.w(TAG, "Skipped toolpkg '$containerName' due to duplicate subpackages: $duplicateSubpackages")
             return false
         }
@@ -1190,11 +1272,23 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         try {
             val jsContent = file.readText()
             return parseJsPackage(jsContent) { key, error ->
-                reportPackageLoadError(key, "${file.path}: $error")
+                reportPackageLoadError(
+                    key,
+                    formatPackageLoadError(
+                        message = error,
+                        sourcePath = file.path
+                    )
+                )
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error loading package from JS file: ${file.path}", e)
-            reportPackageLoadError(file.nameWithoutExtension, "${file.path}: ${e.stackTraceToString()}")
+            reportPackageLoadError(
+                file.nameWithoutExtension,
+                formatPackageLoadError(
+                    message = e.stackTraceToString(),
+                    sourcePath = file.path
+                )
+            )
             return null
         }
     }
@@ -1210,13 +1304,22 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             val assetManager = context.assets
             val jsContent = assetManager.open(assetPath).bufferedReader().use { it.readText() }
             return parseJsPackage(jsContent) { key, error ->
-                reportPackageLoadError(key, "$assetPath: $error")
+                reportPackageLoadError(
+                    key,
+                    formatPackageLoadError(
+                        message = error,
+                        sourcePath = assetPath
+                    )
+                )
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error loading package from JS asset: $assetPath", e)
             reportPackageLoadError(
                 assetPath.substringAfterLast("/").removeSuffix(".js"),
-                "$assetPath: ${e.stackTraceToString()}"
+                formatPackageLoadError(
+                    message = e.stackTraceToString(),
+                    sourcePath = assetPath
+                )
             )
             return null
         }
@@ -1258,7 +1361,13 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                             )
                         },
                         reportPackageLoadError = { key, error ->
-                            reportPackageLoadError(key, error)
+                            reportPackageLoadError(
+                                key,
+                                formatPackageLoadError(
+                                    message = error,
+                                    sourcePath = file.absolutePath
+                                )
+                            )
                         }
                     )
                 }
@@ -1269,7 +1378,13 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 "loadToolPkgFromExternalFile failed, source=${file.absolutePath}, elapsedMs=${System.currentTimeMillis() - startMs}, reason=${e.message ?: e.javaClass.simpleName}",
                 e
             )
-            reportPackageLoadError(file.nameWithoutExtension, "${file.absolutePath}: ${e.stackTraceToString()}")
+            reportPackageLoadError(
+                file.nameWithoutExtension,
+                formatPackageLoadError(
+                    message = e.stackTraceToString(),
+                    sourcePath = file.absolutePath
+                )
+            )
             null
         }
     }
@@ -1310,7 +1425,13 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                             )
                         },
                         reportPackageLoadError = { key, error ->
-                            reportPackageLoadError(key, error)
+                            reportPackageLoadError(
+                                key,
+                                formatPackageLoadError(
+                                    message = error,
+                                    sourcePath = assetPath
+                                )
+                            )
                         }
                     )
                 }
@@ -1323,7 +1444,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             )
             reportPackageLoadError(
                 assetPath.substringAfterLast('/').removeSuffix(TOOLPKG_EXTENSION),
-                "$assetPath: ${e.stackTraceToString()}"
+                formatPackageLoadError(
+                    message = e.stackTraceToString(),
+                    sourcePath = assetPath
+                )
             )
             null
         }
@@ -1558,6 +1682,51 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     fun getPackageLoadErrors(): Map<String, String> {
         ensureInitialized()
         return packageLoadErrors.toMap()
+    }
+
+    fun getPackageLoadErrorInfos(): List<PackageLoadErrorInfo> {
+        ensureInitialized()
+        return packageLoadErrors
+            .toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            .map { (packageName, errorText) ->
+                val sourcePath = extractPackageLoadErrorSourcePath(errorText)
+                PackageLoadErrorInfo(
+                    packageName = packageName,
+                    message = stripPackageLoadErrorSourcePath(errorText),
+                    sourcePath = sourcePath,
+                    isExternalSource = isExternalPackageSourcePath(sourcePath)
+                )
+            }
+    }
+
+    fun deleteExternalPackageSource(sourcePath: String): Boolean {
+        ensureInitialized()
+        val normalizedSourcePath = sourcePath.trim()
+        if (normalizedSourcePath.isEmpty()) {
+            return false
+        }
+
+        val targetFile = File(normalizedSourcePath)
+        val targetCanonicalPath =
+            runCatching { targetFile.canonicalPath }.getOrElse { return false }
+        if (!isExternalPackageSourcePath(targetCanonicalPath)) {
+            AppLogger.w(TAG, "Refusing to delete non-external package source: $normalizedSourcePath")
+            return false
+        }
+
+        if (targetFile.exists() && (!targetFile.isFile || !targetFile.delete())) {
+            AppLogger.e(TAG, "Failed to delete external package source: $targetCanonicalPath")
+            return false
+        }
+
+        externalPackageScanCache =
+            externalPackageScanCache.filterKeys { cachedPath ->
+                val cachedCanonicalPath =
+                    runCatching { File(cachedPath).canonicalPath }.getOrElse { cachedPath }
+                !cachedCanonicalPath.equals(targetCanonicalPath, ignoreCase = true)
+            }
+        loadAvailablePackages(refreshExternalOnly = true)
+        return true
     }
 
     /** 验证JavaScript文件中是否存在指定的函数 这确保了我们可以在运行时调用该函数 */

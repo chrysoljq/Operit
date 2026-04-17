@@ -32,6 +32,10 @@ import org.json.JSONObject
 /** Utility class for managing tool executions */
 object ToolExecutionManager {
     private const val TAG = "ToolExecutionManager"
+    private const val PACKAGE_PROXY_TOOL_NAME = "package_proxy"
+    private const val PACKAGE_CALLER_NAME_PARAM = "__operit_package_caller_name"
+    private const val PACKAGE_CHAT_ID_PARAM = "__operit_package_chat_id"
+    private const val PACKAGE_CALLER_CARD_ID_PARAM = "__operit_package_caller_card_id"
 
     private data class ResolvedToolTarget(
         val tool: AITool,
@@ -43,7 +47,7 @@ object ToolExecutionManager {
     }
 
     private fun resolveToolTarget(tool: AITool): ResolvedToolTarget {
-        if (tool.name != "package_proxy") {
+        if (tool.name != PACKAGE_PROXY_TOOL_NAME) {
             return ResolvedToolTarget(tool = tool, displayName = tool.name)
         }
 
@@ -67,6 +71,54 @@ object ToolExecutionManager {
         return resolveToolTarget(tool).displayName
     }
 
+    private fun isJsPackageTool(toolName: String, jsPackageNames: Set<String>): Boolean {
+        val toolNameParts = toolName.split(':', limit = 2)
+        val packageName = toolNameParts.getOrNull(0)
+        return toolNameParts.size == 2 &&
+            packageName != null &&
+            jsPackageNames.contains(packageName)
+    }
+
+    private fun addPackageContextParamIfMissing(
+        params: MutableList<ToolParameter>,
+        name: String,
+        value: String?
+    ) {
+        if (value.isNullOrBlank()) {
+            return
+        }
+        if (params.any { it.name == name }) {
+            return
+        }
+        params.add(ToolParameter(name, value))
+    }
+
+    private fun injectPackageCallContext(
+        invocation: ToolInvocation,
+        jsPackageNames: Set<String>,
+        callerName: String?,
+        callerChatId: String?,
+        callerCardId: String?
+    ): ToolInvocation {
+        val resolvedTargetTool = resolveToolTarget(invocation.tool).tool
+        if (!isJsPackageTool(resolvedTargetTool.name, jsPackageNames)) {
+            return invocation
+        }
+
+        val updatedParams = invocation.tool.parameters.toMutableList()
+        addPackageContextParamIfMissing(updatedParams, PACKAGE_CALLER_NAME_PARAM, callerName)
+        addPackageContextParamIfMissing(updatedParams, PACKAGE_CHAT_ID_PARAM, callerChatId)
+        addPackageContextParamIfMissing(updatedParams, PACKAGE_CALLER_CARD_ID_PARAM, callerCardId)
+
+        if (updatedParams.size == invocation.tool.parameters.size) {
+            return invocation
+        }
+
+        return invocation.copy(
+            tool = invocation.tool.copy(parameters = updatedParams)
+        )
+    }
+
     private fun getParameterValue(tool: AITool, name: String): String? {
         return tool.parameters.firstOrNull { it.name == name }?.value?.trim()
     }
@@ -87,7 +139,7 @@ object ToolExecutionManager {
                 }
             }
 
-            toolName == "package_proxy" -> {
+            toolName == PACKAGE_PROXY_TOOL_NAME -> {
                 if (!roleCardToolAccess.isBuiltinToolAllowed("package_proxy")) {
                     false
                 } else {
@@ -403,35 +455,13 @@ object ToolExecutionManager {
             } else {
                 val jsPackageNames = packageManager.getAvailablePackages().keys
                 permittedInvocations.map { invocation ->
-                    val toolNameParts = invocation.tool.name.split(':', limit = 2)
-                    val packName = toolNameParts.getOrNull(0)
-                    val isJsPackageTool = toolNameParts.size == 2 && packName != null && jsPackageNames.contains(packName)
-                    if (!isJsPackageTool) {
-                        invocation
-                    } else {
-                        val updatedParams = invocation.tool.parameters.toMutableList()
-                        if (!callerName.isNullOrBlank()) {
-                            val hasCallerParam = updatedParams.any { it.name == "__operit_package_caller_name" }
-                            if (!hasCallerParam) {
-                                updatedParams.add(ToolParameter("__operit_package_caller_name", callerName))
-                            }
-                        }
-                        if (!callerChatId.isNullOrBlank()) {
-                            val hasChatIdParam = updatedParams.any { it.name == "__operit_package_chat_id" }
-                            if (!hasChatIdParam) {
-                                updatedParams.add(ToolParameter("__operit_package_chat_id", callerChatId))
-                            }
-                        }
-                        if (!callerCardId.isNullOrBlank()) {
-                            val hasCallerCardParam = updatedParams.any { it.name == "__operit_package_caller_card_id" }
-                            if (!hasCallerCardParam) {
-                                updatedParams.add(ToolParameter("__operit_package_caller_card_id", callerCardId))
-                            }
-                        }
-                        invocation.copy(
-                            tool = invocation.tool.copy(parameters = updatedParams)
-                        )
-                    }
+                    injectPackageCallContext(
+                        invocation = invocation,
+                        jsPackageNames = jsPackageNames,
+                        callerName = callerName,
+                        callerChatId = callerChatId,
+                        callerCardId = callerCardId
+                    )
                 }
             }
 

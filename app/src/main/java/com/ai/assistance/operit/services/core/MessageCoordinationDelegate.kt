@@ -100,6 +100,9 @@ class MessageCoordinationDelegate(
         val promptFunctionType: PromptFunctionType,
         val chatModelConfigIdOverride: String?,
         val chatModelIndexOverride: Int?,
+        val roleCardIdOverride: String?,
+        val isGroupOrchestrationTurn: Boolean,
+        val groupParticipantNamesText: String?,
         var waitJob: Job? = null
     )
 
@@ -174,6 +177,14 @@ class MessageCoordinationDelegate(
         return roleCardId
             ?: resolveBoundRoleCardId(chatId)
             ?: runCatching { activePromptManager.resolveActiveCardIdForSend() }.getOrNull()
+    }
+
+    private fun isGroupChatSession(chatId: String?): Boolean {
+        if (chatId.isNullOrBlank()) return false
+        return chatHistoryDelegate.chatHistories.value
+            .firstOrNull { it.id == chatId }
+            ?.characterGroupId
+            ?.isNotBlank() == true
     }
 
     private fun resolveWindowEstimateService(chatId: String?): EnhancedAIService? {
@@ -1019,7 +1030,10 @@ class MessageCoordinationDelegate(
         chatId: String,
         promptFunctionType: PromptFunctionType,
         chatModelConfigIdOverride: String?,
-        chatModelIndexOverride: Int?
+        chatModelIndexOverride: Int?,
+        roleCardIdOverride: String? = null,
+        isGroupOrchestrationTurn: Boolean = false,
+        groupParticipantNamesText: String? = null
     ) {
         cancelPendingAutoContinuation(chatId, restoreIdleIfPendingState = false)
         messageProcessingDelegate.setSuppressIdleCompletedStateForChat(chatId, true)
@@ -1028,7 +1042,10 @@ class MessageCoordinationDelegate(
                 chatId = chatId,
                 promptFunctionType = promptFunctionType,
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
-                chatModelIndexOverride = chatModelIndexOverride
+                chatModelIndexOverride = chatModelIndexOverride,
+                roleCardIdOverride = roleCardIdOverride,
+                isGroupOrchestrationTurn = isGroupOrchestrationTurn,
+                groupParticipantNamesText = groupParticipantNamesText
             )
         pendingAutoContinuationByChatId[chatId] = request
         request.waitJob =
@@ -1058,9 +1075,12 @@ class MessageCoordinationDelegate(
                         promptFunctionType = request.promptFunctionType,
                         isContinuation = true,
                         isAutoContinuation = true,
+                        roleCardIdOverride = request.roleCardIdOverride,
                         chatIdOverride = chatId,
                         chatModelConfigIdOverride = request.chatModelConfigIdOverride,
-                        chatModelIndexOverride = request.chatModelIndexOverride
+                        chatModelIndexOverride = request.chatModelIndexOverride,
+                        isGroupOrchestrationTurn = request.isGroupOrchestrationTurn,
+                        groupParticipantNamesText = request.groupParticipantNamesText
                     )
                     val started = messageProcessingDelegate.isChatLoading(chatId)
                     if (isSamePendingAutoContinuation(chatId, request)) {
@@ -1177,7 +1197,13 @@ class MessageCoordinationDelegate(
             return
         }
         coroutineScope.launch {
-            val success = summarizeHistory(autoContinue = false)
+            val currentChatId = chatHistoryDelegate.currentChatId.value
+            val success =
+                summarizeHistory(
+                    autoContinue = false,
+                    chatIdOverride = currentChatId,
+                    isGroupChat = isGroupChatSession(currentChatId)
+                )
             if (success) {
                 uiStateDelegate.showToast(context.getString(R.string.chat_conversation_summary_generated))
             }
@@ -1187,10 +1213,22 @@ class MessageCoordinationDelegate(
     /**
      * 处理Token超限的情况，触发一次历史总结并继续。
      */
-    fun handleTokenLimitExceeded(chatId: String?) {
+    fun handleTokenLimitExceeded(
+        chatId: String?,
+        roleCardId: String?,
+        isGroupOrchestrationTurn: Boolean,
+        groupParticipantNamesText: String?
+    ) {
         AppLogger.d(TAG, "接收到Token超限信号，开始执行总结并继续...")
         summaryJob = coroutineScope.launch {
-            summarizeHistory(autoContinue = true, chatIdOverride = chatId)
+            summarizeHistory(
+                autoContinue = true,
+                chatIdOverride = chatId,
+                roleCardIdOverride = roleCardId,
+                isGroupChat = isGroupChatSession(chatId),
+                isGroupOrchestrationTurn = isGroupOrchestrationTurn,
+                groupParticipantNamesText = groupParticipantNamesText
+            )
             summaryJob = null
         }
     }
@@ -1421,7 +1459,10 @@ class MessageCoordinationDelegate(
         chatIdOverride: String? = null,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null,
-        isGroupChat: Boolean = false
+        roleCardIdOverride: String? = null,
+        isGroupChat: Boolean = false,
+        isGroupOrchestrationTurn: Boolean = false,
+        groupParticipantNamesText: String? = null
     ): Boolean {
         if (_isSummarizing.value) {
             AppLogger.d(TAG, "已在总结中，忽略本次请求")
@@ -1441,6 +1482,7 @@ class MessageCoordinationDelegate(
             chatModelConfigIdOverride ?: currentChatModelConfigIdOverride
         val effectiveChatModelIndexOverride =
             chatModelIndexOverride ?: currentChatModelIndexOverride
+        val effectiveIsGroupChat = isGroupChat || isGroupChatSession(currentChatId)
 
         var summarySuccess = false
         try {
@@ -1458,7 +1500,7 @@ class MessageCoordinationDelegate(
 
             val insertPosition = chatHistoryDelegate.findProperSummaryPosition(currentMessages)
             val summaryMessage =
-                AIMessageManager.summarizeMemory(service, currentMessages, autoContinue, isGroupChat)
+                AIMessageManager.summarizeMemory(service, currentMessages, autoContinue, effectiveIsGroupChat)
 
             if (summaryMessage != null) {
                 chatHistoryDelegate.addSummaryMessage(
@@ -1469,6 +1511,9 @@ class MessageCoordinationDelegate(
 
                 refreshStableContextWindow(
                     chatId = currentChatId,
+                    roleCardId = roleCardIdOverride,
+                    groupOrchestrationMode = isGroupOrchestrationTurn,
+                    groupParticipantNamesText = groupParticipantNamesText,
                     chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
                     chatModelIndexOverride = effectiveChatModelIndexOverride
                 )
@@ -1511,7 +1556,10 @@ class MessageCoordinationDelegate(
                                 chatId = currentChatId,
                                 promptFunctionType = continuationPromptType,
                                 chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
-                                chatModelIndexOverride = effectiveChatModelIndexOverride
+                                chatModelIndexOverride = effectiveChatModelIndexOverride,
+                                roleCardIdOverride = roleCardIdOverride,
+                                isGroupOrchestrationTurn = isGroupOrchestrationTurn,
+                                groupParticipantNamesText = groupParticipantNamesText
                             )
                         } else {
                             messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, false)
@@ -1520,9 +1568,12 @@ class MessageCoordinationDelegate(
                                 promptFunctionType = continuationPromptType,
                                 isContinuation = true,
                                 isAutoContinuation = true,
+                                roleCardIdOverride = roleCardIdOverride,
                                 chatIdOverride = currentChatId,
                                 chatModelConfigIdOverride = effectiveChatModelConfigIdOverride,
-                                chatModelIndexOverride = effectiveChatModelIndexOverride
+                                chatModelIndexOverride = effectiveChatModelIndexOverride,
+                                isGroupOrchestrationTurn = isGroupOrchestrationTurn,
+                                groupParticipantNamesText = groupParticipantNamesText
                             )
                             if (!messageProcessingDelegate.isChatLoading(currentChatId)) {
                                 AppLogger.w(TAG, "自动续聊未能启动，恢复Idle: chatId=$currentChatId")

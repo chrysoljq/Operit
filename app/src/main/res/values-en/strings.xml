@@ -7306,6 +7306,9 @@
     <string name="workflow_already_running">Workflow "%1$s" is already running</string>
     <string name="workflow_log_node_cancelled">Node "%1$s" execution cancelled</string>
     <string name="workflow_log_execution_cancelled">Workflow "%1$s" execution cancelled</string>
+    <string name="package_conflict_delete_source">Delete Source File</string>
+    <string name="package_conflict_delete_success">Conflicting package source deleted</string>
+    <string name="package_conflict_delete_failed">Failed to delete conflicting package source</string>
 
     <!-- Character group strings synced from values/strings.xml -->
     <string name="action_assign_to_group">Assign to Character Group</string>

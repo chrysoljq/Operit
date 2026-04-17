@@ -15,19 +15,8 @@ const MessageProcessingController = Java.com.ai.assistance.operit.core.chat.plug
 const ToolPkgMessageProcessingCancellationRegistry = Java.com.ai.assistance.operit.plugins.toolpkg.ToolPkgMessageProcessingCancellationRegistry;
 const FEATURE_KEY = "ai_planning";
 const PROBE_LOG_TAG = "[deepsearching_probe]";
-const INTERMEDIATE_PREVIEW_LIMIT = 160;
 function logProbe(message) {
     console.log(`${PROBE_LOG_TAG} ${message}`);
-}
-function clipIntermediatePreview(chunk) {
-    const normalized = String(chunk || "")
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r")
-        .replace(/\t/g, "\\t");
-    if (normalized.length <= INTERMEDIATE_PREVIEW_LIMIT) {
-        return normalized;
-    }
-    return `${normalized.slice(0, INTERMEDIATE_PREVIEW_LIMIT)}...`;
 }
 function getAppContext() {
     if (typeof Java.getApplicationContext !== "function") {
@@ -159,7 +148,6 @@ async function onMessageProcessing(input) {
         const emitIntermediateChunk = (chunk) => {
             if (!chunk)
                 return;
-            logProbe(`emitIntermediateChunk length=${chunk.length} preview=${clipIntermediatePreview(chunk)}`);
             if (typeof sendIntermediateResult === "function") {
                 sendIntermediateResult({ chunk });
             }

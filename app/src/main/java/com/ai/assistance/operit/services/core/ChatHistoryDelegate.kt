@@ -23,6 +23,7 @@ import kotlinx.coroutines.sync.withLock
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
+import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** 委托类，负责管理聊天历史相关功能 */
@@ -380,7 +381,7 @@ class ChatHistoryDelegate(
                 val openingMessage = ChatMessage(
                     sender = "ai",
                     content = opening,
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = ChatMessageTimestampAllocator.next(),
                     roleName = roleName,
                     provider = "", // 开场白不是AI生成，使用空值
                     modelName = "" // 开场白不是AI生成，使用空值
@@ -465,7 +466,7 @@ class ChatHistoryDelegate(
                 val openingMessage = ChatMessage(
                     sender = "ai",
                     content = resolvedCard.openingStatement,
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = ChatMessageTimestampAllocator.next(),
                     roleName = resolvedCard.name, // 使用角色卡的名称
                     provider = "", // 开场白不是AI生成，使用空值
                     modelName = "" // 开场白不是AI生成，使用空值

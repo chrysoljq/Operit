@@ -62,7 +62,12 @@ class MessageProcessingDelegate(
         private val showErrorMessage: (String) -> Unit,
         private val updateChatTitle: (chatId: String, title: String) -> Unit,
         private val onTurnComplete: (chatId: String?, service: EnhancedAIService, nextWindowSize: Int?) -> Unit,
-        private val onTokenLimitExceeded: suspend (chatId: String?) -> Unit, // 新增：Token超限回调
+        private val onTokenLimitExceeded: suspend (
+            chatId: String?,
+            roleCardId: String?,
+            isGroupOrchestrationTurn: Boolean,
+            groupParticipantNamesText: String?
+        ) -> Unit,
         // 添加自动朗读相关的回调
         private val getIsAutoReadEnabled: () -> Boolean,
         private var speakMessageHandler: (String, Boolean) -> Unit
@@ -680,7 +685,14 @@ class MessageProcessingDelegate(
                 val effectiveMaxTokens = maxTokens
                 val effectiveTokenUsageThreshold = if (enableSummary) tokenUsageThreshold else Double.MAX_VALUE
                 val effectiveOnTokenLimitExceeded = if (enableSummary) {
-                    suspend { onTokenLimitExceeded(activeChatId) }
+                    suspend {
+                        onTokenLimitExceeded(
+                            activeChatId,
+                            effectiveRoleCardId,
+                            isGroupOrchestrationTurn,
+                            groupParticipantNamesText
+                        )
+                    }
                 } else {
                     null
                 }
@@ -794,7 +806,7 @@ class MessageProcessingDelegate(
                 aiMessage = ChatMessage(
                     sender = "ai", 
                     contentStream = sharedCharStream,
-                    timestamp = System.currentTimeMillis()+50,
+                    timestamp = ChatMessageTimestampAllocator.next(),
                     roleName = currentRoleName,
                     provider = provider,
                     modelName = modelName,
@@ -1229,7 +1241,7 @@ class MessageProcessingDelegate(
                                 sender = "ai",
                                 content = sentence,
                                 contentStream = null,
-                                timestamp = System.currentTimeMillis() + index * 10,
+                                timestamp = ChatMessageTimestampAllocator.next(),
                                 roleName = currentRoleName,
                                 provider = provider,
                                 modelName = modelName,

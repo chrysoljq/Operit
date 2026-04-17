@@ -29,6 +29,7 @@ openai_draw.js
 operit_editor.js
 vflow_trigger.js
 browser.js
+context_limiter_c
 windows_control
 zhipu_draw.js
 zhipu_search.js

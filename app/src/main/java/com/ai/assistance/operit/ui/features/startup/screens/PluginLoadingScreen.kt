@@ -766,6 +766,8 @@ class PluginLoadingState {
                     // 获取已安装的插件列表 (这是一个Set<String>)
                     updateMessage(context.getString(R.string.plugin_loading_list))
                     updateProgress(0.28f)
+                    AppLogger.d("PluginLoadingState", "启动前刷新 MCP 配置与插件列表")
+                    mcpRepository.refreshPluginList()
                     val installedPluginsSet = mcpRepository.installedPluginIds.first()
 
                     // 显式转换为List<String>

@@ -64,7 +64,10 @@ object WaifuMessageProcessor {
                 continue
             }
 
-            val separatedContent = separateEmotionAndText(segment.content)
+            val contentWithoutThinking = ChatUtils.removeThinkingContent(segment.content)
+            if (contentWithoutThinking.isBlank()) continue
+
+            val separatedContent = separateEmotionAndText(contentWithoutThinking)
 
             for (item in separatedContent) {
                 // 如果这个item是表情包（包含![开头的），直接添加
@@ -168,18 +171,15 @@ object WaifuMessageProcessor {
      * 清理内容中的状态标签和XML标签，只保留纯文本
      */
     fun cleanContentForWaifu(content: String): String {
-        val sanitizedContent = ChatUtils.stripGeminiThoughtSignatureMeta(content)
+        val sanitizedContent =
+            ChatUtils.removeThinkingContent(
+                ChatUtils.stripGeminiThoughtSignatureMeta(content)
+            )
 
         return sanitizedContent
             // 移除状态标签
             .replace(ChatMarkupRegex.statusTag, "")
             .replace(ChatMarkupRegex.statusSelfClosingTag, "")
-            // 移除思考标签（包括 <think> 和 <thinking>）
-            .replace(ChatMarkupRegex.thinkTag, "")
-            .replace(ChatMarkupRegex.thinkSelfClosingTag, "")
-            // 移除搜索来源标签
-            .replace(ChatMarkupRegex.searchTag, "")
-            .replace(ChatMarkupRegex.searchSelfClosingTag, "")
             // 移除工具标签
             .replace(ChatMarkupRegex.toolTag, "")
             .replace(ChatMarkupRegex.toolSelfClosingTag, "")

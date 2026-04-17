@@ -620,14 +620,19 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 "Proxy call to package tool: $targetToolName"
             },
             executor = { tool ->
-                val allowedParamNames = setOf("tool_name", "params")
+                val packageContextParamNames = setOf(
+                    "__operit_package_caller_name",
+                    "__operit_package_chat_id",
+                    "__operit_package_caller_card_id"
+                )
+                val allowedParamNames = setOf("tool_name", "params") + packageContextParamNames
                 val unknownParamNames = tool.parameters.map { it.name }.filter { it !in allowedParamNames }
                 if (unknownParamNames.isNotEmpty()) {
                     return@registerTool ToolResult(
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "Unexpected parameters: ${unknownParamNames.joinToString(", ")}. Only tool_name and params are allowed"
+                        error = "Unexpected parameters: ${unknownParamNames.joinToString(", ")}. Only tool_name, params, and supported system context parameters are allowed"
                     )
                 }
 
@@ -709,6 +714,16 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                         else -> value.toString()
                     }
                     forwardedParameters.add(ToolParameter(name = key, value = valueString))
+                }
+
+                packageContextParamNames.forEach { paramName ->
+                    val value = tool.parameters
+                        .firstOrNull { it.name == paramName }
+                        ?.value
+                        ?.trim()
+                    if (!value.isNullOrBlank() && forwardedParameters.none { it.name == paramName }) {
+                        forwardedParameters.add(ToolParameter(name = paramName, value = value))
+                    }
                 }
 
                 val proxiedTool = AITool(

@@ -7342,4 +7342,7 @@
     <string name="workflow_already_running">工作流“%1$s”正在执行中</string>
     <string name="workflow_log_node_cancelled">节点“%1$s”执行已取消</string>
     <string name="workflow_log_execution_cancelled">工作流“%1$s”执行已取消</string>
+    <string name="package_conflict_delete_source">删除源文件</string>
+    <string name="package_conflict_delete_success">冲突包源文件已删除</string>
+    <string name="package_conflict_delete_failed">删除冲突包源文件失败</string>
 </resources>

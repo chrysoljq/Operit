@@ -20,6 +20,7 @@ import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
@@ -929,7 +930,7 @@ object AIMessageManager {
                 ChatMessage(
                     sender = "summary",
                     content = finalSummary,
-                    timestamp = System.currentTimeMillis(),
+                    timestamp = ChatMessageTimestampAllocator.next(),
                     roleName = "system" // 总结消息的角色名
                 )
             }

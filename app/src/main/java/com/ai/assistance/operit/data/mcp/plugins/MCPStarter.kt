@@ -163,6 +163,14 @@ class MCPStarter(private val context: Context) {
         return startPluginInternal(pluginId, statusCallback, initBridgeFirst = true)
     }
 
+    private fun summarizeEnvKeys(env: Map<String, String>?): String {
+        val keys = env?.keys
+            ?.mapNotNull { it.trim().takeIf { trimmed -> trimmed.isNotEmpty() } }
+            ?.sorted()
+            .orEmpty()
+        return if (keys.isEmpty()) "(none)" else keys.joinToString(", ")
+    }
+
     /** Internal plugin start logic */
     private suspend fun startPluginInternal(
         pluginId: String,
@@ -172,6 +180,8 @@ class MCPStarter(private val context: Context) {
         try {
             val mcpLocalServer = MCPLocalServer.getInstance(context)
             val mcpRepository = MCPRepository(context)
+            AppLogger.d(TAG, "Refreshing MCP config before starting plugin: $pluginId")
+            mcpRepository.refreshPluginList()
 
             val pluginInfo = mcpRepository.getInstalledPluginInfo(pluginId)
             if (pluginInfo == null) {
@@ -324,6 +334,11 @@ class MCPStarter(private val context: Context) {
                 return false
             }
 
+            AppLogger.d(
+                TAG,
+                "Local plugin $pluginId loaded env keys: ${summarizeEnvKeys(serverConfig.env)}"
+            )
+
             // Check if plugin service is already running
             val clientForCheck = MCPBridgeClient(context, extractedServerName)
             if (clientForCheck.isActive()) {
@@ -419,6 +434,8 @@ class MCPStarter(private val context: Context) {
                 val mcpRepository = MCPRepository(context)
                 val mcpLocalServer = MCPLocalServer.getInstance(context)
                 val bridge = MCPBridge.getInstance(context)
+                AppLogger.d(TAG, "Refreshing MCP config before batch startup")
+                mcpRepository.refreshPluginList()
 
                 // Get all installed plugins and partition into enabled and disabled
                 val allInstalledPlugins = mcpRepository.installedPluginIds.first()
@@ -726,8 +743,14 @@ class MCPStarter(private val context: Context) {
                         val extractedServerName = extractServerNameFromConfig(pluginConfig) ?: serverName
                         val serverConfig = config?.mcpServers?.get(extractedServerName) ?: return null
                         val termuxPluginDir = mcpLocalServer.getPluginRuntimeDirectory(pluginId)
+                        val envKeysSummary = summarizeEnvKeys(serverConfig.env)
 
                         actualServiceName = extractedServerName
+                        AppLogger.d(
+                            TAG,
+                            "Registering local plugin $pluginId with env keys: $envKeysSummary"
+                        )
+                        progressListener?.onPluginLog(pluginId, "读取到配置 env 键: $envKeysSummary")
 
                         bridge.registerMcpService(
                             name = extractedServerName,

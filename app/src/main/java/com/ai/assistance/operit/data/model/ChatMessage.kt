@@ -10,7 +10,7 @@ import kotlinx.serialization.Transient
 data class ChatMessage(
         val sender: String, // "user" or "ai"
         var content: String = "",
-        val timestamp: Long = System.currentTimeMillis(),
+        val timestamp: Long = ChatMessageTimestampAllocator.next(),
         val roleName: String = "", // 角色名字字段
         val provider: String = "", // 供应商
         val modelName: String = "", // 模型名称
@@ -24,6 +24,10 @@ data class ChatMessage(
         var contentStream: Stream<String>? =
                 null // 修改为Stream<String>类型，与EnhancedAIService.sendMessage返回类型匹配
 ) : Parcelable {
+    init {
+        ChatMessageTimestampAllocator.observe(timestamp)
+    }
+
     constructor(
             parcel: Parcel
     ) : this(
