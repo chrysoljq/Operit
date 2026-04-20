@@ -20,7 +20,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import com.ai.assistance.operit.data.db.ObjectBoxManager
-import com.ai.assistance.operit.util.LocaleUtils.AUTO_LANGUAGE_CODE
+import com.ai.assistance.operit.util.LocaleUtils.LanguageCodes
 
 private val Context.userPreferencesDataStore: DataStore<Preferences> by
         preferencesDataStore(name = "user_preferences")
@@ -248,7 +248,7 @@ class UserPreferencesManager private constructor(private val context: Context) {
         const val MEDIA_TYPE_VIDEO = "video"
         
         // 默认语言
-        const val DEFAULT_LANGUAGE = AUTO_LANGUAGE_CODE
+        const val DEFAULT_LANGUAGE = LanguageCodes.AUTO
 
         const val CHAT_STYLE_CURSOR = "cursor"
         const val CHAT_STYLE_BUBBLE = "bubble"

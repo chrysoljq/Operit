@@ -833,6 +833,15 @@ class GeminiProvider(
         }
     }
 
+    private fun logFinalOutput(content: CharSequence, prefix: String = "Gemini final output: ") {
+        val finalOutput = content.toString()
+        if (finalOutput.isBlank()) {
+            AppLogger.d(TAG, "${prefix.trimEnd()}[empty]")
+            return
+        }
+        logLargeString(TAG, finalOutput, prefix)
+    }
+
     private fun sanitizeImageDataForLogging(json: JSONObject): JSONObject {
         fun sanitizeObject(obj: JSONObject) {
             fun sanitizeArray(arr: JSONArray) {
@@ -1133,6 +1142,7 @@ class GeminiProvider(
                 // 清理活跃引用
                 activeCall = null
                 activeResponse = null
+                logFinalOutput(receivedContent, "Gemini final output summary: ")
                 return@stream
             } catch (e: Exception) {
                 lastException = e

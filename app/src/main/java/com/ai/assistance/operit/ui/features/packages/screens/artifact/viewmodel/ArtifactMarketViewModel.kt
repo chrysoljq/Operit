@@ -178,7 +178,7 @@ class ArtifactMarketViewModel(
     }
 
     val currentAppVersion: String
-        get() = normalizeAppVersionOrNull(BuildConfig.VERSION_NAME) ?: BuildConfig.VERSION_NAME
+        get() = BuildConfig.VERSION_NAME.trim().ifBlank { "unknown" }
 
     fun initiateGitHubLogin(context: Context) {
         try {
@@ -661,18 +661,48 @@ class ArtifactMarketViewModel(
     }
 
     fun isCompatible(metadata: ArtifactMarketMetadata): Boolean {
-        return isAppVersionSupported(
-            appVersion = currentAppVersion,
-            minSupportedAppVersion = metadata.minSupportedAppVersion,
-            maxSupportedAppVersion = metadata.maxSupportedAppVersion
-        )
+        return runCatching {
+            isAppVersionSupported(
+                appVersion = currentAppVersion,
+                minSupportedAppVersion = metadata.minSupportedAppVersion,
+                maxSupportedAppVersion = metadata.maxSupportedAppVersion
+            )
+        }.getOrElse { error ->
+            AppLogger.e(
+                TAG,
+                "Failed to evaluate artifact compatibility for current=$currentAppVersion, min=${metadata.minSupportedAppVersion}, max=${metadata.maxSupportedAppVersion}",
+                error
+            )
+            false
+        }
     }
 
     fun supportedVersionLabel(metadata: ArtifactMarketMetadata): String {
-        return formatSupportedAppVersions(
-            minSupportedAppVersion = metadata.minSupportedAppVersion,
-            maxSupportedAppVersion = metadata.maxSupportedAppVersion
-        )
+        return runCatching {
+            formatSupportedAppVersions(
+                minSupportedAppVersion = metadata.minSupportedAppVersion,
+                maxSupportedAppVersion = metadata.maxSupportedAppVersion
+            )
+        }.getOrElse { error ->
+            AppLogger.e(
+                TAG,
+                "Failed to format supported app versions for min=${metadata.minSupportedAppVersion}, max=${metadata.maxSupportedAppVersion}",
+                error
+            )
+            buildString {
+                append("Invalid")
+                val rawParts =
+                    listOfNotNull(
+                        metadata.minSupportedAppVersion?.takeIf { it.isNotBlank() }?.let { "min=$it" },
+                        metadata.maxSupportedAppVersion?.takeIf { it.isNotBlank() }?.let { "max=$it" }
+                    )
+                if (rawParts.isNotEmpty()) {
+                    append(" (")
+                    append(rawParts.joinToString(", "))
+                    append(")")
+                }
+            }
+        }
     }
 
     private fun executePublish(request: PublishArtifactRequest, allowCreateForgeRepo: Boolean) {

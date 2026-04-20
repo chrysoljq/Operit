@@ -15,10 +15,18 @@ import kotlinx.coroutines.runBlocking
 /** 语言工具类，用于管理应用的国际化设置 */
 object LocaleUtils {
 
-    const val AUTO_LANGUAGE_CODE = "system"
-    const val PORTUGUESE_BRAZIL_LANGUAGE_CODE = "pt-BR"
+    object LanguageCodes {
+        const val AUTO = "system"
+        const val CHINESE = "zh"
+        const val ENGLISH = "en"
+        const val SPANISH = "es"
+        const val MALAY = "ms"
+        const val INDONESIAN = "id"
+        const val PORTUGUESE_BRAZIL = "pt-BR"
+    }
+
     private val legacyLanguageCodeAliases =
-            mapOf("pt" to PORTUGUESE_BRAZIL_LANGUAGE_CODE)
+            mapOf("pt" to LanguageCodes.PORTUGUESE_BRAZIL, "in" to LanguageCodes.INDONESIAN)
 
     /**
      * 语言信息数据类
@@ -30,19 +38,21 @@ object LocaleUtils {
 
     private val supportedLanguages =
             listOf(
-                    Language(AUTO_LANGUAGE_CODE, "Follow system", "跟随系统"),
-                    Language("zh", "Chinese", "中文"),
-                    Language("en", "English", "English"),
-                    Language("es", "Spanish", "Español"),
+                    Language(LanguageCodes.AUTO, "Follow system", "跟随系统"),
+                    Language(LanguageCodes.CHINESE, "Chinese", "中文"),
+                    Language(LanguageCodes.ENGLISH, "English", "English"),
+                    Language(LanguageCodes.SPANISH, "Spanish", "Español"),
+                    Language(LanguageCodes.MALAY, "Malay", "Bahasa Melayu"),
+                    Language(LanguageCodes.INDONESIAN, "Indonesian", "Bahasa Indonesia"),
                     Language(
-                            PORTUGUESE_BRAZIL_LANGUAGE_CODE,
+                            LanguageCodes.PORTUGUESE_BRAZIL,
                             "Portuguese (Brazil)",
                             "Português (Brasil)"
                     )
             )
 
     private val supportedLanguageCodes =
-            supportedLanguages.map { it.code }.filter { it != AUTO_LANGUAGE_CODE }.toSet()
+            supportedLanguages.map { it.code }.filter { it != LanguageCodes.AUTO }.toSet()
 
     /** 获取支持的语言列表 */
     fun getSupportedLanguages(): List<Language> {
@@ -51,7 +61,7 @@ object LocaleUtils {
 
     fun getLocaleForLanguageCode(languageCode: String, context: Context? = null): Locale {
         val resolvedCode =
-                if (languageCode.isBlank() || languageCode == AUTO_LANGUAGE_CODE) {
+                if (languageCode.isBlank() || languageCode == LanguageCodes.AUTO) {
                     context?.let(::getCurrentSystemLanguageCode)
                             ?: resolveSupportedLanguageCode(Locale.getDefault().toLanguageTag())
                 } else {
@@ -102,7 +112,7 @@ object LocaleUtils {
             if (manager != null) {
                 val savedLanguage = manager.getCurrentLanguage()
                 // 如果不是“跟随系统”，则返回保存的语言
-                if (savedLanguage.isNotEmpty() && savedLanguage != AUTO_LANGUAGE_CODE) {
+                if (savedLanguage.isNotEmpty() && savedLanguage != LanguageCodes.AUTO) {
                     return resolveSupportedLanguageCode(savedLanguage)
                 }
             }
@@ -203,7 +213,7 @@ object LocaleUtils {
     }
 
     private fun normalizeStoredLanguageCode(languageCode: String): String {
-        if (languageCode.isBlank() || languageCode == AUTO_LANGUAGE_CODE) {
+        if (languageCode.isBlank() || languageCode == LanguageCodes.AUTO) {
             return languageCode
         }
 
@@ -219,7 +229,7 @@ object LocaleUtils {
 
     private fun resolveSupportedLanguageCode(languageCode: String): String {
         val normalizedCode = normalizeStoredLanguageCode(languageCode)
-        if (normalizedCode.isBlank() || normalizedCode == AUTO_LANGUAGE_CODE) {
+        if (normalizedCode.isBlank() || normalizedCode == LanguageCodes.AUTO) {
             return normalizedCode
         }
 

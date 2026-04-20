@@ -267,6 +267,15 @@ open class OpenAIProvider(
         }
     }
 
+    protected fun logFinalOutput(tag: String, content: CharSequence, prefix: String = "Final output: ") {
+        val finalOutput = content.toString()
+        if (finalOutput.isBlank()) {
+            AppLogger.d(tag, "${prefix.trimEnd()}[empty]")
+            return
+        }
+        logLargeString(tag, finalOutput, prefix)
+    }
+
      protected fun sanitizeImageDataForLogging(json: JSONObject): JSONObject {
          fun sanitizeObject(obj: JSONObject) {
              fun sanitizeArray(arr: JSONArray) {
@@ -2419,6 +2428,7 @@ open class OpenAIProvider(
                 activeCall = null
                 activeResponse = null
                 AppLogger.d("AIService", "【发送消息】响应处理完成，已清理活跃引用")
+                logFinalOutput("AIService", receivedContent, "Final output summary: ")
 
                 // 成功处理后返回
                 AppLogger.d(

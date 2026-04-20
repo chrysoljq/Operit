@@ -83,6 +83,30 @@ class ClaudeProvider(
         tokenCacheManager.resetTokenCounts()
     }
 
+    private fun logLargeString(tag: String, message: String, prefix: String = "") {
+        val maxLogSize = 3000
+        if (message.length > maxLogSize) {
+            val chunkCount = message.length / maxLogSize + 1
+            for (i in 0 until chunkCount) {
+                val start = i * maxLogSize
+                val end = minOf((i + 1) * maxLogSize, message.length)
+                val chunkMessage = message.substring(start, end)
+                AppLogger.d(tag, "$prefix Part ${i + 1}/$chunkCount: $chunkMessage")
+            }
+        } else {
+            AppLogger.d(tag, "$prefix$message")
+        }
+    }
+
+    private fun logFinalOutput(content: CharSequence, prefix: String = "Claude final output: ") {
+        val finalOutput = content.toString()
+        if (finalOutput.isBlank()) {
+            AppLogger.d("AIService", "${prefix.trimEnd()}[empty]")
+            return
+        }
+        logLargeString("AIService", finalOutput, prefix)
+    }
+
     // 取消当前流式传输
     override fun cancelStreaming() {
         isManuallyCancelled = true
@@ -1703,6 +1727,7 @@ class ClaudeProvider(
                 }
 
                 AppLogger.d("AIService", "【Claude】请求成功完成")
+                logFinalOutput(receivedContent, "Claude final output summary: ")
                 return@stream
             } catch (e: Exception) {
                 lastException = e

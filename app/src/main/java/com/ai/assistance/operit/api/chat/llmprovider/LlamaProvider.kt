@@ -86,6 +86,15 @@ class LlamaProvider(
         }
     }
 
+    private fun logFinalOutput(content: CharSequence, prefix: String = "Final llama.cpp output: ") {
+        val finalOutput = content.toString()
+        if (finalOutput.isBlank()) {
+            AppLogger.d(TAG, "${prefix.trimEnd()}[empty]")
+            return
+        }
+        logLargeString(prefix, finalOutput)
+    }
+
     override fun cancelStreaming() {
         isCancelled = true
         synchronized(sessionLock) {
@@ -278,6 +287,7 @@ class LlamaProvider(
 
         var outputTokenCount = 0
         val toolCallOutputBuffer = StringBuilder()
+        val finalOutputBuffer = StringBuilder()
 
         val success = withContext(Dispatchers.IO) {
             s.generateStream(prompt, requestedMaxNewTokens) { token ->
@@ -290,6 +300,7 @@ class LlamaProvider(
                     if (effectiveEnableToolCall) {
                         toolCallOutputBuffer.append(token)
                     } else {
+                        finalOutputBuffer.append(token)
                         runBlocking { emit(token) }
                     }
 
@@ -314,6 +325,7 @@ class LlamaProvider(
                 normalizedPayload ?: toolCallOutputBuffer.toString()
             )
             if (converted.isNotBlank()) {
+                finalOutputBuffer.append(converted)
                 emit(converted)
             }
         }
@@ -326,6 +338,7 @@ class LlamaProvider(
         }
 
         AppLogger.i(TAG, "llama.cpp推理完成，输出token数: $_outputTokenCount")
+        logFinalOutput(finalOutputBuffer, "Final llama.cpp output summary: ")
     }
 
     private fun shouldUseToolCall(availableTools: List<ToolPrompt>?): Boolean {

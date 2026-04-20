@@ -100,6 +100,31 @@ class MNNProvider(
         AppLogger.d(TAG, "已取消MNN推理（已通知底层中断）")
     }
 
+    private fun logLargeString(prefix: String, message: String) {
+        val maxLogSize = 3000
+        if (message.length <= maxLogSize) {
+            AppLogger.d(TAG, "$prefix$message")
+            return
+        }
+
+        val chunkCount = (message.length + maxLogSize - 1) / maxLogSize
+        for (index in 0 until chunkCount) {
+            val start = index * maxLogSize
+            val end = minOf((index + 1) * maxLogSize, message.length)
+            val chunk = message.substring(start, end)
+            AppLogger.d(TAG, "$prefix Part ${index + 1}/$chunkCount: $chunk")
+        }
+    }
+
+    private fun logFinalOutput(content: CharSequence, prefix: String = "Final MNN output: ") {
+        val finalOutput = content.toString()
+        if (finalOutput.isBlank()) {
+            AppLogger.d(TAG, "${prefix.trimEnd()}[empty]")
+            return
+        }
+        logLargeString(prefix, finalOutput)
+    }
+
     /**
      * 初始化 MNN LLM 模型
      */
@@ -712,6 +737,7 @@ class MNNProvider(
 
             var outputTokenCount = 0
             val toolCallOutputBuffer = StringBuilder()
+            val finalOutputBuffer = StringBuilder()
             val emitDirectly = !useInternalToolCall
             val success = if (useInternalToolCall) {
                 session.generateStreamStructured(messagesJson!!, toolsJson, requestedMaxNewTokens) { token ->
@@ -740,6 +766,7 @@ class MNNProvider(
                         _outputTokenCount = outputTokenCount
 
                         if (emitDirectly) {
+                            finalOutputBuffer.append(token)
                             runBlocking { emit(token) }
                         }
 
@@ -757,6 +784,7 @@ class MNNProvider(
             if (useInternalToolCall && toolCallOutputBuffer.isNotEmpty()) {
                 val converted = StructuredToolCallBridge.convertToolCallPayloadToXml(toolCallOutputBuffer.toString())
                 if (converted.isNotBlank()) {
+                    finalOutputBuffer.append(converted)
                     emit(converted)
                 }
             }
@@ -766,6 +794,7 @@ class MNNProvider(
             }
 
             AppLogger.i(TAG, "MNN LLM推理完成，输出token数: $_outputTokenCount")
+            logFinalOutput(finalOutputBuffer, "Final MNN output summary: ")
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "发送消息时出错", e)

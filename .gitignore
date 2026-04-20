@@ -30,6 +30,9 @@ build
 .env.*
 !.env.*.example
 tools/github/.env
+.wrangler/
+.dev.vars*
+.npm-cache
 
 app/src/main/assets/pets
 

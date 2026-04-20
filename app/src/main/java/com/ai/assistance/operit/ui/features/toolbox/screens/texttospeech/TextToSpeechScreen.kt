@@ -47,9 +47,9 @@ fun TextToSpeechScreen(navController: NavController) {
         val ttsServiceType by prefs.ttsServiceTypeFlow.collectAsState(initial = VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS)
         val httpConfig by prefs.ttsHttpConfigFlow.collectAsState(initial = SpeechServicesPreferences.DEFAULT_HTTP_TTS_PRESET)
         var voiceServiceVersion by remember { mutableStateOf(0) }
-
-        // 获取VoiceService实例
-        val voiceService = remember(voiceServiceVersion) { VoiceServiceFactory.getInstance(context) }
+        var voiceService by remember(voiceServiceVersion) {
+                mutableStateOf(VoiceServiceFactory.getInstance(context))
+        }
         
         // 状态变量
         var inputText by remember { mutableStateOf("") }
@@ -83,24 +83,28 @@ fun TextToSpeechScreen(navController: NavController) {
                 }
         }
 
+        fun refreshVoiceService(): VoiceService {
+                val latestVoiceService = VoiceServiceFactory.getInstance(context)
+                if (voiceService !== latestVoiceService) {
+                        voiceService = latestVoiceService
+                }
+                return voiceService
+        }
+
         // 监听语音服务状态
         LaunchedEffect(voiceService) {
-                // 初始化语音服务
-                coroutineScope.launch {
-                        try {
-                                isInitialized = voiceService.initialize()
-                                if (!isInitialized) {
-                                        error = context.getString(R.string.tts_init_failed)
-                                        errorDetails = context.getString(R.string.tts_init_error_details)
-                                }
-                        } catch (e: Exception) {
-                                error = context.getString(R.string.tts_init_error)
-                                errorDetails = handleTtsError(e)
-                                debugInfo = context.getString(R.string.tts_debug_service_type, voiceService.javaClass.simpleName)
+                try {
+                        isInitialized = voiceService.initialize()
+                        if (!isInitialized) {
+                                error = context.getString(R.string.tts_init_failed)
+                                errorDetails = context.getString(R.string.tts_init_error_details)
                         }
+                } catch (e: Exception) {
+                        error = context.getString(R.string.tts_init_error)
+                        errorDetails = handleTtsError(e)
+                        debugInfo = context.getString(R.string.tts_debug_service_type, voiceService.javaClass.simpleName)
                 }
 
-                // 监听发言状态
                 voiceService.speakingStateFlow.collect { speaking -> isSpeaking = speaking }
         }
 
@@ -132,6 +136,7 @@ fun TextToSpeechScreen(navController: NavController) {
                                 httpConfig = httpConfig.copy(localeTag = localeTag, voiceId = voiceId)
                         )
                         VoiceServiceFactory.resetInstance()
+                        voiceService = VoiceServiceFactory.getInstance(context)
                         voiceServiceVersion++
                 }
         }
@@ -153,8 +158,9 @@ fun TextToSpeechScreen(navController: NavController) {
 
                 coroutineScope.launch {
                         try {
+                                val currentVoiceService = refreshVoiceService()
                                 val success =
-                                        voiceService.speak(inputText, true, speechRate, speechPitch)
+                                        currentVoiceService.speak(inputText, true, speechRate, speechPitch)
                                 if (!success) {
                                         error = context.getString(R.string.tts_speak_failed)
                                         errorDetails = context.getString(R.string.tts_speak_error_details)
@@ -163,7 +169,7 @@ fun TextToSpeechScreen(navController: NavController) {
                         } catch (e: Exception) {
                                 error = context.getString(R.string.tts_speak_error, e.message ?: "Unknown error")
                                 errorDetails = handleTtsError(e)
-                                debugInfo = context.getString(R.string.tts_debug_params_with_service, inputText, speechRate, speechPitch, voiceService.javaClass.simpleName)
+                                debugInfo = context.getString(R.string.tts_debug_params_with_service, inputText, speechRate, speechPitch, refreshVoiceService().javaClass.simpleName)
                         }
                 }
         }
@@ -172,7 +178,7 @@ fun TextToSpeechScreen(navController: NavController) {
         fun stopSpeaking() {
                 coroutineScope.launch {
                         try {
-                                voiceService.stop()
+                                refreshVoiceService().stop()
                         } catch (e: Exception) {
                                 error = context.getString(R.string.tts_stop_error, e.message ?: "Unknown error")
                         }

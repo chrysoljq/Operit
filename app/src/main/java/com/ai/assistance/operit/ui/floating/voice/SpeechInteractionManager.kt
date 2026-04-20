@@ -56,7 +56,8 @@ class SpeechInteractionManager(
 
     // ===== 服务 =====
     val speechService = SpeechServiceFactory.getInstance(context)
-    val voiceService = VoiceServiceFactory.getInstance(context)
+    val voiceService
+        get() = VoiceServiceFactory.getInstance(context)
     private val inputMethodManager = context.getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
 
     // 暴露 Flow 给外部使用

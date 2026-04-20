@@ -99,6 +99,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // 添加语音服务
     private var voiceService: VoiceService? = null
+    private var voiceStateCollectionJob: Job? = null
     private val speechServicesPreferences = SpeechServicesPreferences(context)
     private val activePromptManager = ActivePromptManager.getInstance(context)
     private val characterCardManager = CharacterCardManager.getInstance(context)
@@ -1944,6 +1945,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         inputProcessingStateListenerJob?.cancel()
+        voiceStateCollectionJob?.cancel()
         // 清理悬浮窗资源
         floatingWindowDelegate.cleanup()
 
@@ -2384,34 +2386,65 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 speechServicesPreferences.ttsHttpConfigFlow
             ) { type, config ->
                 type to config
-            }.collect { (type, config) ->
+            }.collect { (type, _) ->
                 try {
                     AppLogger.d(TAG, "TTS配置变化，重新初始化语音服务: type=$type")
-                    
-                    // 停止当前播放
-                    voiceService?.stop()
-                    
-                    // 重置工厂单例，强制重新创建
-                    VoiceServiceFactory.resetInstance()
-                    
-                    // 重新获取服务实例
-                    voiceService = VoiceServiceFactory.getInstance(context)
-                    val initialized = voiceService?.initialize() ?: false
+
+                    val initialized = recreateVoiceService()
                     if (!initialized) {
                         AppLogger.w(TAG, "语音服务初始化失败")
                     } else {
                         AppLogger.i(TAG, "语音服务初始化成功")
-                        
-                        // 初始化成功后，重新监听播放状态
-                        viewModelScope.launch {
-                            voiceService?.speakingStateFlow?.collect { isSpeaking ->
-                                _isPlaying.value = isSpeaking
-                            }
-                        }
                     }
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "初始化语音服务时出错", e)
                 }
+            }
+        }
+    }
+
+    private suspend fun recreateVoiceService(): Boolean {
+        voiceService?.stop()
+        voiceStateCollectionJob?.cancel()
+        VoiceServiceFactory.resetInstance()
+        val currentVoiceService = VoiceServiceFactory.getInstance(context)
+        voiceService = currentVoiceService
+        val initialized = currentVoiceService.initialize()
+        if (initialized) {
+            observeVoiceState(currentVoiceService)
+        } else {
+            _isPlaying.value = false
+        }
+        return initialized
+    }
+
+    private suspend fun ensureActiveVoiceService(): VoiceService? {
+        val latestVoiceService = VoiceServiceFactory.getInstance(context)
+        if (voiceService !== latestVoiceService) {
+            AppLogger.d(TAG, "检测到TTS服务实例已切换，更新聊天页引用")
+            voiceStateCollectionJob?.cancel()
+            voiceService = latestVoiceService
+        }
+
+        val currentVoiceService = voiceService ?: return null
+        if (!currentVoiceService.isInitialized) {
+            val initialized = currentVoiceService.initialize()
+            if (!initialized) {
+                return null
+            }
+        }
+
+        if (voiceStateCollectionJob?.isActive != true) {
+            observeVoiceState(currentVoiceService)
+        }
+        return currentVoiceService
+    }
+
+    private fun observeVoiceState(service: VoiceService) {
+        voiceStateCollectionJob?.cancel()
+        voiceStateCollectionJob = viewModelScope.launch {
+            service.speakingStateFlow.collect { isSpeaking ->
+                _isPlaying.value = isSpeaking
             }
         }
     }
@@ -2424,15 +2457,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun speakMessage(message: String, interrupt: Boolean) {
         viewModelScope.launch {
             try {
-                // 如果服务未初始化，等待一段时间让监听协程完成初始化
-                if (voiceService == null) {
-                    AppLogger.d(TAG, "语音服务尚未初始化，等待初始化完成...")
-                    delay(1000)
-                }
-
-                if (voiceService == null) {
+                val currentVoiceService = ensureActiveVoiceService()
+                if (currentVoiceService == null) {
                     uiStateDelegate.showToast(context.getString(R.string.chat_voice_service_init_failed))
-                    AppLogger.e(TAG, "语音服务初始化超时")
+                    AppLogger.e(TAG, "语音服务不可用")
                     return@launch
                 }
 
@@ -2445,12 +2473,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     return@launch
                 }
 
-                val success = voiceService?.speak(
+                val success = currentVoiceService.speak(
                     text = cleanMessage,
                     interrupt = interrupt,
                     rate = null,
                     pitch = null
-                ) ?: false
+                )
 
                 if (!success) {
                     uiStateDelegate.showToast(context.getString(R.string.chat_speak_failed))
@@ -2466,7 +2494,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun stopSpeaking() {
         viewModelScope.launch {
             try {
-                voiceService?.stop()
+                ensureActiveVoiceService()?.stop()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "停止朗读失败", e)
             }

@@ -16,7 +16,18 @@ private const val ARTIFACT_MARKET_JSON_PREFIX = "<!-- operit-market-json: "
 private const val ARTIFACT_MARKET_PARSER_VERSION = "forge-v2"
 private const val SCRIPT_MARKET_LABEL = "script-artifact"
 private const val PACKAGE_MARKET_LABEL = "package-artifact"
-private val STRICT_APP_VERSION_REGEX = Regex("""\d+\.\d+\.\d+""")
+private val APP_VERSION_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$""")
+
+private data class AppVersion(
+    val major: Int,
+    val minor: Int,
+    val patch: Int,
+    val build: Int?
+) {
+    override fun toString(): String {
+        return build?.let { "$major.$minor.$patch+$it" } ?: "$major.$minor.$patch"
+    }
+}
 
 enum class PublishArtifactType(
     val wireValue: String,
@@ -299,12 +310,7 @@ fun buildArtifactMarketIssueBody(payload: MarketRegistrationPayload): String {
 }
 
 fun normalizeAppVersionOrNull(value: String?): String? {
-    val normalized = value?.trim().orEmpty()
-    if (normalized.isBlank()) return null
-    require(STRICT_APP_VERSION_REGEX.matches(normalized)) {
-        "App version must use x.y.z format"
-    }
-    return normalized
+    return parseAppVersionOrNull(value)?.toString()
 }
 
 fun validateSupportedAppVersions(
@@ -321,17 +327,22 @@ fun validateSupportedAppVersions(
 }
 
 fun compareAppVersions(left: String, right: String): Int {
-    val leftParts = left.split('.').map { it.toInt() }
-    val rightParts = right.split('.').map { it.toInt() }
-    val maxSize = maxOf(leftParts.size, rightParts.size)
-    for (index in 0 until maxSize) {
-        val leftValue = leftParts.getOrElse(index) { 0 }
-        val rightValue = rightParts.getOrElse(index) { 0 }
-        if (leftValue != rightValue) {
-            return leftValue.compareTo(rightValue)
-        }
+    val leftVersion = requireNotNull(parseAppVersionOrNull(left))
+    val rightVersion = requireNotNull(parseAppVersionOrNull(right))
+
+    if (leftVersion.major != rightVersion.major) {
+        return leftVersion.major.compareTo(rightVersion.major)
     }
-    return 0
+    if (leftVersion.minor != rightVersion.minor) {
+        return leftVersion.minor.compareTo(rightVersion.minor)
+    }
+    if (leftVersion.patch != rightVersion.patch) {
+        return leftVersion.patch.compareTo(rightVersion.patch)
+    }
+
+    val leftBuild = leftVersion.build ?: 0
+    val rightBuild = rightVersion.build ?: 0
+    return leftBuild.compareTo(rightBuild)
 }
 
 fun isAppVersionSupported(
@@ -378,4 +389,20 @@ private fun inferArtifactContentType(
         extension == "zip" -> "application/zip"
         else -> "application/octet-stream"
     }
+}
+
+private fun parseAppVersionOrNull(value: String?): AppVersion? {
+    val normalized = value?.trim().orEmpty()
+    if (normalized.isBlank()) return null
+
+    val match =
+        APP_VERSION_REGEX.matchEntire(normalized)
+            ?: throw IllegalArgumentException("App version must use x.y.z or x.y.z+n format")
+
+    return AppVersion(
+        major = match.groupValues[1].toInt(),
+        minor = match.groupValues[2].toInt(),
+        patch = match.groupValues[3].toInt(),
+        build = match.groupValues[4].takeIf { it.isNotBlank() }?.toInt()
+    )
 }
