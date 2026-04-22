@@ -28,6 +28,11 @@ description: 用于 Operit Sandbox Package 开发。
 ```text
 /sdcard/Download/Operit/skills/SandboxPackage_DEV/
   SKILL.md
+  examples/
+    packages/
+      12306.js
+      operit_editor.js
+      ...
   references/
     SCRIPT_DEV_GUIDE.md
     TOOLPKG_FORMAT_GUIDE.md
@@ -54,9 +59,16 @@ description: 用于 Operit Sandbox Package 开发。
 
 - 创建 `SandboxPackage_DEV` 目录
 - 下载并更新 `SKILL.md`
+- 同步并更新 `examples/packages/` 下的示范文件
 - 下载并更新 `references/SCRIPT_DEV_GUIDE.md`
 - 下载并更新 `references/TOOLPKG_FORMAT_GUIDE.md`
 - 下载并更新 `types/` 下全部类型文件
+
+其中 `examples/packages/` 里的内容是 Operit 当前内置的包和脚本示范文件。
+
+- 它们主要用于参考写法，不是让你直接在这里改线上生效
+- 当你要自定义自己的 Sandbox Package 时，可以把这些文件当作示例来对照结构、元数据、工具实现方式和返回格式
+- 如果内置包更新了，重新运行安装脚本即可把这些示范文件同步到本地 skill 里
 
 更新时按下面规则处理：
 
@@ -110,6 +122,12 @@ description: 用于 Operit Sandbox Package 开发。
 5. 只有方案已经确定为 `ToolPkg` 时，再查 `types/toolpkg.d.ts`
 6. 需要普通脚本格式、元数据、示例写法时，再查 `references/SCRIPT_DEV_GUIDE.md`
 7. 需要 `ToolPkg` 的 `manifest`、目录结构、资源、UI 模块、注册函数与调试安装流程时，再查 `references/TOOLPKG_FORMAT_GUIDE.md`
+
+另外，`examples/packages/` 也应该被当作第一手示范材料来看。
+
+- 这里放的是 Operit 内置的包和脚本副本
+- 当你准备自己写一个普通 `.js` 包或想参考已有工具设计时，优先翻这些示范文件
+- 它们特别适合拿来参考：`METADATA` 写法、工具命名、参数结构、结果结构、Java bridge 用法，以及一些实际项目里的组织方式
 
 推荐的撰写流程：
 

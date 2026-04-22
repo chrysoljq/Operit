@@ -222,6 +222,9 @@ fun ChatScreenContent(
                         modifier = Modifier.fillMaxSize(),
                         onSelectMessageToEdit = onSelectMessageToEditCallback,
                         onDeleteMessage = { index -> actualViewModel.deleteMessage(index) },
+                        onDeleteCurrentMessageVariant = { index ->
+                            actualViewModel.deleteCurrentMessageVariant(index)
+                        },
                         onDeleteMessagesFrom = { index -> actualViewModel.deleteMessagesFrom(index) },
                         onRollbackToMessage = { index -> pendingRollbackIndex = index },
                         onRegenerateMessage = { index -> actualViewModel.regenerateSingleAiMessage(index) },
@@ -317,6 +320,9 @@ fun ChatScreenContent(
                         modifier = Modifier.fillMaxSize(),
                         onSelectMessageToEdit = onSelectMessageToEditCallback,
                         onDeleteMessage = { index -> actualViewModel.deleteMessage(index) },
+                        onDeleteCurrentMessageVariant = { index ->
+                            actualViewModel.deleteCurrentMessageVariant(index)
+                        },
                         onDeleteMessagesFrom = { index -> actualViewModel.deleteMessagesFrom(index) },
                         onRollbackToMessage = { index -> pendingRollbackIndex = index },
                         onRegenerateMessage = { index -> actualViewModel.regenerateSingleAiMessage(index) },

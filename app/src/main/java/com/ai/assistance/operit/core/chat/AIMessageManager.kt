@@ -324,7 +324,8 @@ object AIMessageManager {
         onToolInvocation: (suspend (String) -> Unit)? = null,
         notifyReplyOverride: Boolean? = null,
         chatModelConfigIdOverride: String? = null,
-        chatModelIndexOverride: Int? = null
+        chatModelIndexOverride: Int? = null,
+        disableWarning: Boolean = false
     ): SharedStream<String> {
         val totalStartTime = messageTimingNow()
         val chatKey = chatId ?: DEFAULT_CHAT_KEY
@@ -456,7 +457,8 @@ object AIMessageManager {
                 notifyReplyOverride = notifyReplyOverride,
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride,
-                stream = enableStream
+                stream = enableStream,
+                disableWarning = disableWarning
             ).shareRevisable(
                 scope = scope,
                 onComplete = {

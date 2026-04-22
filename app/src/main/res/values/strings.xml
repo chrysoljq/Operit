@@ -2990,6 +2990,9 @@
     <string name="chat_regenerate_single_failed">单条重新生成失败: %1$s</string>
     <string name="chat_regenerate_busy">当前已有消息在处理中，请稍后再试</string>
     <string name="chat_regenerate_single_tool_unsupported">包含工具调用的回答暂不支持单条重新生成</string>
+    <string name="chat_delete_single_variant">删除单次消息</string>
+    <string name="chat_delete_single_variant_unavailable">当前消息没有可删除的单次候选</string>
+    <string name="chat_delete_single_variant_failed">删除单次消息失败: %1$s</string>
     <string name="chat_switch_variant_failed">切换回答失败: %1$s</string>
     <string name="chat_message_variant_counter">%1$d/%2$d</string>
     <string name="chat_previous_variant">上一条回答</string>

@@ -1142,116 +1142,13 @@ object SystemToolPromptsInternal {
                                           type = "boolean",
                                           description = "optional, hide user message content in UI and show a placeholder marker while keeping original content in history/context",
                                           required = false
+                                      ),
+                                      ToolParameterSchema(
+                                          name = "disable_warning",
+                                          type = "boolean",
+                                          description = "optional, suppress AI-generated warning markup for this turn; when true, warning-driven retry branches stop instead of continuing",
+                                          required = false
                                       )
-                                  )
-                          ),
-                        ToolPrompt(
-                            name = "send_message_to_ai_advanced",
-                            description = "Send a user message to AI with advanced runtime controls.",
-                            parametersStructured =
-                                listOf(
-                                    ToolParameterSchema(
-                                        name = "message",
-                                        type = "string",
-                                        description = "message content",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "chat_id",
-                                        type = "string",
-                                        description = "optional, target chat id",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "chat_history",
-                                        type = "string",
-                                        description = "optional, JSON array of [role, content]",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "workspace_path",
-                                        type = "string",
-                                        description = "optional workspace path",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "function_type",
-                                        type = "string",
-                                        description = "optional FunctionType enum name, default CHAT",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "prompt_function_type",
-                                        type = "string",
-                                        description = "optional PromptFunctionType enum name, default CHAT",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "enable_thinking",
-                                        type = "boolean",
-                                        description = "optional, enable thinking mode",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "thinking_guidance",
-                                        type = "boolean",
-                                        description = "optional, enable thinking guidance",
-                                        required = false
-                                    ),
-                                      ToolParameterSchema(
-                                          name = "enable_memory_query",
-                                          type = "boolean",
-                                          description = "optional, enable memory query",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "persist_turn",
-                                          type = "boolean",
-                                          description = "optional, whether this user/AI turn should be persisted to chat history; default true",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "notify_reply",
-                                          type = "boolean",
-                                          description = "optional, override whether this turn sends reply-completed notification",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "hide_user_message",
-                                          type = "boolean",
-                                          description = "optional, hide user message content in UI and show a placeholder marker while keeping original content in history/context",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "max_tokens",
-                                        type = "integer",
-                                        description = "max token budget for this request",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "token_usage_threshold",
-                                        type = "number",
-                                        description = "token usage threshold in range 0..1",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "custom_system_prompt_template",
-                                        type = "string",
-                                        description = "optional custom system prompt template",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "is_sub_task",
-                                        type = "boolean",
-                                        description = "optional, marks this request as a sub task",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "stream",
-                                        type = "boolean",
-                                        description = "optional, whether to stream output",
-                                        required = false
-                                    )
                                 )
                         ),
                         ToolPrompt(
@@ -3840,117 +3737,14 @@ object SystemToolPromptsInternal {
                                           type = "boolean",
                                           description = "可选，仅在 UI 中隐藏用户消息正文并显示占位标记，同时保留原文进入历史与上下文",
                                           required = false
+                                      ),
+                                      ToolParameterSchema(
+                                          name = "disable_warning",
+                                          type = "boolean",
+                                          description = "可选，关闭本轮 AI 生成的 warning 标记；为 true 时，依赖 warning 继续重试的分支会直接停止",
+                                          required = false
                                       )
                                   )
-                          ),
-                        ToolPrompt(
-                            name = "send_message_to_ai_advanced",
-                            description = "向 AI 发送消息（高级参数）。",
-                            parametersStructured =
-                                listOf(
-                                    ToolParameterSchema(
-                                        name = "message",
-                                        type = "string",
-                                        description = "消息内容",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "chat_id",
-                                        type = "string",
-                                        description = "可选，目标对话 ID",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "chat_history",
-                                        type = "string",
-                                        description = "可选，JSON 数组，元素为 [role, content]",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "workspace_path",
-                                        type = "string",
-                                        description = "可选，工作区路径",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "function_type",
-                                        type = "string",
-                                        description = "可选，FunctionType 枚举名，默认 CHAT",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "prompt_function_type",
-                                        type = "string",
-                                        description = "可选，PromptFunctionType 枚举名，默认 CHAT",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "enable_thinking",
-                                        type = "boolean",
-                                        description = "可选，是否启用思考模式",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "thinking_guidance",
-                                        type = "boolean",
-                                        description = "可选，是否启用思考引导",
-                                        required = false
-                                    ),
-                                      ToolParameterSchema(
-                                          name = "enable_memory_query",
-                                          type = "boolean",
-                                          description = "可选，是否启用记忆查询",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "persist_turn",
-                                          type = "boolean",
-                                          description = "可选，本轮用户消息与 AI 回复是否持久化到聊天历史，默认 true",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "notify_reply",
-                                          type = "boolean",
-                                          description = "可选，覆盖本轮是否发送回复完成通知",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "hide_user_message",
-                                          type = "boolean",
-                                          description = "可选，仅在 UI 中隐藏用户消息正文并显示占位标记，同时保留原文进入历史与上下文",
-                                          required = false
-                                      ),
-                                      ToolParameterSchema(
-                                          name = "max_tokens",
-                                        type = "integer",
-                                        description = "本次请求最大 token 预算",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "token_usage_threshold",
-                                        type = "number",
-                                        description = "token 使用阈值（0..1）",
-                                        required = true
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "custom_system_prompt_template",
-                                        type = "string",
-                                        description = "可选，自定义系统提示模板",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "is_sub_task",
-                                        type = "boolean",
-                                        description = "可选，标记为子任务",
-                                        required = false
-                                    ),
-                                    ToolParameterSchema(
-                                        name = "stream",
-                                        type = "boolean",
-                                        description = "可选，是否使用流式输出",
-                                        required = false
-                                    )
-                                )
                         ),
                         ToolPrompt(
                             name = "list_character_cards",

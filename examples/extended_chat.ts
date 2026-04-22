@@ -97,7 +97,8 @@
                 { "name": "timeout", "description": { "zh": "可选：等待返回的超时秒数（默认 10）", "en": "Optional timeout seconds to wait for response (default 10)" }, "type": "number", "required": false },
                 { "name": "persist_turn", "description": { "zh": "可选：是否持久化本轮用户消息和 AI 回复（默认 true）", "en": "Optional: whether to persist this turn's user message and AI reply (default true)" }, "type": "boolean", "required": false },
                 { "name": "notify_reply", "description": { "zh": "可选：是否覆盖本轮回复通知开关", "en": "Optional: override reply notification for this turn" }, "type": "boolean", "required": false },
-                { "name": "hide_user_message", "description": { "zh": "可选：是否在 UI 中隐藏用户消息正文并显示占位标记", "en": "Optional: hide the user message body in UI and show a placeholder marker" }, "type": "boolean", "required": false }
+                { "name": "hide_user_message", "description": { "zh": "可选：是否在 UI 中隐藏用户消息正文并显示占位标记", "en": "Optional: hide the user message body in UI and show a placeholder marker" }, "type": "boolean", "required": false },
+                { "name": "disable_warning", "description": { "zh": "可选：是否关闭本轮 AI 生成的 warning 标记", "en": "Optional: suppress AI-generated warning markup for this turn" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -174,6 +175,7 @@ const HistoryChat = (function () {
         persist_turn?: boolean;
         notify_reply?: boolean;
         hide_user_message?: boolean;
+        disable_warning?: boolean;
     };
 
     type ChatInfo = {
@@ -500,6 +502,9 @@ const HistoryChat = (function () {
         }
         if (params?.hide_user_message !== undefined) {
             sendMessageOptions.hide_user_message = params.hide_user_message;
+        }
+        if (params?.disable_warning !== undefined) {
+            sendMessageOptions.disable_warning = params.disable_warning;
         }
         const sendPromise = Tools.Chat.sendMessage(
             message,

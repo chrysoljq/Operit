@@ -9,6 +9,7 @@
     "zh": "智谱 AI 独立网络搜索 API，返回结构化搜索结果。",
     "en": "Zhipu AI standalone web search API with structured results."
   },
+  "author": "浮生一梦",
   "env": [
     {
       "name": "ZHIPU_SEARCH_API_KEY",

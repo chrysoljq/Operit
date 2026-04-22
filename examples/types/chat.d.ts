@@ -28,26 +28,7 @@ export namespace Chat {
         persist_turn?: boolean;
         notify_reply?: boolean;
         hide_user_message?: boolean;
-    }
-
-    interface SendMessageAdvancedParams {
-        message: string;
-        chatId?: string;
-        chatHistory?: Array<[string, string]>;
-        workspacePath?: string;
-        functionType?: string;
-        promptFunctionType?: string;
-        enableThinking?: boolean;
-        thinkingGuidance?: boolean;
-        enableMemoryQuery?: boolean;
-        maxTokens: number;
-        tokenUsageThreshold: number;
-        customSystemPromptTemplate?: string;
-        isSubTask?: boolean;
-        persist_turn?: boolean;
-        notify_reply?: boolean;
-        hide_user_message?: boolean;
-        stream?: boolean;
+        disable_warning?: boolean;
     }
 
     /**
@@ -129,13 +110,6 @@ export namespace Chat {
         senderName?: string,
         options?: SendMessageOptions
     ): Promise<MessageSendResultData>;
-
-    /**
-     * Send a message to AI with advanced controls.
-     * @param params - Advanced send parameters
-     * @returns Promise resolving to the message send result
-     */
-    function sendMessageAdvanced(params: SendMessageAdvancedParams): Promise<MessageSendResultData>;
 
     /**
      * List all character cards

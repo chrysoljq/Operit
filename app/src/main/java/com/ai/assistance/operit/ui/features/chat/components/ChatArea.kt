@@ -304,6 +304,7 @@ fun ChatArea(
     onSelectMessageToEdit: ((Int, ChatMessage, String) -> Unit)? = null,
     onCopyMessage: ((ChatMessage) -> Unit)? = null,
     onDeleteMessage: ((Int) -> Unit)? = null,
+    onDeleteCurrentMessageVariant: ((Int) -> Unit)? = null,
     onDeleteMessagesFrom: ((Int) -> Unit)? = null,
     onRollbackToMessage: ((Int) -> Unit)? = null, // 回滚到指定消息的回调
     onRegenerateMessage: ((Int) -> Unit)? = null,
@@ -557,6 +558,7 @@ fun ChatArea(
                             onSelectMessageToEdit = onSelectMessageToEdit,
                             onCopyMessage = onCopyMessage,
                             onDeleteMessage = onDeleteMessage,
+                            onDeleteCurrentMessageVariant = onDeleteCurrentMessageVariant,
                             onDeleteMessagesFrom = onDeleteMessagesFrom,
                             onRollbackToMessage = onRollbackToMessage,
                             onRegenerateMessage = onRegenerateMessage,
@@ -694,6 +696,7 @@ private fun MessageItem(
     onSelectMessageToEdit: ((Int, ChatMessage, String) -> Unit)?,
     onCopyMessage: ((ChatMessage) -> Unit)?,
     onDeleteMessage: ((Int) -> Unit)?,
+    onDeleteCurrentMessageVariant: ((Int) -> Unit)?,
     onDeleteMessagesFrom: ((Int) -> Unit)?,
     onRollbackToMessage: ((Int) -> Unit)? = null, // 回滚到指定消息的回调
     onRegenerateMessage: ((Int) -> Unit)? = null,
@@ -1008,6 +1011,31 @@ private fun MessageItem(
                         )
                     },
                     modifier = Modifier.height(36.dp)
+                )
+            }
+
+            if (message.sender == "ai" && message.variantCount > 1) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(id = R.string.chat_delete_single_variant),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = 13.sp,
+                        )
+                    },
+                    onClick = {
+                        onDeleteCurrentMessageVariant?.invoke(index)
+                        showContextMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = stringResource(id = R.string.chat_delete_single_variant),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                    modifier = Modifier.height(36.dp),
                 )
             }
 

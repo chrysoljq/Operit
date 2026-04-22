@@ -248,13 +248,7 @@ def main() -> int:
         Output:
         - one single-line English subject only
         - no explanation, no quotes, no markdown
-
-        THINKING PROCESS GUIDELINES:
-        - Before providing your final response, you MUST use a <think> block to outline your thought process. This is for your internal monologue.
-        - In your thoughts, deconstruct the user's request, consider alternatives, anticipate outcomes, and reflect on the best strategy. Formulate a precise action plan. Your plan should be efficient, and you may use tools in parallel or sequentially as appropriate. The tool system will decide and handle execution conflicts automatically.
-        - The user will see your thoughts but cannot reply to them directly. This block is NOT saved in the chat history, so your final answer must be self-contained.
-        - The <think> block must be immediately followed by your final answer or tool call without any newlines.
-        - CRITICAL REMINDER: Even if previous messages in the chat history do not show a <think> block, you MUST include one in your current response. This is a mandatory instruction for this conversation mode.
+        
         """
     ).strip()
 

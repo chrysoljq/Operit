@@ -10,6 +10,9 @@ const SandboxPackageDevInstaller = (function () {
   const REFERENCES_DIR = `${SKILL_ROOT}/references`;
   const TYPES_DIR = `${SKILL_ROOT}/types`;
   const SCRIPTS_DIR = `${SKILL_ROOT}/scripts`;
+  const EXAMPLES_DIR = `${SKILL_ROOT}/examples`;
+  const EXAMPLE_PACKAGES_DIR = `${EXAMPLES_DIR}/packages`;
+  const BUILTIN_PACKAGES_ASSET_DIR = "packages";
   const CDN_BASE = "https://cdn.jsdelivr.net/gh/AAswordman/Operit@main";
   const TYPE_FILES = [
     "android.d.ts",
@@ -100,18 +103,85 @@ const SandboxPackageDevInstaller = (function () {
     });
   }
 
-  function run() {
+  async function downloadFileAsync(url, destination) {
+    const result = await toolCall(TOOL_TYPE, "download_file", {
+      url,
+      destination,
+      environment: ENVIRONMENT
+    });
+
+    if (!result || result.success !== true) {
+      const detail =
+        (result && (result.error || result.message)) ||
+        `Unknown download_file failure for ${destination}`;
+      throw new Error(String(detail));
+    }
+
+    return result;
+  }
+
+  async function downloadAllFiles() {
+    await Promise.all(
+      DOWNLOADS.map(async (item) => {
+        logStep(`Downloading -> ${item.destination}`);
+        await downloadFileAsync(item.url, item.destination);
+      })
+    );
+  }
+
+  function collectRelativeFiles(directory, relativePrefix, collectedFiles) {
+    const children = directory.listFiles();
+    if (!children) {
+      return;
+    }
+
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      const relativePath = relativePrefix
+        ? `${relativePrefix}/${String(child.getName())}`
+        : String(child.getName());
+
+      if (child.isDirectory()) {
+        collectRelativeFiles(child, relativePath, collectedFiles);
+        continue;
+      }
+
+      collectedFiles.push(relativePath);
+    }
+  }
+
+  function syncBuiltInPackageExamples() {
+    const File = Java.type("java.io.File");
+    const AssetCopyUtils = Java.type("com.ai.assistance.operit.util.AssetCopyUtils");
+    const context = Java.getApplicationContext();
+    const outputDir = new File(EXAMPLE_PACKAGES_DIR);
+    const copiedFiles = [];
+
+    AssetCopyUtils.INSTANCE.copyAssetDirRecursive(
+      context,
+      BUILTIN_PACKAGES_ASSET_DIR,
+      outputDir,
+      true
+    );
+
+    collectRelativeFiles(outputDir, "", copiedFiles);
+    copiedFiles.sort();
+    return copiedFiles;
+  }
+
+  async function run() {
     logStep(`Preparing skill root -> ${SKILL_ROOT}`);
     makeDirectory("/sdcard/Download/Operit/skills");
     makeDirectory(SKILL_ROOT);
     makeDirectory(REFERENCES_DIR);
     makeDirectory(TYPES_DIR);
     makeDirectory(SCRIPTS_DIR);
+    makeDirectory(EXAMPLES_DIR);
+    await downloadAllFiles();
 
-    for (const item of DOWNLOADS) {
-      logStep(`Downloading -> ${item.destination}`);
-      downloadFile(item.url, item.destination);
-    }
+    logStep(`Syncing built-in package examples -> ${EXAMPLE_PACKAGES_DIR}`);
+    const copiedExampleFiles = syncBuiltInPackageExamples();
+    logStep(`Built-in package examples synced -> ${copiedExampleFiles.length} files`);
 
     return {
       success: true,
@@ -122,8 +192,12 @@ const SandboxPackageDevInstaller = (function () {
         references_dir: REFERENCES_DIR,
         types_dir: TYPES_DIR,
         scripts_dir: SCRIPTS_DIR,
+        examples_dir: EXAMPLES_DIR,
+        examples_packages_dir: EXAMPLE_PACKAGES_DIR,
         downloaded_count: DOWNLOADS.length,
         type_count: TYPE_FILES.length,
+        builtin_example_count: copiedExampleFiles.length,
+        builtin_example_files: copiedExampleFiles,
         logs: SandboxPackageDevInstallerState.logs
       }
     };
@@ -134,15 +208,17 @@ const SandboxPackageDevInstaller = (function () {
   };
 })();
 
-try {
-  complete(SandboxPackageDevInstaller.run());
-} catch (error) {
-  complete({
-    success: false,
-    message: String(error && error.message ? error.message : error),
-    data: {
-      skill_name: "SandboxPackage_DEV",
-      logs: SandboxPackageDevInstallerState.logs
-    }
+SandboxPackageDevInstaller.run()
+  .then((result) => {
+    complete(result);
+  })
+  .catch((error) => {
+    complete({
+      success: false,
+      message: String(error && error.message ? error.message : error),
+      data: {
+        skill_name: "SandboxPackage_DEV",
+        logs: SandboxPackageDevInstallerState.logs
+      }
+    });
   });
-}

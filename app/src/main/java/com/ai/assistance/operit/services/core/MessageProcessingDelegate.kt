@@ -59,11 +59,11 @@ class MessageProcessingDelegate(
         private val getEnhancedAiService: () -> EnhancedAIService?,
         private val getChatHistory: suspend (String) -> List<ChatMessage>,
         private val addMessageToChat: suspend (String, ChatMessage) -> Unit,
-        private val saveCurrentChat: () -> Unit,
+        private val saveCurrentChat: suspend () -> Unit,
         private val showErrorMessage: (String) -> Unit,
         private val updateChatTitle: (chatId: String, title: String) -> Unit,
         private val onTurnComplete:
-            (chatId: String?, service: EnhancedAIService, nextWindowSize: Int?, turnOptions: ChatTurnOptions) -> Unit,
+            suspend (chatId: String?, service: EnhancedAIService, nextWindowSize: Int?, turnOptions: ChatTurnOptions) -> Unit,
         private val onTokenLimitExceeded: suspend (
             chatId: String?,
             roleCardId: String?,
@@ -771,7 +771,8 @@ class MessageProcessingDelegate(
                     },
                     notifyReplyOverride = turnOptions.notifyReply,
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
-                    chatModelIndexOverride = chatModelIndexOverride
+                    chatModelIndexOverride = chatModelIndexOverride,
+                    disableWarning = turnOptions.disableWarning
                 )
                 logMessageTiming(
                     stage = "delegate.prepareResponseStream",

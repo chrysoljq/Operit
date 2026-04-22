@@ -546,6 +546,7 @@ const dailyLife = (function () {
             hide_user_message: true,
             notify_reply: true,
             persist_turn: true,
+            disable_warning: false,
         };
         const sendMessageArgs: Parameters<typeof Tools.Chat.sendMessage> = [
             messageContent,
@@ -562,6 +563,7 @@ const dailyLife = (function () {
             hide_user_message: true,
             notify_reply: true,
             persist_turn: true,
+            disable_warning: false,
         };
 
         if (typedRoleCardId) {

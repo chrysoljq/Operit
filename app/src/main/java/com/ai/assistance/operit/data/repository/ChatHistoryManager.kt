@@ -626,6 +626,115 @@ class ChatHistoryManager private constructor(private val context: Context) {
         }
     }
 
+    suspend fun deleteMessageVariant(
+        chatId: String,
+        messageTimestamp: Long,
+        variantIndex: Int,
+    ) {
+        chatMutex(chatId).withLock {
+            try {
+                val baseMessage =
+                    messageDao.getMessageByTimestamp(chatId, messageTimestamp)
+                        ?: throw IllegalArgumentException(
+                            "Message $messageTimestamp does not exist in chat $chatId",
+                        )
+                if (baseMessage.sender != "ai") {
+                    throw IllegalArgumentException("Only AI messages can delete variants")
+                }
+
+                val variants =
+                    messageVariantDao.getVariantsForMessage(chatId, messageTimestamp)
+                        .sortedBy { it.variantIndex }
+                if (variants.isEmpty()) {
+                    throw IllegalStateException("Message $messageTimestamp has no deletable variants")
+                }
+
+                if (variantIndex == 0) {
+                    val replacementVariant =
+                        variants.firstOrNull()
+                            ?: throw IllegalStateException(
+                                "Message $messageTimestamp has no replacement variant",
+                            )
+                    val promotedBaseMessage =
+                        baseMessage.copy(
+                            content = replacementVariant.content,
+                            roleName = replacementVariant.roleName.ifBlank { baseMessage.roleName },
+                            selectedVariantIndex = 0,
+                            provider = replacementVariant.provider,
+                            modelName = replacementVariant.modelName,
+                            inputTokens = replacementVariant.inputTokens,
+                            outputTokens = replacementVariant.outputTokens,
+                            cachedInputTokens = replacementVariant.cachedInputTokens,
+                            sentAt = replacementVariant.sentAt,
+                            outputDurationMs = replacementVariant.outputDurationMs,
+                            waitDurationMs = replacementVariant.waitDurationMs,
+                        )
+                    messageDao.updateMessage(promotedBaseMessage)
+                    messageVariantDao.deleteVariant(
+                        chatId = chatId,
+                        messageTimestamp = messageTimestamp,
+                        variantIndex = replacementVariant.variantIndex,
+                    )
+                    variants
+                        .asSequence()
+                        .filter { it.variantIndex > replacementVariant.variantIndex }
+                        .forEach { variant ->
+                            messageVariantDao.updateVariant(
+                                variant.copy(variantIndex = variant.variantIndex - 1),
+                            )
+                        }
+                } else {
+                    val targetVariant =
+                        variants.firstOrNull { it.variantIndex == variantIndex }
+                            ?: throw IllegalArgumentException(
+                                "Variant $variantIndex does not exist for message $messageTimestamp",
+                            )
+                    messageVariantDao.deleteVariant(
+                        chatId = chatId,
+                        messageTimestamp = messageTimestamp,
+                        variantIndex = targetVariant.variantIndex,
+                    )
+                    variants
+                        .asSequence()
+                        .filter { it.variantIndex > targetVariant.variantIndex }
+                        .forEach { variant ->
+                            messageVariantDao.updateVariant(
+                                variant.copy(variantIndex = variant.variantIndex - 1),
+                            )
+                        }
+                    val newSelectedVariantIndex =
+                        when {
+                            variants.any { it.variantIndex > targetVariant.variantIndex } -> targetVariant.variantIndex
+                            else -> (targetVariant.variantIndex - 1).coerceAtLeast(0)
+                        }
+                    messageDao.updateSelectedVariantIndex(
+                        chatId = chatId,
+                        timestamp = messageTimestamp,
+                        selectedVariantIndex = newSelectedVariantIndex,
+                    )
+                }
+
+                chatDao.getChatById(chatId)?.let { chat ->
+                    chatDao.updateChatMetadata(
+                        chatId = chatId,
+                        title = chat.title,
+                        timestamp = System.currentTimeMillis(),
+                        inputTokens = chat.inputTokens,
+                        outputTokens = chat.outputTokens,
+                        currentWindowSize = chat.currentWindowSize,
+                    )
+                }
+            } catch (e: Exception) {
+                AppLogger.e(
+                    TAG,
+                    "Failed to delete variant $variantIndex for message $messageTimestamp in chat $chatId",
+                    e,
+                )
+                throw e
+            }
+        }
+    }
+
     // 更新现有消息
     suspend fun updateMessage(chatId: String, message: ChatMessage) {
         chatMutex(chatId).withLock {

@@ -998,9 +998,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     fun saveCurrentChat() {
-        val (inputTokens, outputTokens) = tokenStatsDelegate.getCumulativeTokenCounts()
-        val currentWindowSize = tokenStatsDelegate.getLastCurrentWindowSize()
-        chatHistoryDelegate.saveCurrentChat(inputTokens, outputTokens, currentWindowSize)
+        viewModelScope.launch {
+            val (inputTokens, outputTokens) = tokenStatsDelegate.getCumulativeTokenCounts()
+            val currentWindowSize = tokenStatsDelegate.getLastCurrentWindowSize()
+            chatHistoryDelegate.saveCurrentChat(inputTokens, outputTokens, currentWindowSize)
+        }
     }
 
     // 添加消息编辑方法
@@ -1071,6 +1073,39 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 AppLogger.e(TAG, "切换回答版本失败", e)
                 uiStateDelegate.showErrorMessage(
                     context.getString(R.string.chat_switch_variant_failed, e.message ?: ""),
+                )
+            }
+        }
+    }
+
+    fun deleteCurrentMessageVariant(index: Int) {
+        viewModelScope.launch {
+            try {
+                val currentHistory = chatHistoryDelegate.chatHistory.value
+                val targetMessage = currentHistory.getOrNull(index)
+                if (targetMessage == null) {
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_invalid_message_index))
+                    return@launch
+                }
+                if (targetMessage.sender != "ai") {
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_only_ai_message_allowed))
+                    return@launch
+                }
+                if (targetMessage.variantCount <= 1) {
+                    uiStateDelegate.showErrorMessage(
+                        context.getString(R.string.chat_delete_single_variant_unavailable),
+                    )
+                    return@launch
+                }
+                chatHistoryDelegate.deleteMessageVariant(
+                    timestamp = targetMessage.timestamp,
+                    variantIndex = targetMessage.selectedVariantIndex,
+                )
+                messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId.value)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "删除当前消息候选失败", e)
+                uiStateDelegate.showErrorMessage(
+                    context.getString(R.string.chat_delete_single_variant_failed, e.message ?: ""),
                 )
             }
         }

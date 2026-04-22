@@ -1,8 +1,10 @@
 package com.ai.assistance.operit.data.api
 
 import android.content.Context
+import android.os.SystemClock
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.data.preferences.GitHubUser
+import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -233,6 +235,7 @@ class GitHubApiService(private val context: Context) {
     private val authPreferences = GitHubAuthPreferences.getInstance(context)
     
     companion object {
+        private const val TAG = "GitHubApiService"
         private const val GITHUB_API_BASE = "https://api.github.com"
         private const val GITHUB_OAUTH_BASE = "https://github.com/login/oauth"
     }
@@ -321,9 +324,9 @@ class GitHubApiService(private val context: Context) {
             authPreferences.getAuthorizationHeader()?.let { authHeader ->
                 requestBuilder.addHeader("Authorization", authHeader)
             }
-            
+
             val response = client.newCall(requestBuilder.build()).execute()
-            
+
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (responseBody != null) {
@@ -370,9 +373,9 @@ class GitHubApiService(private val context: Context) {
             authPreferences.getAuthorizationHeader()?.let { authHeader ->
                 requestBuilder.addHeader("Authorization", authHeader)
             }
-            
+
             val response = client.newCall(requestBuilder.build()).execute()
-            
+
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (responseBody != null) {
@@ -428,7 +431,17 @@ class GitHubApiService(private val context: Context) {
                 requestBuilder.addHeader("Authorization", authHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
+            val request = requestBuilder.build()
+            val startedAt = SystemClock.elapsedRealtime()
+            AppLogger.d(
+                TAG,
+                "HTTP GET searchIssues query=$query sort=$sort order=$order page=$page perPage=$perPage url=${request.url}"
+            )
+            val response = client.newCall(request).execute()
+            AppLogger.d(
+                TAG,
+                "HTTP RESP searchIssues page=$page code=${response.code} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=${request.url}"
+            )
 
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
@@ -997,7 +1010,17 @@ class GitHubApiService(private val context: Context) {
                 requestBuilder.addHeader("Authorization", authHeader)
             }
 
-            val response = client.newCall(requestBuilder.build()).execute()
+            val request = requestBuilder.build()
+            val startedAt = SystemClock.elapsedRealtime()
+            AppLogger.d(
+                TAG,
+                "HTTP GET getRepositoryLabels owner=$owner repo=$repo page=$page perPage=$perPage url=${request.url}"
+            )
+            val response = client.newCall(request).execute()
+            AppLogger.d(
+                TAG,
+                "HTTP RESP getRepositoryLabels owner=$owner repo=$repo page=$page code=${response.code} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=${request.url}"
+            )
             val responseBody = response.body?.string()
 
             if (response.isSuccessful && responseBody != null) {

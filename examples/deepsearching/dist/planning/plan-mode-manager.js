@@ -75,7 +75,7 @@ function newInputProcessingState(kind, message) {
 async function sendPlanningMessage(enhancedAIService, chatHistory, maxTokens, tokenUsageThreshold) {
     const onNonFatalError = (_value) => Unit.INSTANCE;
     console.log(`${TAG} sendPlanningMessage start historySize=${chatHistory.length} maxTokens=${maxTokens} tokenUsageThreshold=${tokenUsageThreshold} ${describeBridgeCapabilities(enhancedAIService, ["callSuspend", "sendMessage", "getModelConfigForFunction"])}`);
-    const stream = await enhancedAIService.callSuspend("sendMessage", getI18n().planGenerateDetailedPlan, null, (0, prompt_turns_1.toKotlinPromptTurnList)(chatHistory), null, null, FunctionType.CHAT, PromptFunctionType.CHAT, false, false, false, maxTokens, tokenUsageThreshold, onNonFatalError, null, null, true, null, null, null, false, null, "DeepSearch Planner", null, null, null, true);
+    const stream = await enhancedAIService.callSuspend("sendMessage", getI18n().planGenerateDetailedPlan, null, (0, prompt_turns_1.toKotlinPromptTurnList)(chatHistory), null, null, FunctionType.CHAT, PromptFunctionType.CHAT, false, false, false, maxTokens, tokenUsageThreshold, onNonFatalError, null, null, true, null, null, null, false, null, "DeepSearch Planner", null, null, null, true, false);
     return collectStreamToString(stream);
 }
 class PlanModeManager {

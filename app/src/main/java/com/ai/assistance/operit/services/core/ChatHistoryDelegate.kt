@@ -234,12 +234,12 @@ class ChatHistoryDelegate(
 
             // 打开历史对话时也执行开场白同步：仅当当前会话还没有用户消息时
             syncOpeningStatementIfNoUserMessage(chatId)
-            
-            // 加载完成后，允许添加消息
-            allowAddMessage.set(true)
-            AppLogger.d(TAG, "聊天 $chatId 加载完成，已允许添加消息")
+
         } catch (e: Exception) {
             AppLogger.e(TAG, "加载聊天消息失败", e)
+        } finally {
+            allowAddMessage.set(true)
+            AppLogger.d(TAG, "聊天 $chatId 加载流程结束，已允许添加消息")
         }
     }
 
@@ -250,42 +250,44 @@ class ChatHistoryDelegate(
      * @param chatId 聊天ID
      */
     suspend fun reloadChatMessagesSmart(chatId: String) {
-        historyUpdateMutex.withLock {
-            try {
-                // 从数据库加载最新消息
-                val newMessages = chatHistoryManager.loadChatMessages(chatId)
-                val currentMessages = _chatHistory.value
-                
-                AppLogger.d(TAG, "智能重新加载聊天 $chatId: 当前 ${currentMessages.size} 条，数据库 ${newMessages.size} 条")
-                
-                // 创建 timestamp 到消息的映射，用于快速查找
-                val currentMessageMap = currentMessages.associateBy { it.timestamp }
-                
-                // 智能合并：保持已存在消息的实例，只更新内容（如果变化）
-                val mergedMessages = newMessages.map { newMsg ->
-                    val existingMsg = currentMessageMap[newMsg.timestamp]
-                    if (existingMsg != null) {
-                        // 消息已存在，保持原实例，但更新内容（如果内容有变化）
-                        if (existingMsg.content != newMsg.content || existingMsg.roleName != newMsg.roleName) {
-                            existingMsg.copy(content = newMsg.content, roleName = newMsg.roleName)
+        try {
+            historyUpdateMutex.withLock {
+                try {
+                    // 从数据库加载最新消息
+                    val newMessages = chatHistoryManager.loadChatMessages(chatId)
+                    val currentMessages = _chatHistory.value
+
+                    AppLogger.d(TAG, "智能重新加载聊天 $chatId: 当前 ${currentMessages.size} 条，数据库 ${newMessages.size} 条")
+
+                    // 创建 timestamp 到消息的映射，用于快速查找
+                    val currentMessageMap = currentMessages.associateBy { it.timestamp }
+
+                    // 智能合并：保持已存在消息的实例，只更新内容（如果变化）
+                    val mergedMessages = newMessages.map { newMsg ->
+                        val existingMsg = currentMessageMap[newMsg.timestamp]
+                        if (existingMsg != null) {
+                            // 消息已存在，保持原实例，但更新内容（如果内容有变化）
+                            if (existingMsg.content != newMsg.content || existingMsg.roleName != newMsg.roleName) {
+                                existingMsg.copy(content = newMsg.content, roleName = newMsg.roleName)
+                            } else {
+                                existingMsg
+                            }
                         } else {
-                            existingMsg
+                            // 新消息，直接添加
+                            newMsg
                         }
-                    } else {
-                        // 新消息，直接添加
-                        newMsg
                     }
+
+                    // 更新聊天历史
+                    _chatHistory.value = mergedMessages
+                    AppLogger.d(TAG, "智能合并完成: ${mergedMessages.size} 条消息")
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "智能重新加载聊天消息失败", e)
                 }
-                
-                // 更新聊天历史
-                _chatHistory.value = mergedMessages
-                
-                // 重新加载完成后，允许添加消息
-                allowAddMessage.set(true)
-                AppLogger.d(TAG, "智能合并完成: ${mergedMessages.size} 条消息，已允许添加消息")
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "智能重新加载聊天消息失败", e)
             }
+        } finally {
+            allowAddMessage.set(true)
+            AppLogger.d(TAG, "聊天 $chatId 智能重载流程结束，已允许添加消息")
         }
     }
 
@@ -504,25 +506,37 @@ class ChatHistoryDelegate(
             allowAddMessage.set(false)
             AppLogger.d(TAG, "切换对话到 $chatId (syncToGlobal=$syncToGlobal)，已禁止添加消息")
 
-            val (inputTokens, outputTokens, windowSize) = getChatStatistics()
-            saveCurrentChat(inputTokens, outputTokens, windowSize) // 切换前使用正确的窗口大小保存
+            try {
+                val (inputTokens, outputTokens, windowSize) = getChatStatistics()
+                saveCurrentChat(inputTokens, outputTokens, windowSize) // 切换前使用正确的窗口大小保存
 
-            if (syncToGlobal) {
-                chatHistoryManager.setCurrentChatId(chatId)
-                // _currentChatId.value will be updated by the collector, no need to set it here.
-                // loadChatMessages(chatId) is also called by the collector.
+                if (syncToGlobal) {
+                    chatHistoryManager.setCurrentChatId(chatId)
+                    // _currentChatId.value will be updated by the collector, no need to set it here.
+                    // loadChatMessages(chatId) is also called by the collector.
 
-                // 等待切换完成后再滚动到底部
-                withTimeoutOrNull(500) {
-                    _currentChatId.first { it == chatId }
+                    // 等待切换完成，并确保加载流程已经恢复消息添加。
+                    withTimeoutOrNull(500) {
+                        while (_currentChatId.value != chatId || !allowAddMessage.get()) {
+                            delay(10)
+                        }
+                    }
+                } else {
+                    // 本地切换：只更新内存态（供悬浮窗使用），不写回 DataStore。
+                    _currentChatId.value = chatId
+                    loadChatMessages(chatId)
                 }
-            } else {
-                // 本地切换：只更新内存态（供悬浮窗使用），不写回 DataStore。
-                _currentChatId.value = chatId
-                loadChatMessages(chatId)
-            }
 
-            onScrollToBottom()
+                onScrollToBottom()
+            } finally {
+                if (!allowAddMessage.get()) {
+                    allowAddMessage.set(true)
+                    AppLogger.w(
+                        TAG,
+                        "切换对话流程结束时消息添加仍被禁用，已恢复状态: chatId=$chatId, syncToGlobal=$syncToGlobal"
+                    )
+                }
+            }
         }
     }
 
@@ -612,6 +626,18 @@ class ChatHistoryDelegate(
         }
     }
 
+    suspend fun deleteMessageVariant(timestamp: Long, variantIndex: Int) {
+        val chatId = _currentChatId.value ?: throw IllegalStateException("No active chat")
+        val shouldReloadCurrentChat =
+            historyUpdateMutex.withLock {
+                chatHistoryManager.deleteMessageVariant(chatId, timestamp, variantIndex)
+                chatId == _currentChatId.value
+            }
+        if (shouldReloadCurrentChat && chatId == _currentChatId.value) {
+            loadChatMessages(chatId)
+        }
+    }
+
     /** 从指定索引删除后续所有消息 */
     suspend fun deleteMessagesFrom(index: Int) {
         runCurrentChatDestructiveHistoryMutation("批量删除后续消息时当前会话已变化，放弃操作") { chatId ->
@@ -681,28 +707,26 @@ class ChatHistoryDelegate(
     }
 
     /** 保存当前聊天到持久存储 */
-    fun saveCurrentChat(
+    suspend fun saveCurrentChat(
         inputTokens: Int = 0,
         outputTokens: Int = 0,
         actualContextWindowSize: Int = 0,
         chatIdOverride: String? = null
     ) {
-        coroutineScope.launch {
-            val chatId = chatIdOverride ?: _currentChatId.value
-            chatId?.let {
-                if (
-                    _chatHistory.value.isNotEmpty() ||
-                        inputTokens != 0 ||
-                        outputTokens != 0 ||
-                        actualContextWindowSize != 0
-                ) {
-                    chatHistoryManager.updateChatTokenCounts(
-                        it,
-                        inputTokens,
-                        outputTokens,
-                        actualContextWindowSize
-                    )
-                }
+        val chatId = chatIdOverride ?: _currentChatId.value
+        chatId?.let {
+            if (
+                _chatHistory.value.isNotEmpty() ||
+                    inputTokens != 0 ||
+                    outputTokens != 0 ||
+                    actualContextWindowSize != 0
+            ) {
+                chatHistoryManager.updateChatTokenCounts(
+                    it,
+                    inputTokens,
+                    outputTokens,
+                    actualContextWindowSize
+                )
             }
         }
     }

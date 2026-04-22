@@ -77,24 +77,6 @@ findChat({ query, match?, index? }): Promise<ChatFindResultData>
 
 发送普通消息。
 
-### `sendMessageAdvanced(params)`
-
-高级发送接口，支持：
-
-- `chatId`
-- `chatHistory`
-- `workspacePath`
-- `functionType`
-- `promptFunctionType`
-- `enableThinking`
-- `thinkingGuidance`
-- `enableMemoryQuery`
-- `maxTokens`
-- `tokenUsageThreshold`
-- `customSystemPromptTemplate`
-- `isSubTask`
-- `stream`
-
 ### `listCharacterCards()`
 
 列出可用角色卡。

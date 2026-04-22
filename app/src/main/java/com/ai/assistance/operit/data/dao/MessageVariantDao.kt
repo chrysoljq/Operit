@@ -48,6 +48,15 @@ interface MessageVariantDao {
     @Update
     suspend fun updateVariant(variant: MessageVariantEntity)
 
+    @Query(
+        "DELETE FROM message_variants WHERE chatId = :chatId AND messageTimestamp = :messageTimestamp AND variantIndex = :variantIndex"
+    )
+    suspend fun deleteVariant(
+        chatId: String,
+        messageTimestamp: Long,
+        variantIndex: Int,
+    )
+
     @Query("DELETE FROM message_variants WHERE chatId = :chatId AND messageTimestamp = :messageTimestamp")
     suspend fun deleteVariantsForMessage(chatId: String, messageTimestamp: Long)
 

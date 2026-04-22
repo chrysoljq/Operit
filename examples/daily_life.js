@@ -513,6 +513,7 @@ const dailyLife = (function () {
             hide_user_message: true,
             notify_reply: true,
             persist_turn: true,
+            disable_warning: false,
         };
         const sendMessageArgs = [
             messageContent,
@@ -528,6 +529,7 @@ const dailyLife = (function () {
             hide_user_message: true,
             notify_reply: true,
             persist_turn: true,
+            disable_warning: false,
         };
         if (typedRoleCardId) {
             actionConfig.role_card_id = typedRoleCardId;

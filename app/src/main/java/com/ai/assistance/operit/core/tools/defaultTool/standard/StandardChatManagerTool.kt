@@ -7,11 +7,9 @@ import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
 import com.ai.assistance.operit.R
-import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.SharedStream
-import com.ai.assistance.operit.core.chat.hooks.toPromptTurns
 import com.ai.assistance.operit.core.tools.AgentStatusResultData
 import com.ai.assistance.operit.core.tools.ChatCreationResultData
 import com.ai.assistance.operit.core.tools.ChatFindResultData
@@ -27,11 +25,9 @@ import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ChatTurnOptions
-import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.model.ToolResult
-import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.services.ChatServiceCore
@@ -45,7 +41,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import org.json.JSONArray
 
 data class MessageSendStreamSession(
     val chatId: String,
@@ -1236,6 +1231,8 @@ class StandardChatManagerTool(private val context: Context) {
             val notifyReplyParam = tool.parameters.find { it.name == "notify_reply" }?.value?.trim()
             val hideUserMessageParam =
                 tool.parameters.find { it.name == "hide_user_message" }?.value?.trim()
+            val disableWarningParam =
+                tool.parameters.find { it.name == "disable_warning" }?.value?.trim()
 
             val persistTurn = parseBooleanOrNull(persistTurnParam)
             if (persistTurnParam != null && persistTurn == null) {
@@ -1273,11 +1270,24 @@ class StandardChatManagerTool(private val context: Context) {
                 )
             }
 
+            val disableWarning = parseBooleanOrNull(disableWarningParam)
+            if (disableWarningParam != null && disableWarning == null) {
+                return MessageSendStreamStartResult.Failed(
+                    ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = MessageSendResultData(chatId = "", message = message),
+                        error = "Invalid parameter: disable_warning must be true/false"
+                    )
+                )
+            }
+
             val turnOptions =
                 ChatTurnOptions(
                     persistTurn = persistTurn ?: true,
                     notifyReply = notifyReply,
-                    hideUserMessage = hideUserMessage ?: false
+                    hideUserMessage = hideUserMessage ?: false,
+                    disableWarning = disableWarning ?: false
                 )
 
             try {
@@ -1473,258 +1483,6 @@ class StandardChatManagerTool(private val context: Context) {
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to send message", e)
-            ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = MessageSendResultData(chatId = "", message = ""),
-                error = "Error sending message: ${e.message}"
-            )
-        }
-    }
-
-    /**
-     * 向AI发送消息（高级参数）
-     */
-    suspend fun sendMessageToAIAdvanced(tool: AITool): ToolResult {
-        return try {
-            val message = tool.parameters.find { it.name == "message" }?.value?.trim()
-            if (message.isNullOrBlank()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = "", message = ""),
-                    error = "Invalid parameter: missing message"
-                )
-            }
-
-            val maxTokensParam = tool.parameters.find { it.name == "max_tokens" }?.value?.trim()
-            val maxTokens = maxTokensParam?.toIntOrNull()
-            if (maxTokens == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = "", message = message),
-                    error = "Invalid parameter: max_tokens must be an integer"
-                )
-            }
-
-            val tokenUsageThresholdParam =
-                tool.parameters.find { it.name == "token_usage_threshold" }?.value?.trim()
-            val tokenUsageThreshold = tokenUsageThresholdParam?.toDoubleOrNull()
-            if (tokenUsageThreshold == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = "", message = message),
-                    error = "Invalid parameter: token_usage_threshold must be a number"
-                )
-            }
-
-            fun parseBooleanOrNull(value: String?): Boolean? {
-                return when (value?.lowercase()) {
-                    "true" -> true
-                    "false" -> false
-                    else -> null
-                }
-            }
-
-            val chatId = tool.parameters.find { it.name == "chat_id" }?.value?.trim()
-                ?.takeIf { it.isNotBlank() }
-            val chatHistoryParam = tool.parameters.find { it.name == "chat_history" }?.value?.trim()
-            val workspacePath =
-                tool.parameters.find { it.name == "workspace_path" }?.value?.trim()?.takeIf { it.isNotBlank() }
-            val functionTypeParam = tool.parameters.find { it.name == "function_type" }?.value?.trim()
-            val promptFunctionTypeParam =
-                tool.parameters.find { it.name == "prompt_function_type" }?.value?.trim()
-            val enableThinkingParam = tool.parameters.find { it.name == "enable_thinking" }?.value?.trim()
-            val thinkingGuidanceParam = tool.parameters.find { it.name == "thinking_guidance" }?.value?.trim()
-            val enableMemoryQueryParam = tool.parameters.find { it.name == "enable_memory_query" }?.value?.trim()
-            val persistTurnParam = tool.parameters.find { it.name == "persist_turn" }?.value?.trim()
-            val notifyReplyParam = tool.parameters.find { it.name == "notify_reply" }?.value?.trim()
-            val hideUserMessageParam =
-                tool.parameters.find { it.name == "hide_user_message" }?.value?.trim()
-            val customSystemPromptTemplate =
-                tool.parameters.find { it.name == "custom_system_prompt_template" }?.value?.trim()
-                    ?.takeIf { it.isNotBlank() }
-            val isSubTaskParam = tool.parameters.find { it.name == "is_sub_task" }?.value?.trim()
-            val streamParam = tool.parameters.find { it.name == "stream" }?.value?.trim()
-
-            val functionType =
-                if (functionTypeParam.isNullOrBlank()) {
-                    FunctionType.CHAT
-                } else {
-                    runCatching { FunctionType.valueOf(functionTypeParam.uppercase()) }.getOrNull()
-                        ?: return ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                            error = "Invalid parameter: function_type is invalid: $functionTypeParam"
-                        )
-                }
-
-            val promptFunctionType =
-                if (promptFunctionTypeParam.isNullOrBlank()) {
-                    PromptFunctionType.CHAT
-                } else {
-                    runCatching { PromptFunctionType.valueOf(promptFunctionTypeParam.uppercase()) }.getOrNull()
-                        ?: return ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                            error = "Invalid parameter: prompt_function_type is invalid: $promptFunctionTypeParam"
-                        )
-                }
-
-            val enableThinking = parseBooleanOrNull(enableThinkingParam)
-            if (enableThinkingParam != null && enableThinking == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: enable_thinking must be true/false"
-                )
-            }
-
-            val thinkingGuidance = parseBooleanOrNull(thinkingGuidanceParam)
-            if (thinkingGuidanceParam != null && thinkingGuidance == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: thinking_guidance must be true/false"
-                )
-            }
-
-            val enableMemoryQuery = parseBooleanOrNull(enableMemoryQueryParam)
-            if (enableMemoryQueryParam != null && enableMemoryQuery == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: enable_memory_query must be true/false"
-                )
-            }
-
-            val persistTurn = parseBooleanOrNull(persistTurnParam)
-            if (persistTurnParam != null && persistTurn == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: persist_turn must be true/false"
-                )
-            }
-
-            val notifyReply = parseBooleanOrNull(notifyReplyParam)
-            if (notifyReplyParam != null && notifyReply == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: notify_reply must be true/false"
-                )
-            }
-
-            val hideUserMessage = parseBooleanOrNull(hideUserMessageParam)
-            if (hideUserMessageParam != null && hideUserMessage == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: hide_user_message must be true/false"
-                )
-            }
-
-            val isSubTask = parseBooleanOrNull(isSubTaskParam)
-            if (isSubTaskParam != null && isSubTask == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: is_sub_task must be true/false"
-                )
-            }
-
-            val stream = parseBooleanOrNull(streamParam)
-            if (streamParam != null && stream == null) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                    error = "Invalid parameter: stream must be true/false"
-                )
-            }
-
-            val chatHistory =
-                if (chatHistoryParam.isNullOrBlank()) {
-                    emptyList()
-                } else {
-                    val parsed = runCatching {
-                        val arr = JSONArray(chatHistoryParam)
-                        val result = ArrayList<Pair<String, String>>(arr.length())
-                        for (i in 0 until arr.length()) {
-                            val item = arr.getJSONArray(i)
-                            if (item.length() < 2) {
-                                return@runCatching null
-                            }
-                            result.add(Pair(item.getString(0), item.getString(1)))
-                        }
-                        result
-                    }.getOrNull()
-                    if (parsed == null) {
-                        return ToolResult(
-                            toolName = tool.name,
-                            success = false,
-                            result = MessageSendResultData(chatId = chatId ?: "", message = message),
-                            error = "Invalid parameter: chat_history must be a JSON array of [role, content]"
-                        )
-                    }
-                    parsed
-                }
-
-            val enhancedService =
-                if (chatId != null) {
-                    EnhancedAIService.getChatInstance(appContext, chatId)
-                } else {
-                    EnhancedAIService.getInstance(appContext)
-                }
-
-            val responseBuilder = StringBuilder()
-            val responseStream =
-                enhancedService.sendMessage(
-                    message = message,
-                    chatId = chatId,
-                    chatHistory = chatHistory.toPromptTurns(),
-                    workspacePath = workspacePath,
-                    functionType = functionType,
-                    promptFunctionType = promptFunctionType,
-                    enableThinking = enableThinking ?: false,
-                    thinkingGuidance = thinkingGuidance ?: false,
-                    enableMemoryQuery = enableMemoryQuery ?: true,
-                    maxTokens = maxTokens,
-                    tokenUsageThreshold = tokenUsageThreshold,
-                    customSystemPromptTemplate = customSystemPromptTemplate,
-                    isSubTask = isSubTask ?: false,
-                    notifyReplyOverride = notifyReply,
-                    stream = stream ?: true
-                )
-
-            responseStream.collect { chunk ->
-                responseBuilder.append(chunk)
-            }
-
-            ToolResult(
-                toolName = tool.name,
-                success = true,
-                result = MessageSendResultData(
-                    chatId = chatId ?: "",
-                    message = message,
-                    aiResponse = responseBuilder.toString(),
-                    receivedAt = System.currentTimeMillis()
-                )
-            )
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to send message (advanced)", e)
             ToolResult(
                 toolName = tool.name,
                 success = false,

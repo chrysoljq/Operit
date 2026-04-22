@@ -334,7 +334,8 @@ async function sendMessage(
     onToolInvocation,
     null,
     null,
-    true
+    true,
+    false
   );
 
   return collectStreamToString(stream as { callSuspend: (...args: unknown[]) => Promise<unknown> });

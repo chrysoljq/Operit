@@ -754,7 +754,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         notifyReplyOverride: Boolean? = null,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null,
-        stream: Boolean = true
+        stream: Boolean = true,
+        disableWarning: Boolean = false
     ): Stream<String> {
         AppLogger.d(
                 TAG,
@@ -1091,7 +1092,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                                 chatModelConfigIdOverride,
                                 chatModelIndexOverride,
                                 stream,
-                                enableGroupOrchestrationHint
+                                enableGroupOrchestrationHint,
+                                disableWarning
                             )
                         }
                     } else if (!hadFatalError) {
@@ -1510,7 +1512,8 @@ class EnhancedAIService private constructor(private val context: Context) {
             chatModelConfigIdOverride: String? = null,
             chatModelIndexOverride: Int? = null,
             stream: Boolean = true,
-            enableGroupOrchestrationHint: Boolean = false
+            enableGroupOrchestrationHint: Boolean = false,
+            disableWarning: Boolean = false
     ) {
         try {
             val startTime = messageTimingNow()
@@ -1546,6 +1549,19 @@ class EnhancedAIService private constructor(private val context: Context) {
             // 禁止“纯思考输出”：移除 thinking 后正文为空时，发出专用告警并回传给 AI 继续生成
             val contentWithoutThinking = ChatUtils.removeThinkingContent(content)
             if (contentWithoutThinking.isEmpty()) {
+                if (disableWarning) {
+                    AppLogger.w(TAG, "检测到纯思考输出，disableWarning=true，直接结束本轮而不注入警告")
+                    handleWaitForUserNeed(
+                        context = context,
+                        content = context.roundManager.getDisplayContent(),
+                        isSubTask = isSubTask,
+                        chatId = chatId,
+                        characterName = characterName,
+                        avatarUri = avatarUri,
+                        notifyReplyOverride = notifyReplyOverride
+                    )
+                    return
+                }
                 val pureThinkingWarning =
                         ConversationMarkupManager.createWarningStatus(
                                 this@EnhancedAIService.context.getString(
@@ -1585,7 +1601,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                         chatModelIndexOverride = chatModelIndexOverride,
                         stream = stream,
                         enableGroupOrchestrationHint = enableGroupOrchestrationHint,
-                        toolResultOverrideMessage = pureThinkingWarning
+                        toolResultOverrideMessage = pureThinkingWarning,
+                        disableWarning = disableWarning
                 )
                 return
             }
@@ -1658,6 +1675,22 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
 
             if (truncatedToolRecovery != null) {
+                if (disableWarning) {
+                    AppLogger.w(
+                        TAG,
+                        "检测到未闭合工具调用，disableWarning=true，直接结束本轮而不注入警告。invalidated=${truncatedToolRecovery.invalidatedToolNames}"
+                    )
+                    handleWaitForUserNeed(
+                        context = context,
+                        content = context.roundManager.getDisplayContent(),
+                        isSubTask = isSubTask,
+                        chatId = chatId,
+                        characterName = characterName,
+                        avatarUri = avatarUri,
+                        notifyReplyOverride = notifyReplyOverride
+                    )
+                    return
+                }
                 val warningStatus =
                         ConversationMarkupManager.createWarningStatus(
                                 this@EnhancedAIService.context.getString(
@@ -1693,7 +1726,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                         chatModelIndexOverride = chatModelIndexOverride,
                         stream = stream,
                         enableGroupOrchestrationHint = enableGroupOrchestrationHint,
-                        toolResultOverrideMessage = warningStatus
+                        toolResultOverrideMessage = warningStatus,
+                        disableWarning = disableWarning
                 )
                 return
             }
@@ -1701,36 +1735,44 @@ class EnhancedAIService private constructor(private val context: Context) {
             // Main flow: Detect and process tool invocations
             if (extractedToolInvocations.isNotEmpty()) {
                 if (hasTaskCompletion) {
-                    val warning =
-                            ConversationMarkupManager.createToolsSkippedByCompletionWarning(
-                                    this@EnhancedAIService.context,
-                                    extractedToolInvocations.map { it.tool.name }
+                    if (disableWarning) {
+                        AppLogger.d(TAG, "检测到完成标记和工具并存，disableWarning=true，跳过 warning 注入")
+                    } else {
+                        val warning =
+                                ConversationMarkupManager.createToolsSkippedByCompletionWarning(
+                                        this@EnhancedAIService.context,
+                                        extractedToolInvocations.map { it.tool.name }
+                                )
+                        context.roundManager.appendContent(warning)
+                        collector.emit(warning)
+                        try {
+                            context.conversationHistory.add(
+                                PromptTurn(kind = PromptTurnKind.TOOL_RESULT, content = warning)
                             )
-                    context.roundManager.appendContent(warning)
-                    collector.emit(warning)
-                    try {
-                        context.conversationHistory.add(
-                            PromptTurn(kind = PromptTurnKind.TOOL_RESULT, content = warning)
-                        )
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "添加任务完成跳过工具警告到历史记录失败", e)
+                        } catch (e: Exception) {
+                            AppLogger.e(TAG, "添加任务完成跳过工具警告到历史记录失败", e)
+                        }
                     }
                 }
 
                 // Handle wait for user need marker
                 if (ConversationMarkupManager.containsWaitForUserNeed(finalContent)) {
-                    val userNeedContent =
-                            ConversationMarkupManager.createWarningStatus(
-                                    this@EnhancedAIService.context.getString(R.string.enhanced_tool_warning),
+                    if (disableWarning) {
+                        AppLogger.d(TAG, "检测到等待用户输入标记与工具并存，disableWarning=true，跳过 warning 注入")
+                    } else {
+                        val userNeedContent =
+                                ConversationMarkupManager.createWarningStatus(
+                                        this@EnhancedAIService.context.getString(R.string.enhanced_tool_warning),
+                                )
+                        context.roundManager.appendContent(userNeedContent)
+                        collector.emit(userNeedContent)
+                        try {
+                            context.conversationHistory.add(
+                                PromptTurn(kind = PromptTurnKind.TOOL_RESULT, content = userNeedContent)
                             )
-                    context.roundManager.appendContent(userNeedContent)
-                    collector.emit(userNeedContent)
-                    try {
-                        context.conversationHistory.add(
-                            PromptTurn(kind = PromptTurnKind.TOOL_RESULT, content = userNeedContent)
-                        )
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "添加工具调用警告到历史记录失败", e)
+                        } catch (e: Exception) {
+                            AppLogger.e(TAG, "添加工具调用警告到历史记录失败", e)
+                        }
                     }
                 }
 
@@ -1762,7 +1804,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                         chatModelConfigIdOverride,
                         chatModelIndexOverride,
                         stream = stream,
-                        enableGroupOrchestrationHint = enableGroupOrchestrationHint
+                        enableGroupOrchestrationHint = enableGroupOrchestrationHint,
+                        disableWarning = disableWarning
                 )
                 return
             }
@@ -1908,7 +1951,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         chatModelIndexOverride: Int? = null,
         stream: Boolean = true,
         enableGroupOrchestrationHint: Boolean = false,
-        toolResultOverrideMessage: String? = null
+        toolResultOverrideMessage: String? = null,
+        disableWarning: Boolean = false
     ) {
         val startTime = messageTimingNow()
 
@@ -1941,7 +1985,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     allToolResults, context, functionType, collector, enableThinking,
                     enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
                     characterName, avatarUri, roleCardId, chatId, onToolInvocation, notifyReplyOverride,
-                    chatModelConfigIdOverride, chatModelIndexOverride, stream, enableGroupOrchestrationHint
+                    chatModelConfigIdOverride, chatModelIndexOverride, stream, enableGroupOrchestrationHint,
+                    disableWarning = disableWarning
                 )
             } else if (!toolResultOverrideMessage.isNullOrEmpty()) {
                 AppLogger.d(TAG, "0工具路由命中，使用覆盖消息继续请求AI。")
@@ -1967,7 +2012,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     chatModelIndexOverride = chatModelIndexOverride,
                     stream = stream,
                     enableGroupOrchestrationHint = enableGroupOrchestrationHint,
-                    toolResultMessageOverride = toolResultOverrideMessage
+                    toolResultMessageOverride = toolResultOverrideMessage,
+                    disableWarning = disableWarning
                 )
             }
 
@@ -2012,7 +2058,8 @@ class EnhancedAIService private constructor(private val context: Context) {
             chatModelIndexOverride: Int? = null,
             stream: Boolean = true,
             enableGroupOrchestrationHint: Boolean = false,
-            toolResultMessageOverride: String? = null
+            toolResultMessageOverride: String? = null,
+            disableWarning: Boolean = false
     ) {
         val startTime = messageTimingNow()
         val toolNames = results.joinToString(", ") { it.toolName }
@@ -2272,7 +2319,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     chatModelConfigIdOverride,
                     chatModelIndexOverride,
                     stream,
-                    enableGroupOrchestrationHint
+                    enableGroupOrchestrationHint,
+                    disableWarning
                 )
             } catch (e: CancellationException) {
                 AppLogger.d(TAG, "处理工具执行结果被取消")

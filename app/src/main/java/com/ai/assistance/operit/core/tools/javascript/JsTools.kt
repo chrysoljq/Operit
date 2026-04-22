@@ -1082,10 +1082,8 @@ fun getJsToolsDefinition(): String {
                     if (options.persist_turn !== undefined) params.persist_turn = options.persist_turn;
                     if (options.notify_reply !== undefined) params.notify_reply = options.notify_reply;
                     if (options.hide_user_message !== undefined) params.hide_user_message = options.hide_user_message;
+                    if (options.disable_warning !== undefined) params.disable_warning = options.disable_warning;
                     return toolCall("send_message_to_ai", params);
-                },
-                sendMessageAdvanced: (params = {}) => {
-                    return toolCall("send_message_to_ai_advanced", params);
                 },
                 // 列出所有角色卡
                 listCharacterCards: () => toolCall("list_character_cards", {})

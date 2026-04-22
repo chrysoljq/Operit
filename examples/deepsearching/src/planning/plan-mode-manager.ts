@@ -125,7 +125,8 @@ async function sendPlanningMessage(
     null,
     null,
     null,
-    true
+    true,
+    false
   );
   return collectStreamToString(stream);
 }

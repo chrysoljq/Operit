@@ -130,7 +130,8 @@ async function sendMessage(
     onToolInvocation,
     null,
     null,
-    true
+    true,
+    false
   );
   return collectStreamToString(stream, options.onChunk);
 }

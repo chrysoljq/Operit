@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.data.api
 
+import android.os.SystemClock
 import com.ai.assistance.operit.core.application.OperitApplication
+import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -82,7 +84,13 @@ class MarketStatsApiService {
                         .addHeader("User-Agent", USER_AGENT)
                         .build()
 
+                val startedAt = SystemClock.elapsedRealtime()
+                AppLogger.d(TAG, "HTTP GET getStats type=$type url=$url")
                 staticClient.newCall(request).execute().use { response ->
+                    AppLogger.d(
+                        TAG,
+                        "HTTP RESP getStats type=$type code=${response.code} source=${resolveResponseSource(response)} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
+                    )
                     val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
                         error(buildHttpErrorMessage(response, body))
@@ -113,7 +121,13 @@ class MarketStatsApiService {
                         .addHeader("User-Agent", USER_AGENT)
                         .build()
 
+                val startedAt = SystemClock.elapsedRealtime()
+                AppLogger.d(TAG, "HTTP GET getRankPage type=$type metric=$metric page=$page url=$url")
                 staticClient.newCall(request).execute().use { response ->
+                    AppLogger.d(
+                        TAG,
+                        "HTTP RESP getRankPage type=$type metric=$metric page=$page code=${response.code} source=${resolveResponseSource(response)} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
+                    )
                     val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
                         error(buildHttpErrorMessage(response, body))
@@ -146,7 +160,13 @@ class MarketStatsApiService {
                         .addHeader("User-Agent", USER_AGENT)
                         .build()
 
+                val startedAt = SystemClock.elapsedRealtime()
+                AppLogger.d(TAG, "HTTP GET trackDownload type=$type id=$id url=$url")
                 noRedirectTrackingClient.newCall(request).execute().use { response ->
+                    AppLogger.d(
+                        TAG,
+                        "HTTP RESP trackDownload type=$type id=$id code=${response.code} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
+                    )
                     if (response.code in 300..399 || response.isSuccessful) {
                         Unit
                     } else {
@@ -173,7 +193,16 @@ class MarketStatsApiService {
         return "HTTP ${response.code}: ${response.message} ($requestPath)$summary"
     }
 
+    private fun resolveResponseSource(response: Response): String {
+        return when {
+            response.cacheResponse != null && response.networkResponse == null -> "cache"
+            response.cacheResponse != null && response.networkResponse != null -> "conditional-cache"
+            else -> "network"
+        }
+    }
+
     companion object {
+        private const val TAG = "MarketStatsApiService"
         const val STATIC_BASE_URL = "https://static.operit.app/market-stats"
         const val TRACK_BASE_URL = "https://api.operit.app/market-stats"
         private const val USER_AGENT = "Operit-Market-Stats"
