@@ -150,7 +150,6 @@ class MessageCoordinationDelegate(
             workspaceEnv = currentChat?.workspaceEnv,
             promptFunctionType = promptFunctionType,
             thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
-            enableMemoryQuery = apiConfigDelegate.enableMemoryQuery.value,
             roleCardId = roleCardId,
             currentRoleName = currentRoleName,
             splitHistoryByRole = true,
@@ -389,7 +388,7 @@ class MessageCoordinationDelegate(
                     apiConfigDelegate.enableThinkingMode.value &&
                         !apiConfigDelegate.enableThinkingGuidance.value,
                 thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
-                enableMemoryQuery = apiConfigDelegate.enableMemoryQuery.value,
+                enableMemoryAutoUpdate = apiConfigDelegate.enableMemoryAutoUpdate.value,
                 maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt(),
                 tokenUsageThreshold = apiConfigDelegate.summaryTokenThreshold.value.toDouble(),
                 chatModelConfigIdOverride = resolvedChatModelConfigIdOverride,
@@ -601,14 +600,9 @@ class MessageCoordinationDelegate(
 
         val proxySenderName = proxySenderNameOverride?.takeIf { it.isNotBlank() }
 
-        // 检测是否附着了记忆文件夹
-        val hasMemoryFolder = currentAttachments.any {
-            it.fileName == "memory_context.xml" && it.mimeType == "application/xml"
-        }
-
-        // 如果是proxy sender，视为关闭记忆附着
-        val shouldEnableMemoryQuery = if (proxySenderName.isNullOrBlank()) {
-            apiConfigDelegate.enableMemoryQuery.value || hasMemoryFolder
+        // 如果是proxy sender，视为关闭记忆自动更新
+        val shouldEnableMemoryAutoUpdate = if (proxySenderName.isNullOrBlank()) {
+            apiConfigDelegate.enableMemoryAutoUpdate.value
         } else {
             false
         }
@@ -627,7 +621,7 @@ class MessageCoordinationDelegate(
             // When guidance is enabled, we avoid enabling provider-level thinking simultaneously.
             enableThinking = apiConfigDelegate.enableThinkingMode.value && !apiConfigDelegate.enableThinkingGuidance.value,
             thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
-            enableMemoryQuery = shouldEnableMemoryQuery,
+            enableMemoryAutoUpdate = shouldEnableMemoryAutoUpdate,
             enableWorkspaceAttachment = !workspacePath.isNullOrBlank(),
             maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt(),
             tokenUsageThreshold = tokenUsageThresholdForSend,
@@ -726,10 +720,6 @@ class MessageCoordinationDelegate(
         val workspacePath = currentChat?.workspace
         val workspaceEnv = currentChat?.workspaceEnv
         val attachments = attachmentDelegate.attachments.value
-        val hasMemoryFolder = attachments.any {
-            it.fileName == "memory_context.xml" && it.mimeType == "application/xml"
-        }
-        val shouldEnableMemoryQuery = apiConfigDelegate.enableMemoryQuery.value || hasMemoryFolder
         val replyToMessage = uiBridge.getReplyToMessage()
 
         val isFirstMessage = chatHistoryDelegate.getChatHistory(chatId).none { it.sender == "user" }
@@ -747,7 +737,6 @@ class MessageCoordinationDelegate(
             messageProcessingDelegate.buildUserMessageContentForGroupOrchestration(
                 messageText = originalUserText,
                 attachments = attachments,
-                enableMemoryQuery = shouldEnableMemoryQuery,
                 enableWorkspaceAttachment = !workspacePath.isNullOrBlank(),
                 workspacePath = workspacePath,
                 workspaceEnv = workspaceEnv,

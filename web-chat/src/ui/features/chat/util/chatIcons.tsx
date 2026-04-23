@@ -45,6 +45,16 @@ export function LinkIcon(props: IconProps) {
   );
 }
 
+export function SaveIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M5 4h11l3 3v13H5z" />
+      <path d="M9 4v6h6V4" />
+      <path d="M9 18h6" />
+    </IconBase>
+  );
+}
+
 export function KeyIcon(props: IconProps) {
   return (
     <IconBase {...props}>

@@ -105,7 +105,6 @@ object AIMessageManager {
      *
      * @param messageText 用户输入的原始文本。
      * @param attachments 附件列表。
-     * @param enableMemoryQuery 是否允许AI查询记忆。
      * @param enableWorkspaceAttachment 是否启用工作区附着功能。
      * @param workspacePath 工作区路径。
      * @param workspaceEnv 工作区环境。
@@ -119,7 +118,6 @@ object AIMessageManager {
         messageText: String,
         proxySenderName: String? = null,
         attachments: List<AttachmentInfo>,
-        enableMemoryQuery: Boolean,
         enableWorkspaceAttachment: Boolean = false,
         workspacePath: String? = null,
         workspaceEnv: String? = null,
@@ -289,7 +287,7 @@ object AIMessageManager {
      * @param promptFunctionType 提示功能类型。
      * @param enableThinking 是否启用思考过程。
      * @param thinkingGuidance 是否启用思考引导。
-     * @param enableMemoryQuery 是否允许AI查询记忆。
+     * @param enableMemoryAutoUpdate 是否允许任务完成后自动更新记忆。
      * @param maxTokens 最大token数量。
      * @param tokenUsageThreshold token使用阈值。
      * @param onNonFatalError 非致命错误回调。
@@ -308,7 +306,7 @@ object AIMessageManager {
         promptFunctionType: PromptFunctionType,
         enableThinking: Boolean,
         thinkingGuidance: Boolean,
-        enableMemoryQuery: Boolean,
+        enableMemoryAutoUpdate: Boolean,
         maxTokens: Int,
         tokenUsageThreshold: Double,
         onNonFatalError: suspend (error: String) -> Unit,
@@ -442,7 +440,7 @@ object AIMessageManager {
                 promptFunctionType = promptFunctionType,
                 enableThinking = enableThinking,
                 thinkingGuidance = thinkingGuidance,
-                enableMemoryQuery = enableMemoryQuery,
+                enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                 maxTokens = maxTokens,
                 tokenUsageThreshold = tokenUsageThreshold,
                 onNonFatalError = onNonFatalError,
@@ -489,7 +487,6 @@ object AIMessageManager {
         workspaceEnv: String? = null,
         promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
         thinkingGuidance: Boolean = false,
-        enableMemoryQuery: Boolean = true,
         roleCardId: String? = null,
         currentRoleName: String? = null,
         splitHistoryByRole: Boolean = true,
@@ -522,7 +519,6 @@ object AIMessageManager {
                 workspaceEnv = workspaceEnv,
                 promptFunctionType = promptFunctionType,
                 thinkingGuidance = thinkingGuidance,
-                enableMemoryQuery = enableMemoryQuery,
                 roleCardId = roleCardId,
                 enableGroupOrchestrationHint = groupOrchestrationMode,
                 groupParticipantNamesText = groupParticipantNamesText,

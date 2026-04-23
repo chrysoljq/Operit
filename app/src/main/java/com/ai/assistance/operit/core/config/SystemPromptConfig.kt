@@ -331,7 +331,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @param thinkingGuidance Whether thinking guidance is enabled
    * @param customSystemPromptTemplate Custom system prompt template (empty means use built-in)
    * @param enableTools Whether tools are enabled
-   * @param enableMemoryQuery Whether the AI is allowed to query memories.
    * @param hasImageRecognition Whether a backend image recognition service is configured
    * @param chatModelHasDirectImage Whether the chat model has direct image capability
    * @return The complete system prompt with package information
@@ -346,7 +345,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           thinkingGuidance: Boolean = false,
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
-          enableMemoryQuery: Boolean = true,
           hasImageRecognition: Boolean = false,
           chatModelHasDirectImage: Boolean = false,
           hasAudioRecognition: Boolean = false,
@@ -474,23 +472,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 prompt.replace("THINKING_GUIDANCE_SECTION", "")
             }
 
-    // Determine the available tools string based on memory query setting and image recognition
+    // Determine the available tools string based on tool visibility and recognition capabilities.
     // 当使用Tool Call API时，不在系统提示词中包含工具描述（工具已通过API的tools字段发送）
     val availableToolsEn = if (useToolCallApi) "" else (
-        if (enableMemoryQuery) {
-            getMemoryToolsEn(toolVisibility) +
-                getAvailableToolsEn(
-                    hasImageRecognition = hasImageRecognition,
-                    chatModelHasDirectImage = chatModelHasDirectImage,
-                    hasAudioRecognition = hasAudioRecognition,
-                    hasVideoRecognition = hasVideoRecognition,
-                    chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames,
-                    toolVisibility = toolVisibility,
-                    dispatchToolPromptComposeHooks = dispatchToolPromptComposeHooks
-                )
-        } else {
+        getMemoryToolsEn(toolVisibility) +
             getAvailableToolsEn(
                 hasImageRecognition = hasImageRecognition,
                 chatModelHasDirectImage = chatModelHasDirectImage,
@@ -502,23 +487,9 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 toolVisibility = toolVisibility,
                 dispatchToolPromptComposeHooks = dispatchToolPromptComposeHooks
             )
-        }
     )
     val availableToolsCn = if (useToolCallApi) "" else (
-        if (enableMemoryQuery) {
-            getMemoryToolsCn(toolVisibility) +
-                getAvailableToolsCn(
-                    hasImageRecognition = hasImageRecognition,
-                    chatModelHasDirectImage = chatModelHasDirectImage,
-                    hasAudioRecognition = hasAudioRecognition,
-                    hasVideoRecognition = hasVideoRecognition,
-                    chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames,
-                    toolVisibility = toolVisibility,
-                    dispatchToolPromptComposeHooks = dispatchToolPromptComposeHooks
-                )
-        } else {
+        getMemoryToolsCn(toolVisibility) +
             getAvailableToolsCn(
                 hasImageRecognition = hasImageRecognition,
                 chatModelHasDirectImage = chatModelHasDirectImage,
@@ -530,7 +501,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 toolVisibility = toolVisibility,
                 dispatchToolPromptComposeHooks = dispatchToolPromptComposeHooks
             )
-        }
     )
 
     // Handle tools disable/enable
@@ -561,27 +531,16 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 .replace("AVAILABLE_TOOLS_SECTION", if (useEnglish) availableToolsEn else availableToolsCn)
         }
     } else {
-        if (enableMemoryQuery) {
-            // Only memory tools are available, package system is disabled
-            prompt = prompt
-                .replace("TOOL_USAGE_GUIDELINES_SECTION", getToolUsageGuidelines(useEnglish, disableStatusTags))
-                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", "")
-                .replace(
-                    "AVAILABLE_TOOLS_SECTION",
-                    if (useEnglish) getMemoryToolsEn(toolVisibility) else getMemoryToolsCn(toolVisibility)
-                )
-        } else {
-            // Remove all guidance sections when tools and memory are disabled
-            // Replace tool-related sections and remove behavior guidelines and workspace guidelines
-            prompt = prompt
-                .replace("TOOL_USAGE_GUIDELINES_SECTION", "")
-                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", "")
-                .replace("AVAILABLE_TOOLS_SECTION", "")
-                .replace(defaultBehaviorGuidelines, "")
-                .replace(workspaceGuidelines, "")
-            if (behaviorGuidelines.isNotEmpty()) {
-                prompt = prompt.replace(behaviorGuidelines, "")
-            }
+        // Remove all guidance sections when tools are disabled
+        // Replace tool-related sections and remove behavior guidelines and workspace guidelines
+        prompt = prompt
+            .replace("TOOL_USAGE_GUIDELINES_SECTION", "")
+            .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", "")
+            .replace("AVAILABLE_TOOLS_SECTION", "")
+            .replace(defaultBehaviorGuidelines, "")
+            .replace(workspaceGuidelines, "")
+        if (behaviorGuidelines.isNotEmpty()) {
+            prompt = prompt.replace(behaviorGuidelines, "")
         }
     }
 
@@ -690,7 +649,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @param thinkingGuidance Whether thinking guidance is enabled
    * @param customSystemPromptTemplate Custom system prompt template (empty means use built-in)
    * @param enableTools Whether tools are enabled
-   * @param enableMemoryQuery Whether the AI is allowed to query memories.
    * @param hasImageRecognition Whether image recognition service is configured
    * @param chatModelHasDirectImage Whether the chat model has direct image capability
    * @return The complete system prompt with custom prompts and package information
@@ -706,7 +664,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           thinkingGuidance: Boolean = false,
           customSystemPromptTemplate: String = "",
           enableTools: Boolean = true,
-          enableMemoryQuery: Boolean = true,
           hasImageRecognition: Boolean = false,
           chatModelHasDirectImage: Boolean = false,
           hasAudioRecognition: Boolean = false,
@@ -739,7 +696,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                         "customSystemPromptTemplate" to customSystemPromptTemplate,
                         "customIntroPrompt" to customIntroPrompt,
                         "enableTools" to enableTools,
-                        "enableMemoryQuery" to enableMemoryQuery,
                         "hasImageRecognition" to hasImageRecognition,
                         "chatModelHasDirectImage" to chatModelHasDirectImage,
                         "hasAudioRecognition" to hasAudioRecognition,
@@ -770,7 +726,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
             thinkingGuidance = thinkingGuidance,
             customSystemPromptTemplate = customSystemPromptTemplate,
             enableTools = enableTools,
-            enableMemoryQuery = enableMemoryQuery,
             hasImageRecognition = hasImageRecognition,
             chatModelHasDirectImage = chatModelHasDirectImage,
             hasAudioRecognition = hasAudioRecognition,
@@ -826,7 +781,6 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         thinkingGuidance = false,
         customSystemPromptTemplate = "",
         enableTools = true,
-        enableMemoryQuery = true,
         hasImageRecognition = false,
         chatModelHasDirectImage = false,
         hasAudioRecognition = false,

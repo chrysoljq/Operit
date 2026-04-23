@@ -1,15 +1,18 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
 import android.content.Context
-import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.chat.hooks.PromptTurn
+import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ToolPrompt
+import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.stream.Stream
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import org.json.JSONObject
 
 /**
  * 针对阿里巴巴Qwen（通义千问）模型的特定API Provider。
@@ -21,7 +24,7 @@ class QwenAIProvider(
     modelName: String,
     client: OkHttpClient,
     customHeaders: Map<String, String> = emptyMap(),
-    providerType: com.ai.assistance.operit.data.model.ApiProviderType = com.ai.assistance.operit.data.model.ApiProviderType.ALIYUN,
+    private val qwenProviderType: ApiProviderType = ApiProviderType.ALIYUN,
     supportsVision: Boolean = false,
     supportsAudio: Boolean = false,
     supportsVideo: Boolean = false,
@@ -32,7 +35,7 @@ class QwenAIProvider(
         modelName = modelName,
         client = client,
         customHeaders = customHeaders,
-        providerType = providerType,
+        providerType = qwenProviderType,
         supportsVision = supportsVision,
         supportsAudio = supportsAudio,
         supportsVideo = supportsVideo,
@@ -55,11 +58,12 @@ class QwenAIProvider(
         val baseRequestBodyJson = super.createRequestBodyInternal(context, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
         val jsonObject = JSONObject(baseRequestBodyJson)
 
-        // 如果启用了思考模式，则为Qwen模型添加特定的`enable_thinking`参数
-        if (enableThinking) {
-            jsonObject.put("enable_thinking", true)
-            AppLogger.d("QwenAIProvider", "已为Qwen模型启用“思考模式”。")
-        }
+        applyQwenReasoningSettings(
+            context = context,
+            requestJson = jsonObject,
+            modelParameters = modelParameters,
+            enableThinking = enableThinking
+        )
 
         // 记录最终的请求体（省略过长的tools字段）
         val logJson = JSONObject(jsonObject.toString())
@@ -68,9 +72,106 @@ class QwenAIProvider(
             logJson.put("tools", "[${toolsArray.length()} tools omitted for brevity]")
         }
         val sanitizedLogJson = sanitizeImageDataForLogging(logJson)
+        logLargeString(
+            "QwenAIProvider",
+            sanitizedLogJson.toString(4),
+            "Final Qwen-compatible request body: "
+        )
 
         // 使用更新后的JSONObject创建新的RequestBody
         return createJsonRequestBody(jsonObject.toString())
+    }
+
+    private fun applyQwenReasoningSettings(
+        context: Context,
+        requestJson: JSONObject,
+        modelParameters: List<ModelParameter<*>>,
+        enableThinking: Boolean
+    ) {
+        if (qwenProviderType != ApiProviderType.SILICONFLOW) {
+            if (enableThinking && !requestJson.has("enable_thinking")) {
+                requestJson.put("enable_thinking", true)
+                AppLogger.d("QwenAIProvider", "已为Qwen模型启用“思考模式”。")
+            }
+            return
+        }
+
+        if (requestJson.has("enable_thinking")) {
+            AppLogger.d(
+                "QwenAIProvider",
+                "Preserving caller-supplied SiliconFlow enable_thinking=${requestJson.opt("enable_thinking")}"
+            )
+        } else {
+            requestJson.put("enable_thinking", enableThinking)
+            AppLogger.d(
+                "QwenAIProvider",
+                "SiliconFlow thinking toggle applied via enable_thinking=$enableThinking"
+            )
+        }
+
+        if (!enableThinking) {
+            return
+        }
+
+        if (requestJson.has("thinking_budget")) {
+            AppLogger.d(
+                "QwenAIProvider",
+                "Preserving caller-supplied SiliconFlow thinking_budget=${requestJson.opt("thinking_budget")}"
+            )
+            return
+        }
+
+        val thinkingBudget = resolveSiliconFlowThinkingBudget(context, requestJson, modelParameters) ?: return
+        requestJson.put("thinking_budget", thinkingBudget)
+        AppLogger.d(
+            "QwenAIProvider",
+            "SiliconFlow thinking budget applied via thinking_budget=$thinkingBudget"
+        )
+    }
+
+    private fun resolveSiliconFlowThinkingBudget(
+        context: Context,
+        requestJson: JSONObject,
+        modelParameters: List<ModelParameter<*>>
+    ): Int? {
+        val qualityLevel = runCatching {
+            runBlocking {
+                ApiPreferences.getInstance(context).thinkingQualityLevelFlow.first()
+            }
+        }.getOrElse {
+            AppLogger.w(
+                "QwenAIProvider",
+                "Failed to read thinking quality level for SiliconFlow, falling back to provider default",
+                it
+            )
+            return null
+        }
+
+        val requestedBudget =
+            when (qualityLevel.coerceIn(1, 4)) {
+                1 -> null
+                2 -> 4_096
+                3 -> 8_192
+                4 -> 16_384
+                else -> null
+            }
+
+        if (requestedBudget == null) {
+            return null
+        }
+
+        val modelMaxTokens =
+            (modelParameters.firstOrNull { it.apiName == "max_tokens" && it.isEnabled }?.currentValue as? Number)
+                ?.toInt()
+                ?.takeIf { it > 1 }
+                ?: requestJson.optInt("max_tokens", 0).takeIf { it > 1 }
+
+        if (modelMaxTokens == null) {
+            return requestedBudget
+        }
+
+        val cappedBudget = minOf(requestedBudget, modelMaxTokens - 1)
+        return if (cappedBudget > 0) cappedBudget else null
     }
 
     override suspend fun sendMessage(

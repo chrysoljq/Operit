@@ -177,7 +177,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val enableThinkingMode: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingMode }
     val enableThinkingGuidance: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingGuidance }
     val thinkingQualityLevel: StateFlow<Int> by lazy { apiConfigDelegate.thinkingQualityLevel }
-    val enableMemoryQuery: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryQuery }
+    val enableMemoryAutoUpdate: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryAutoUpdate }
     val enableTools: StateFlow<Boolean> by lazy { apiConfigDelegate.enableTools }
     val toolPromptVisibility: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.toolPromptVisibility }
     val disableStreamOutput: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStreamOutput }
@@ -598,9 +598,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         apiConfigDelegate.updateThinkingQualityLevel(level)
     }
 
-    // 切换记忆附着的方法现在委托给ApiConfigDelegate
-    fun toggleMemoryQuery() {
-        apiConfigDelegate.toggleMemoryQuery()
+    // 切换记忆自动更新的方法现在委托给ApiConfigDelegate
+    fun toggleMemoryAutoUpdate() {
+        apiConfigDelegate.toggleMemoryAutoUpdate()
     }
 
     // 更新上下文长度

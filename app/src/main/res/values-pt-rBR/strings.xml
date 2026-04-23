@@ -732,7 +732,7 @@
     <string name="tools_failed">Falha na execução da ferramenta: %1$s</string>
     <string name="tool_result">Resultados de execução da ferramenta</string>
     <string name="disable_tools">Desativar ferramentas</string>
-    <string name="disable_tools_desc">Quando desabilitada, a IA não poderá chamar ferramentas regulares, como sistema de arquivos e HTTP. No entanto, se a opção "anexo de memória" estiver ativada, a IA ainda poderá acessar a biblioteca de memória para consulta e gerenciamento de conhecimento.</string>
+    <string name="disable_tools_desc">Quando desativado, a IA não poderá usar ferramentas embutidas, incluindo sistema de arquivos, HTTP e ferramentas de consulta de memória.</string>
     <string name="tools_disabled">A ferramenta está desativada</string>
     <string name="max_mode_title">Modo máximo</string>
     <string name="max_mode_info">O Modo Max (modo de contexto extremamente grande) usará a janela de contexto %2$sk quando ativado e retornará para %1$sk quando desativado. Você pode personalizar esses valores nas configurações.</string>
@@ -2635,7 +2635,7 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="no_description">Ainda não há descrição</string>
     <string name="builtin">embutido</string>
     <string name="external">externo</string>
-    <string name="memory_attachment_active">O anexo de memória está ativado</string>
+    <string name="memory_auto_update_active">A atualização automática de memória está ativada</string>
     <string name="thinking_mode_active">O modo de pensamento está ativado</string>
     <string name="thinking_guidance_active">A orientação do pensamento é ativada</string>
     <string name="ai_planning_active">A pesquisa profunda está ativada</string>
@@ -2655,8 +2655,8 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="prompt_desc">Selecione aqui uma palavra de prompt já configurada ou clique em Gerenciar configuração abaixo para criar ou modificar uma palavra de prompt.</string>
     <string name="memory">memória</string>
     <string name="memory_desc">A seleção de memória inclui as preferências do usuário e o banco de memória dessa preferência. Se você quiser um novo banco de memória, você pode ir nas configurações para criar uma nova preferência de usuário e selecioná-la aqui</string>
-    <string name="memory_attachment">anexo de memória</string>
-    <string name="memory_attachment_desc">Quando ativado, o conteúdo relevante será automaticamente recuperado do banco de memória e anexado ao enviar uma mensagem, mas isso pode afetar o foco da resposta da IA.</string>
+    <string name="memory_auto_update">atualização automática de memória</string>
+    <string name="memory_auto_update_desc">Quando ativado, após a IA marcar a tarefa como concluída, o conteúdo valioso desta conversa será salvo automaticamente na biblioteca de memória.</string>
     <string name="chat_summarizing_memory">Resumindo memórias...</string>
     <string name="chat_input_processing_collect_failed">Falha na coleta de status de processamento de entrada: %1$s</string>
     <string name="chat_input_hint">Digite a mensagem...</string>

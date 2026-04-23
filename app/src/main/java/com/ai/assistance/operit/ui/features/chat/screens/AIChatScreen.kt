@@ -303,7 +303,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
     val thinkingQualityLevel by actualViewModel.thinkingQualityLevel.collectAsState()
-    val enableMemoryQuery by actualViewModel.enableMemoryQuery.collectAsState()
+    val enableMemoryAutoUpdate by actualViewModel.enableMemoryAutoUpdate.collectAsState()
     val enableMaxContextMode by actualViewModel.enableMaxContextMode.collectAsState()
     val enableTools by actualViewModel.enableTools.collectAsState()
     val toolPromptVisibility by actualViewModel.toolPromptVisibility.collectAsState()
@@ -1039,9 +1039,9 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     onContextLengthChange = {
                                         actualViewModel.updateContextLength(it)
                                     },
-                                    enableMemoryQuery = enableMemoryQuery,
-                                    onToggleMemoryQuery = {
-                                        actualViewModel.toggleMemoryQuery()
+                                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
+                                    onToggleMemoryAutoUpdate = {
+                                        actualViewModel.toggleMemoryAutoUpdate()
                                     },
                                     enableMaxContextMode = enableMaxContextMode,
                                     onToggleEnableMaxContextMode = {
@@ -1117,7 +1117,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 thinkingQualityLevel = thinkingQualityLevel,
                                 enableMaxContextMode = enableMaxContextMode,
                                 featureStates = featureStates,
-                                enableMemoryQuery = enableMemoryQuery,
+                                enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                                 isAutoReadEnabled = isAutoReadEnabled,
                                 disableStreamOutput = disableStreamOutput,
                                 disableUserPreferenceDescription =
@@ -1499,7 +1499,7 @@ private fun ChatInputBottomBar(
     thinkingQualityLevel: Int,
     enableMaxContextMode: Boolean,
     featureStates: Map<String, Boolean>,
-    enableMemoryQuery: Boolean,
+    enableMemoryAutoUpdate: Boolean,
     isAutoReadEnabled: Boolean,
     disableStreamOutput: Boolean,
     disableUserPreferenceDescription: Boolean,
@@ -1679,8 +1679,8 @@ private fun ChatInputBottomBar(
                 onToggleFeature = actualViewModel::toggleFeature,
                 permissionLevel = permissionLevel,
                 onTogglePermission = actualViewModel::toggleMasterPermission,
-                enableMemoryQuery = enableMemoryQuery,
-                onToggleMemoryQuery = actualViewModel::toggleMemoryQuery,
+                enableMemoryAutoUpdate = enableMemoryAutoUpdate,
+                onToggleMemoryAutoUpdate = actualViewModel::toggleMemoryAutoUpdate,
                 isAutoReadEnabled = isAutoReadEnabled,
                 onToggleAutoRead = actualViewModel::toggleAutoRead,
                 onToggleTools = actualViewModel::toggleTools,

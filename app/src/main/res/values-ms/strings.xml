@@ -790,7 +790,7 @@
     <string name="tools_failed">Pelaksanaan alatan gagal: %1$s</string>
     <string name="tool_result">Keputusan Pelaksanaan Alatan</string>
     <string name="disable_tools">Lumpuhkan Alatan</string>
-    <string name="disable_tools_desc">Apabila dilumpuhkan, AI tidak dapat memanggil alatan biasa seperti sistem fail, HTTP, dll. Walau bagaimanapun, jika suis "Lampiran Ingatan" diaktifkan, AI masih boleh mengakses pangkalan ingatan untuk pertanyaan dan pengurusan pengetahuan</string>
+    <string name="disable_tools_desc">Apabila dilumpuhkan, AI tidak boleh menggunakan alatan terbina dalam, termasuk sistem fail, HTTP dan alatan pertanyaan ingatan.</string>
     <string name="tools_disabled">Alatan Telah Dilumpuhkan</string>
     <string name="max_mode_title">Mod Max</string>
     <string name="max_mode_info">Max Mode (mod konteks sangat besar) apabila diaktifkan akan menggunakan tetingkap konteks %2$sk, apabila dilumpuhkan akan kembali ke %1$sk. Anda boleh menyesuaikan nilai-nilai ini dalam tetapan.</string>
@@ -2584,7 +2584,7 @@
     <string name="no_description">Tiada keterangan buat masa ini</string>
     <string name="builtin">Terbina dalam</string>
     <string name="external">Luar</string>
-    <string name="memory_attachment_active">Lampiran ingatan telah diaktifkan</string>
+    <string name="memory_auto_update_active">Kemas kini ingatan automatik telah diaktifkan</string>
     <string name="thinking_mode_active">Mod berfikir telah diaktifkan</string>
     <string name="thinking_guidance_active">Panduan berfikir telah diaktifkan</string>
     <string name="ai_planning_active">Carian mendalam telah diaktifkan</string>
@@ -2604,8 +2604,8 @@
     <string name="prompt_desc">Pilih kata kunci yang telah dikonfigurasi di sini, atau klik pengurusan konfigurasi di bawah untuk mencipta atau mengubah suai kata kunci</string>
     <string name="memory">Ingatan</string>
     <string name="memory_desc">Pilihan ingatan termasuk keutamaan pengguna dan pangkalan ingatan di bawah keutamaan tersebut. Jika mahukan pangkalan ingatan baharu, pergi ke tetapan untuk mencipta keutamaan pengguna baharu dan pilih di sini</string>
-    <string name="memory_attachment">Lampiran ingatan</string>
-    <string name="memory_attachment_desc">Apabila dihidupkan, mesej yang dihantar akan mencari dan melampirkan kandungan berkaitan secara automatik dari pangkalan ingatan, tetapi ini mungkin menjejaskan fokus jawapan AI.</string>
+    <string name="memory_auto_update">Kemas Kini Ingatan Automatik</string>
+    <string name="memory_auto_update_desc">Apabila dihidupkan, selepas AI menandakan tugasan selesai, kandungan berharga daripada perbualan ini akan disimpan secara automatik ke pangkalan ingatan.</string>
     <string name="chat_summarizing_memory">Sedang meringkaskan ingatan...</string>
     <string name="chat_input_processing_collect_failed">Pengumpulan status pemprosesan input gagal: %1$s</string>
     <string name="chat_input_hint">Masukkan mesej...</string>

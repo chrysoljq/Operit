@@ -218,7 +218,6 @@ class MessageProcessingDelegate(
     suspend fun buildUserMessageContentForGroupOrchestration(
         messageText: String,
         attachments: List<AttachmentInfo>,
-        enableMemoryQuery: Boolean,
         enableWorkspaceAttachment: Boolean,
         workspacePath: String?,
         workspaceEnv: String?,
@@ -235,7 +234,6 @@ class MessageProcessingDelegate(
         val finalMessageContent = AIMessageManager.buildUserMessageContent(
             messageText = messageText,
             attachments = attachments,
-            enableMemoryQuery = enableMemoryQuery,
             enableWorkspaceAttachment = enableWorkspaceAttachment,
             workspacePath = workspacePath,
             workspaceEnv = workspaceEnv,
@@ -408,7 +406,7 @@ class MessageProcessingDelegate(
             roleCardId: String,
             enableThinking: Boolean = false,
             thinkingGuidance: Boolean = false,
-            enableMemoryQuery: Boolean = true, // 新增参数
+            enableMemoryAutoUpdate: Boolean = true,
             enableWorkspaceAttachment: Boolean = false, // 新增工作区附着参数
             maxTokens: Int,
             tokenUsageThreshold: Double,
@@ -492,7 +490,6 @@ class MessageProcessingDelegate(
                 messageText,
                 proxySenderNameOverride,
                 attachments,
-                enableMemoryQuery,
                 enableWorkspaceAttachment,
                 workspacePath,
                 workspaceEnv,
@@ -676,7 +673,6 @@ class MessageProcessingDelegate(
                             workspaceEnv = workspaceEnv,
                             promptFunctionType = promptFunctionType,
                             thinkingGuidance = thinkingGuidance,
-                            enableMemoryQuery = enableMemoryQuery,
                             roleCardId = effectiveRoleCardId,
                             currentRoleName = currentRoleName,
                             splitHistoryByRole = true,
@@ -751,7 +747,7 @@ class MessageProcessingDelegate(
                     promptFunctionType = promptFunctionType,
                     enableThinking = enableThinking,
                     thinkingGuidance = thinkingGuidance,
-                    enableMemoryQuery = enableMemoryQuery, // Pass it here
+                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                     maxTokens = effectiveMaxTokens,
                     tokenUsageThreshold = effectiveTokenUsageThreshold,
                     onNonFatalError = { error ->
@@ -1170,7 +1166,7 @@ class MessageProcessingDelegate(
         currentRoleName: String,
         enableThinking: Boolean,
         thinkingGuidance: Boolean,
-        enableMemoryQuery: Boolean,
+        enableMemoryAutoUpdate: Boolean,
         maxTokens: Int,
         tokenUsageThreshold: Double,
         chatModelConfigIdOverride: String?,
@@ -1248,7 +1244,7 @@ class MessageProcessingDelegate(
                     promptFunctionType = promptFunctionType,
                     enableThinking = enableThinking,
                     thinkingGuidance = thinkingGuidance,
-                    enableMemoryQuery = enableMemoryQuery,
+                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                     maxTokens = maxTokens,
                     tokenUsageThreshold = tokenUsageThreshold,
                     onNonFatalError = { error -> _nonFatalErrorEvent.emit(error) },

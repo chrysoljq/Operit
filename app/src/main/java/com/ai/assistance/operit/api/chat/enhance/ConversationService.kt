@@ -255,7 +255,6 @@ class ConversationService(
      * @param packageManager 包管理器
      * @param promptFunctionType 提示函数类型
      * @param thinkingGuidance 是否需要思考指导
-     * @param enableMemoryQuery Whether the AI is allowed to query memories.
      * @param hasImageRecognition Whether a backend image recognition service is configured
      * @return 准备好的对话历史列表
      */
@@ -269,7 +268,6 @@ class ConversationService(
             promptFunctionType: PromptFunctionType,
             thinkingGuidance: Boolean = false,
             customSystemPromptTemplate: String? = null,
-            enableMemoryQuery: Boolean = true,
             roleCardId: String? = null,
             enableGroupOrchestrationHint: Boolean = false,
             groupParticipantNamesText: String? = null,
@@ -299,7 +297,6 @@ class ConversationService(
                             "workspaceEnv" to workspaceEnv,
                             "thinkingGuidance" to thinkingGuidance,
                             "customSystemPromptTemplate" to customSystemPromptTemplate,
-                            "enableMemoryQuery" to enableMemoryQuery,
                             "roleCardId" to roleCardId,
                             "enableGroupOrchestrationHint" to enableGroupOrchestrationHint,
                             "groupParticipantNamesText" to groupParticipantNamesText,
@@ -385,7 +382,6 @@ class ConversationService(
                     thinkingGuidance = thinkingGuidance,
                     customSystemPromptTemplate = finalCustomSystemPromptTemplate,
                     enableTools = enableTools,
-                    enableMemoryQuery = enableMemoryQuery,
                     hasImageRecognition = hasImageRecognition,
                     chatModelHasDirectImage = chatModelHasDirectImage,
                     hasAudioRecognition = hasAudioRecognition,

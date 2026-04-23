@@ -20,12 +20,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Portrait
-import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Whatshot
-import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.TipsAndUpdates
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -100,8 +99,8 @@ fun ClassicChatSettingsBar(
     baseContextLengthInK: Float,
     maxContextLengthInK: Float,
     onContextLengthChange: (Float) -> Unit,
-    enableMemoryQuery: Boolean,
-    onToggleMemoryQuery: () -> Unit,
+    enableMemoryAutoUpdate: Boolean,
+    onToggleMemoryAutoUpdate: () -> Unit,
     enableMaxContextMode: Boolean,
     onToggleEnableMaxContextMode: () -> Unit,
     summaryTokenThreshold: Float,
@@ -457,24 +456,24 @@ fun ClassicChatSettingsBar(
                             )
 
                             // ========== 记忆相关 ==========
-                            // 记忆附着
+                            // 记忆自动更新
                             SettingItem(
-                                title = stringResource(R.string.memory_attachment),
+                                title = stringResource(R.string.memory_auto_update),
                                     icon =
-                                            if (enableMemoryQuery) Icons.Rounded.Link
-                                            else Icons.Outlined.LinkOff,
+                                            if (enableMemoryAutoUpdate) Icons.Rounded.Save
+                                            else Icons.Outlined.Save,
                                     iconTint =
-                                            if (enableMemoryQuery)
+                                            if (enableMemoryAutoUpdate)
                                                     MaterialTheme.colorScheme.primary
                                             else
                                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(
                                                             alpha = 0.7f
                                                     ),
-                                isChecked = enableMemoryQuery,
-                                onToggle = onToggleMemoryQuery,
+                                isChecked = enableMemoryAutoUpdate,
+                                onToggle = onToggleMemoryAutoUpdate,
                                 onInfoClick = {
                                         infoPopupContent =
-                                                context.getString(R.string.memory_attachment) to context.getString(R.string.memory_attachment_desc)
+                                                context.getString(R.string.memory_auto_update) to context.getString(R.string.memory_auto_update_desc)
                                     showMenu = false
                                 }
                             )

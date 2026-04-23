@@ -612,7 +612,6 @@ class EnhancedAIService private constructor(private val context: Context) {
         promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
         enableThinking: Boolean = false,
         thinkingGuidance: Boolean = false,
-        enableMemoryQuery: Boolean = true,
         customSystemPromptTemplate: String? = null,
         roleCardId: String? = null,
         enableGroupOrchestrationHint: Boolean = false,
@@ -634,7 +633,6 @@ class EnhancedAIService private constructor(private val context: Context) {
                 promptFunctionType = promptFunctionType,
                 thinkingGuidance = thinkingGuidance,
                 customSystemPromptTemplate = customSystemPromptTemplate,
-                enableMemoryQuery = enableMemoryQuery,
                 roleCardId = roleCardId,
                 enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                 groupParticipantNamesText = groupParticipantNamesText,
@@ -737,7 +735,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
         enableThinking: Boolean = false,
         thinkingGuidance: Boolean = false,
-        enableMemoryQuery: Boolean = true,
+        enableMemoryAutoUpdate: Boolean = true,
         maxTokens: Int,
         tokenUsageThreshold: Double,
         onNonFatalError: suspend (error: String) -> Unit = {},
@@ -803,7 +801,6 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     promptFunctionType,
                                     thinkingGuidance,
                                     customSystemPromptTemplate,
-                                    enableMemoryQuery,
                                     roleCardId,
                                     enableGroupOrchestrationHint,
                                     groupParticipantNamesText,
@@ -1077,7 +1074,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                                 functionType,
                                 collector,
                                 enableThinking,
-                                enableMemoryQuery,
+                                enableMemoryAutoUpdate,
                                 onNonFatalError,
                                 onTokenLimitExceeded,
                                 maxTokens,
@@ -1497,7 +1494,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             functionType: FunctionType = FunctionType.CHAT,
             collector: StreamCollector<String>,
             enableThinking: Boolean = false,
-            enableMemoryQuery: Boolean = true,
+            enableMemoryAutoUpdate: Boolean = true,
             onNonFatalError: suspend (error: String) -> Unit,
             onTokenLimitExceeded: (suspend () -> Unit)? = null,
             maxTokens: Int,
@@ -1530,7 +1527,6 @@ class EnhancedAIService private constructor(private val context: Context) {
             if (content.isEmpty()) {
                 AppLogger.d(TAG, "Stream content is empty. Finalizing conversation state.")
                 // We call handleTaskCompletion to properly set the conversation as inactive and update the UI state.
-                // We pass enableMemoryQuery = false because there's no content to analyze or save.
                 handleWaitForUserNeed(
                     context = context,
                     content = content,
@@ -1585,7 +1581,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         functionType = functionType,
                         collector = collector,
                         enableThinking = enableThinking,
-                        enableMemoryQuery = enableMemoryQuery,
+                        enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                         onNonFatalError = onNonFatalError,
                         onTokenLimitExceeded = onTokenLimitExceeded,
                         maxTokens = maxTokens,
@@ -1640,7 +1636,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 handleTaskCompletion(
                     context = context,
                     content = finalContent,
-                    enableMemoryQuery = enableMemoryQuery,
+                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                     onNonFatalError = onNonFatalError,
                     isSubTask = isSubTask,
                     chatId = chatId,
@@ -1710,7 +1706,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         functionType = functionType,
                         collector = collector,
                         enableThinking = enableThinking,
-                        enableMemoryQuery = enableMemoryQuery,
+                        enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                         onNonFatalError = onNonFatalError,
                         onTokenLimitExceeded = onTokenLimitExceeded,
                         maxTokens = maxTokens,
@@ -1789,7 +1785,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         functionType,
                         collector,
                         enableThinking,
-                        enableMemoryQuery,
+                        enableMemoryAutoUpdate,
                         onNonFatalError,
                         onTokenLimitExceeded,
                         maxTokens,
@@ -1845,7 +1841,7 @@ class EnhancedAIService private constructor(private val context: Context) {
     private suspend fun handleTaskCompletion(
         context: MessageExecutionContext,
         content: String,
-        enableMemoryQuery: Boolean,
+        enableMemoryAutoUpdate: Boolean,
         onNonFatalError: suspend (error: String) -> Unit,
         isSubTask: Boolean,
         chatId: String? = null,
@@ -1869,7 +1865,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
         }
 
-        if (enableMemoryQuery) {
+        if (enableMemoryAutoUpdate && !isSubTask) {
             // 保存会话记忆到记忆库
             com.ai.assistance.operit.api.chat.library.MemoryLibrary.saveMemoryAsync(
                 this@EnhancedAIService.context,
@@ -1935,7 +1931,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         functionType: FunctionType = FunctionType.CHAT,
         collector: StreamCollector<String>,
         enableThinking: Boolean = false,
-        enableMemoryQuery: Boolean = true,
+        enableMemoryAutoUpdate: Boolean = true,
         onNonFatalError: suspend (error: String) -> Unit,
         onTokenLimitExceeded: (suspend () -> Unit)? = null,
         maxTokens: Int,
@@ -1983,7 +1979,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 AppLogger.d(TAG, "所有工具结果收集完毕，准备最终处理。")
                 processToolResults(
                     allToolResults, context, functionType, collector, enableThinking,
-                    enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
+                    enableMemoryAutoUpdate, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
                     characterName, avatarUri, roleCardId, chatId, onToolInvocation, notifyReplyOverride,
                     chatModelConfigIdOverride, chatModelIndexOverride, stream, enableGroupOrchestrationHint,
                     disableWarning = disableWarning
@@ -1996,7 +1992,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     functionType = functionType,
                     collector = collector,
                     enableThinking = enableThinking,
-                    enableMemoryQuery = enableMemoryQuery,
+                    enableMemoryAutoUpdate = enableMemoryAutoUpdate,
                     onNonFatalError = onNonFatalError,
                     onTokenLimitExceeded = onTokenLimitExceeded,
                     maxTokens = maxTokens,
@@ -2042,7 +2038,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             functionType: FunctionType = FunctionType.CHAT,
             collector: StreamCollector<String>,
             enableThinking: Boolean = false,
-            enableMemoryQuery: Boolean = true,
+            enableMemoryAutoUpdate: Boolean = true,
             onNonFatalError: suspend (error: String) -> Unit,
             onTokenLimitExceeded: (suspend () -> Unit)? = null,
             maxTokens: Int,
@@ -2304,7 +2300,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     functionType,
                     collector,
                     enableThinking,
-                    enableMemoryQuery,
+                    enableMemoryAutoUpdate,
                     onNonFatalError,
                     onTokenLimitExceeded,
                     maxTokens,
@@ -2447,7 +2443,6 @@ class EnhancedAIService private constructor(private val context: Context) {
             promptFunctionType: PromptFunctionType,
             thinkingGuidance: Boolean,
             customSystemPromptTemplate: String? = null,
-            enableMemoryQuery: Boolean,
             roleCardId: String?,
             enableGroupOrchestrationHint: Boolean,
             groupParticipantNamesText: String? = null,
@@ -2490,7 +2485,6 @@ class EnhancedAIService private constructor(private val context: Context) {
                 promptFunctionType,
                 thinkingGuidance,
                 customSystemPromptTemplate,
-                enableMemoryQuery,
                 roleCardId,
                 enableGroupOrchestrationHint,
                 groupParticipantNamesText,
@@ -2611,9 +2605,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         chatModelIndexOverride: Int? = null
     ): List<ToolPrompt>? {
         return try {
-            // 先读取全局工具和记忆开关
+            // 先读取全局工具开关
             val enableTools = apiPreferences.enableToolsFlow.first()
-            val enableMemoryQuery = apiPreferences.enableMemoryQueryFlow.first()
             val toolPromptVisibility = runCatching {
                 apiPreferences.toolPromptVisibilityFlow.first()
             }.getOrElse { emptyMap() }
@@ -2623,9 +2616,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                 globalToolVisibility = toolPromptVisibility
             )
 
-            // 如果同时关闭了普通工具和记忆相关工具，则完全不提供Tool Call工具
-            if (!enableTools && !enableMemoryQuery) {
-                AppLogger.d(TAG, "全局设置已禁用工具和记忆，本次调用不提供任何Tool Call工具")
+            if (!enableTools) {
+                AppLogger.d(TAG, "全局设置已禁用工具，本次调用不提供任何Tool Call工具")
                 return null
             }
 
@@ -2682,29 +2674,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 )
             }
 
-            // 按类别拆分记忆工具和非记忆工具，以与 SystemPromptConfig 中的语义保持一致
-            val memoryCategoryName = context.getString(R.string.enhanced_memory_tools_category)
-
-            val memoryTools = categories
-                .firstOrNull { it.categoryName == memoryCategoryName }
-                ?.tools
-                ?: emptyList()
-
-            val nonMemoryTools = categories
-                .filter { it.categoryName != memoryCategoryName }
-                .flatMap { it.tools }
-
-            // 根据开关组合最终可用工具：
-            // - enableTools && enableMemoryQuery      -> 所有工具
-            // - enableTools && !enableMemoryQuery     -> 仅非记忆工具
-            // - !enableTools && enableMemoryQuery     -> 仅记忆工具
-            val selectedTools = mutableListOf<ToolPrompt>()
-            if (enableTools) {
-                selectedTools.addAll(nonMemoryTools)
-            }
-            if (enableMemoryQuery) {
-                selectedTools.addAll(memoryTools)
-            }
+            val selectedTools = categories.flatMap { it.tools }.toMutableList()
 
             selectedTools.retainAll { tool ->
                 roleCardToolAccess.isBuiltinToolAllowed(tool.name)
@@ -2734,13 +2704,13 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
 
             if (selectedTools.isEmpty()) {
-                AppLogger.d(TAG, "根据当前工具/记忆开关，未选择任何Tool Call工具")
+                AppLogger.d(TAG, "根据当前工具开关，未选择任何Tool Call工具")
                 return null
             }
 
             AppLogger.d(
                 TAG,
-                "Tool Call已启用，提供 ${selectedTools.size} 个工具 (enableTools=$enableTools, enableMemoryQuery=$enableMemoryQuery, visibleToolOverrides=${toolPromptVisibility.size}, roleCardCustomTools=${roleCardToolAccess.customEnabled})"
+                "Tool Call已启用，提供 ${selectedTools.size} 个工具 (enableTools=$enableTools, visibleToolOverrides=${toolPromptVisibility.size}, roleCardCustomTools=${roleCardToolAccess.customEnabled})"
             )
             selectedTools
         } catch (e: Exception) {

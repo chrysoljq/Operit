@@ -196,6 +196,7 @@ class ArtifactMarketViewModel(
     private val currentBrowsePages = mutableMapOf<PublishArtifactType, Int>()
     private val totalBrowsePages = mutableMapOf<PublishArtifactType, Int>()
     private var searchJob: Job? = null
+    private var marketStatsRefreshJob: Job? = null
     private var pendingPublishRequest: PublishArtifactRequest? = null
     private var pendingMarketRegistrationPayload: MarketRegistrationPayload? = null
 
@@ -242,7 +243,7 @@ class ArtifactMarketViewModel(
             currentBrowsePages.clear()
             totalBrowsePages.clear()
             try {
-                refreshMarketStats()
+                refreshMarketStatsInBackground()
                 loadBrowsePages(reset = true)
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Failed to load market data"
@@ -912,6 +913,13 @@ class ArtifactMarketViewModel(
         )
     }
 
+    private fun refreshMarketStatsInBackground() {
+        marketStatsRefreshJob?.cancel()
+        marketStatsRefreshJob = viewModelScope.launch {
+            refreshMarketStats()
+        }
+    }
+
     private fun stageMessage(stage: PublishProgressStage): String? {
         return when (stage) {
             PublishProgressStage.IDLE -> null
@@ -986,12 +994,13 @@ class ArtifactMarketViewModel(
     }
 
     private suspend fun refreshMarketStats() {
-        _marketStats.value =
+        val loadedStats =
             loadMarketStatsMap(
                 marketStatsApiService = marketStatsApiService,
                 types = supportedTypes.map { it.toMarketStatsType() },
                 logTag = TAG
             )
+        _marketStats.value = _marketStats.value + loadedStats
     }
 
     private suspend fun trackArtifactDownload(item: ArtifactMarketItem) {

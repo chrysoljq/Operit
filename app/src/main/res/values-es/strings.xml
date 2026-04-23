@@ -2166,7 +2166,7 @@
     <string name="microphone_permission_denied">No se ha obtenido el permiso de micrófono, no se puede activar la función de ventana flotante</string>
     <string name="microphone_permission_floating_required">La función de ventana flotante necesita permiso de micrófono para admitir interacción por voz</string>
     <string name="disable_tools">Desactivar herramientas</string>
-    <string name="disable_tools_desc">Al desactivarlo, la IA no podrá invocar herramientas habituales como el sistema de archivos o HTTP. Sin embargo, si el interruptor de "Adhesión de memoria" está activado, la IA aún podrá acceder al banco de memoria para consultas y gestión de conocimiento.</string>
+    <string name="disable_tools_desc">Al desactivarlo, la IA no podrá usar herramientas integradas, incluidas las del sistema de archivos, HTTP y consulta de memoria.</string>
     <string name="tools_disabled">Herramientas desactivadas</string>
     <string name="max_mode_title">Modo Max</string>
     <string name="max_mode_info">El Modo Max (modo de contexto超大) usará una ventana de contexto de %2$sk al activarse, y volverá a %1$sk al desactivarse. Puede personalizar estos valores en la configuración.</string>
@@ -3128,7 +3128,7 @@ Ahora puede usar el modo AutoGLM en la interfaz de conversación.</string>
     <string name="no_description">Sin descripción</string>
     <string name="builtin">Integrado</string>
     <string name="external">Externo</string>
-    <string name="memory_attachment_active">Adjunto de memoria activado</string>
+    <string name="memory_auto_update_active">Actualización automática de memoria activada</string>
     <string name="thinking_mode_active">Modo de pensamiento activado</string>
     <string name="thinking_guidance_active">Guía de pensamiento activada</string>
     <string name="ai_planning_active">Búsqueda profunda activada</string>
@@ -3140,8 +3140,8 @@ Ahora puede usar el modo AutoGLM en la interfaz de conversación.</string>
     <string name="prompt_desc">Seleccione un prompt ya configurado aquí, o haga clic en "Gestionar configuración" abajo para crear o modificar un prompt</string>
     <string name="memory">Memoria</string>
     <string name="memory_desc">La selección de memoria incluye las preferencias del usuario y la biblioteca de memoria asociada. Si desea una nueva biblioteca de memoria, vaya a configuración para crear una nueva preferencia de usuario y selecciónela aquí</string>
-    <string name="memory_attachment">Adjunto de memoria</string>
-    <string name="memory_attachment_desc">Al activarlo, al enviar un mensaje se recuperará y adjuntará automáticamente contenido relevante de la biblioteca de memoria, lo que puede afectar el enfoque de la respuesta de la IA.</string>
+    <string name="memory_auto_update">Actualización automática de memoria</string>
+    <string name="memory_auto_update_desc">Al activarlo, cuando la IA marque la tarea como completada, guardará automáticamente en la biblioteca de memoria el contenido valioso de esta conversación.</string>
     <string name="chat_summarizing_memory">Resumiendo memoria...</string>
     <string name="chat_input_processing_collect_failed">Error al recopilar el estado de procesamiento de entrada: %1$s</string>
     <string name="chat_input_hint">Ingrese un mensaje...</string>

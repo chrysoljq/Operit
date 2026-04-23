@@ -135,8 +135,8 @@ class ApiPreferences private constructor(private val context: Context) {
         val ENABLE_THINKING_GUIDANCE = booleanPreferencesKey("enable_thinking_guidance")
         val THINKING_QUALITY_LEVEL = intPreferencesKey("thinking_quality_level")
 
-        // Key for Memory Attachment
-        val ENABLE_MEMORY_QUERY = booleanPreferencesKey("enable_memory_query")
+        // Key for Memory Auto Update
+        val ENABLE_MEMORY_AUTO_UPDATE = booleanPreferencesKey("enable_memory_auto_update")
 
         // Key for Auto Read
         val ENABLE_AUTO_READ = booleanPreferencesKey("enable_auto_read")
@@ -167,8 +167,8 @@ class ApiPreferences private constructor(private val context: Context) {
         const val DEFAULT_ENABLE_THINKING_GUIDANCE = false
         const val DEFAULT_THINKING_QUALITY_LEVEL = 2
 
-        // Default value for Memory Attachment
-        const val DEFAULT_ENABLE_MEMORY_QUERY = true
+        // Default value for Memory Auto Update
+        const val DEFAULT_ENABLE_MEMORY_AUTO_UPDATE = true
 
         // Default value for Auto Read
         const val DEFAULT_ENABLE_AUTO_READ = false
@@ -297,10 +297,10 @@ class ApiPreferences private constructor(private val context: Context) {
             (preferences[THINKING_QUALITY_LEVEL] ?: DEFAULT_THINKING_QUALITY_LEVEL).coerceIn(1, 4)
         }
 
-    // Flow for Memory Attachment
-    val enableMemoryQueryFlow: Flow<Boolean> =
+    // Flow for Memory Auto Update
+    val enableMemoryAutoUpdateFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
-            preferences[ENABLE_MEMORY_QUERY] ?: DEFAULT_ENABLE_MEMORY_QUERY
+            preferences[ENABLE_MEMORY_AUTO_UPDATE] ?: DEFAULT_ENABLE_MEMORY_AUTO_UPDATE
         }
 
     // Flow for Auto Read
@@ -423,9 +423,9 @@ class ApiPreferences private constructor(private val context: Context) {
         }
     }
 
-    // Save Memory Attachment setting
-    suspend fun saveEnableMemoryQuery(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences -> preferences[ENABLE_MEMORY_QUERY] = isEnabled }
+    // Save Memory Auto Update setting
+    suspend fun saveEnableMemoryAutoUpdate(isEnabled: Boolean) {
+        context.apiDataStore.edit { preferences -> preferences[ENABLE_MEMORY_AUTO_UPDATE] = isEnabled }
     }
 
     // Save Auto Read setting

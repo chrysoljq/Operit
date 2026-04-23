@@ -306,6 +306,7 @@ async function sendMessage(
       return Unit.INSTANCE;
     }
     : null;
+  const enableMemoryAutoUpdate = false;
 
   const stream = await enhancedAIService.callSuspend(
     "sendMessage",
@@ -318,7 +319,7 @@ async function sendMessage(
     PromptFunctionType.CHAT,
     false,
     false,
-    false,
+    enableMemoryAutoUpdate,
     options.maxTokens,
     options.tokenUsageThreshold,
     onNonFatalError,

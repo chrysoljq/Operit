@@ -840,7 +840,7 @@
     <string name="tools_failed">Tool execution failed: %1$s</string>
     <string name="tool_result">Tool Execution Result</string>
     <string name="disable_tools">Disable Tools</string>
-    <string name="disable_tools_desc">When disabled, AI cannot use regular tools like file system or HTTP. However, if \"Memory Attachment\" is enabled, AI can still access memory for knowledge queries and management</string>
+    <string name="disable_tools_desc">When disabled, AI cannot use built-in tools, including file system, HTTP, and memory query tools.</string>
     <string name="tools_disabled">Tools Disabled</string>
     <string name="processing_input">Processing input...</string>
     <string name="references">References:</string>
@@ -3069,7 +3069,7 @@
     <string name="filelist_go_back">Go back to parent directory</string>
 
     <!-- Chat Components -->
-    <string name="memory_attachment_active">Memory attachment activated</string>
+    <string name="memory_auto_update_active">Memory auto update activated</string>
     <string name="thinking_mode_active">Thinking mode activated</string>
     <string name="thinking_guidance_active">Thinking guidance activated</string>
     <string name="ai_planning_active">AI planning mode activated</string>
@@ -3089,8 +3089,8 @@
     <string name="prompt_desc">Select a configured prompt here, or click Manage Configuration below to create or modify prompts</string>
     <string name="memory">Memory</string>
     <string name="memory_desc">Memory selection includes user preferences and memory base under that preference. To create a new memory base, go to settings to create a new user preference and select it here</string>
-    <string name="memory_attachment">Memory Attachment</string>
-    <string name="memory_attachment_desc">When enabled, relevant content will be automatically retrieved from the memory base and attached when sending messages, but this may affect AI response focus.</string>
+    <string name="memory_auto_update">Memory Auto Update</string>
+    <string name="memory_auto_update_desc">When enabled, valuable content from the current conversation is automatically saved to the memory library after AI marks the task as complete.</string>
     <string name="chat_summarizing_memory">Summarizing memory...</string>
     <string name="chat_input_processing_collect_failed">Failed to collect input processing state: %1$s</string>
     <string name="chat_input_hint">Type a message...</string>

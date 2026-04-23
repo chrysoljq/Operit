@@ -247,7 +247,8 @@ async function sendMessage(enhancedAIService, options) {
             return Unit.INSTANCE;
         }
         : null;
-    const stream = await enhancedAIService.callSuspend("sendMessage", options.message, null, toKotlinPromptTurnList(options.chatHistory), null, null, FunctionType.CHAT, PromptFunctionType.CHAT, false, false, false, options.maxTokens, options.tokenUsageThreshold, onNonFatalError, null, options.customSystemPromptTemplate || null, true, null, null, null, false, null, "Subagent", onToolInvocation, null, null, true, false);
+    const enableMemoryAutoUpdate = false;
+    const stream = await enhancedAIService.callSuspend("sendMessage", options.message, null, toKotlinPromptTurnList(options.chatHistory), null, null, FunctionType.CHAT, PromptFunctionType.CHAT, false, false, enableMemoryAutoUpdate, options.maxTokens, options.tokenUsageThreshold, onNonFatalError, null, options.customSystemPromptTemplate || null, true, null, null, null, false, null, "Subagent", onToolInvocation, null, null, true, false);
     return collectStreamToString(stream);
 }
 function getAppContext() {

@@ -98,6 +98,7 @@ class MCPMarketViewModel(
     private var currentPage: Int = 1
     private var totalPages: Int = 1
     private var searchJob: Job? = null
+    private var marketStatsRefreshJob: Job? = null
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -329,7 +330,7 @@ class MCPMarketViewModel(
             totalPages = 1
 
             try {
-                refreshMarketStats()
+                refreshMarketStatsInBackground()
                 val result =
                     marketStatsApiService.getRankPage(
                         type = MarketStatsType.MCP.wireValue,
@@ -431,6 +432,13 @@ class MCPMarketViewModel(
             } finally {
                 _isLoadingMore.value = false
             }
+        }
+    }
+
+    private fun refreshMarketStatsInBackground() {
+        marketStatsRefreshJob?.cancel()
+        marketStatsRefreshJob = viewModelScope.launch {
+            refreshMarketStats()
         }
     }
 
@@ -556,13 +564,14 @@ class MCPMarketViewModel(
     }
 
     private suspend fun refreshMarketStats() {
-        _marketStats.value =
+        val loadedStats =
             loadMarketStatsMap(
                 marketStatsApiService = marketStatsApiService,
                 type = MarketStatsType.MCP,
                 logTag = TAG,
                 errorLabel = "mcp"
             )
+        _marketStats.value = _marketStats.value + loadedStats
     }
 
     private suspend fun trackMcpDownload(statsId: String, targetUrl: String) {

@@ -74,6 +74,7 @@ class SkillMarketViewModel(
     private var currentPage: Int = 1
     private var totalPages: Int = 1
     private var searchJob: Job? = null
+    private var marketStatsRefreshJob: Job? = null
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -352,7 +353,7 @@ class SkillMarketViewModel(
             }
 
             try {
-                refreshMarketStats()
+                refreshMarketStatsInBackground()
                 val result =
                     marketStatsApiService.getRankPage(
                         type = MarketStatsType.SKILL.wireValue,
@@ -439,6 +440,13 @@ class SkillMarketViewModel(
             } finally {
                 _isLoadingMore.value = false
             }
+        }
+    }
+
+    private fun refreshMarketStatsInBackground() {
+        marketStatsRefreshJob?.cancel()
+        marketStatsRefreshJob = viewModelScope.launch {
+            refreshMarketStats()
         }
     }
 
@@ -761,13 +769,14 @@ class SkillMarketViewModel(
     }
 
     private suspend fun refreshMarketStats() {
-        _marketStats.value =
+        val loadedStats =
             loadMarketStatsMap(
                 marketStatsApiService = marketStatsApiService,
                 type = MarketStatsType.SKILL,
                 logTag = TAG,
                 errorLabel = "skill"
             )
+        _marketStats.value = _marketStats.value + loadedStats
     }
 
     private fun isSkillInstallSuccess(message: String): Boolean {

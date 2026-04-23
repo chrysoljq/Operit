@@ -95,6 +95,7 @@ async function sendPlanningMessage(
   tokenUsageThreshold: number
 ): Promise<string> {
   const onNonFatalError = (_value: string) => Unit.INSTANCE;
+  const enableMemoryAutoUpdate = false;
   console.log(
     `${TAG} sendPlanningMessage start historySize=${chatHistory.length} maxTokens=${maxTokens} tokenUsageThreshold=${tokenUsageThreshold} ${describeBridgeCapabilities(enhancedAIService, ["callSuspend", "sendMessage", "getModelConfigForFunction"])}`
   );
@@ -109,7 +110,7 @@ async function sendPlanningMessage(
     PromptFunctionType.CHAT,
     false,
     false,
-    false,
+    enableMemoryAutoUpdate,
     maxTokens,
     tokenUsageThreshold,
     onNonFatalError,

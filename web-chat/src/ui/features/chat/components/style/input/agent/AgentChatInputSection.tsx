@@ -11,6 +11,7 @@ import {
   LinkIcon,
   MicIcon,
   PlusIcon,
+  SaveIcon,
   SendIcon,
   StopIcon,
   TuneIcon
@@ -324,10 +325,10 @@ export function AgentChatInputSection({
 
             <button className="agent-popup-row" type="button">
               <span className="agent-popup-row-icon">
-                <LinkIcon size={16} />
+                <SaveIcon size={16} />
               </span>
               <span className="agent-popup-row-copy is-inline">
-                <strong>记忆附着</strong>
+                <strong>记忆自动更新</strong>
                 <em>关闭</em>
               </span>
             </button>

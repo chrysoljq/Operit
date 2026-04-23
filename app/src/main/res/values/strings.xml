@@ -803,7 +803,7 @@
     <string name="tools_failed">工具执行失败: %1$s</string>
     <string name="tool_result">工具执行结果</string>
     <string name="disable_tools">禁用工具</string>
-    <string name="disable_tools_desc">禁用后，AI将无法调用文件系统、HTTP等常规工具。但如果"记忆附着"开关开启，AI仍可访问记忆库进行知识查询和管理</string>
+    <string name="disable_tools_desc">禁用后，AI将无法调用包括记忆查询在内的内置工具，例如文件系统、HTTP和记忆工具。</string>
     <string name="tools_disabled">工具已禁用</string>
     <string name="max_mode_title">Max模式</string>
     <string name="max_mode_info">Max Mode（超大上下文模式）开启后将使用 %2$sk 上下文窗口，关闭则回到 %1$sk。您可以在设置中自定义这些数值。</string>
@@ -2940,7 +2940,7 @@
     <string name="external">外部</string>
     
     <!-- Chat Components -->
-    <string name="memory_attachment_active">记忆附着已激活</string>
+    <string name="memory_auto_update_active">记忆自动更新已激活</string>
     <string name="thinking_mode_active">思考模式已激活</string>
     <string name="thinking_guidance_active">思考引导已激活</string>
     <string name="ai_planning_active">深度搜索已激活</string>
@@ -2960,8 +2960,8 @@
     <string name="prompt_desc">在这里选择一个已经配置好的提示词，或者点击下方的管理配置去新建或修改提示词</string>
     <string name="memory">记忆</string>
     <string name="memory_desc">记忆选择包括了用户偏好和该偏好下的记忆库。如果想要新的记忆库，可以去设置新建一个用户偏好并在这里选择</string>
-    <string name="memory_attachment">记忆附着</string>
-    <string name="memory_attachment_desc">开启后，发送消息时会自动从记忆库中检索并附加相关内容，但这可能会影响AI回答的焦点。</string>
+    <string name="memory_auto_update">记忆自动更新</string>
+    <string name="memory_auto_update_desc">开启后，当AI输出任务完成标记时，会自动把本轮对话中的有价值内容写入记忆库。</string>
     <string name="chat_summarizing_memory">正在总结记忆...</string>
     <string name="chat_input_processing_collect_failed">输入处理状态收集失败: %1$s</string>
     <string name="chat_input_hint">输入消息...</string>

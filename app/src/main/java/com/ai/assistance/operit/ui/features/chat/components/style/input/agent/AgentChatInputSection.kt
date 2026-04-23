@@ -34,15 +34,14 @@ import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.TipsAndUpdates
-import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.TipsAndUpdates
 import androidx.compose.material3.AlertDialog
@@ -196,8 +195,8 @@ fun AgentChatInputSection(
     onToggleFeature: (String) -> Unit = {},
     permissionLevel: PermissionLevel = PermissionLevel.ASK,
     onTogglePermission: () -> Unit = {},
-    enableMemoryQuery: Boolean = false,
-    onToggleMemoryQuery: () -> Unit = {},
+    enableMemoryAutoUpdate: Boolean = false,
+    onToggleMemoryAutoUpdate: () -> Unit = {},
     isAutoReadEnabled: Boolean = false,
     onToggleAutoRead: () -> Unit = {},
     onToggleTools: () -> Unit = {},
@@ -1360,8 +1359,8 @@ fun AgentChatInputSection(
                     showExtraSettingsPopup.value = false
                     onNavigateToUserPreferences()
                 },
-                enableMemoryQuery = enableMemoryQuery,
-                onToggleMemoryQuery = onToggleMemoryQuery,
+                enableMemoryAutoUpdate = enableMemoryAutoUpdate,
+                onToggleMemoryAutoUpdate = onToggleMemoryAutoUpdate,
                 featureStates = featureStates,
                 onToggleFeature = onToggleFeature,
                 isAutoReadEnabled = isAutoReadEnabled,
@@ -2164,8 +2163,8 @@ private fun AgentExtraSettingsPopup(
     currentProfileId: String,
     onSelectMemory: (String) -> Unit,
     onManageMemory: () -> Unit,
-    enableMemoryQuery: Boolean,
-    onToggleMemoryQuery: () -> Unit,
+    enableMemoryAutoUpdate: Boolean,
+    onToggleMemoryAutoUpdate: () -> Unit,
     featureStates: Map<String, Boolean>,
     onToggleFeature: (String) -> Unit,
     isAutoReadEnabled: Boolean,
@@ -2264,14 +2263,14 @@ private fun AgentExtraSettingsPopup(
                     )
 
                     AgentSimpleToggleSettingItem(
-                        title = stringResource(R.string.memory_attachment),
-                        icon = if (enableMemoryQuery) Icons.Rounded.Link else Icons.Outlined.LinkOff,
-                        isChecked = enableMemoryQuery,
-                        onToggle = onToggleMemoryQuery,
+                        title = stringResource(R.string.memory_auto_update),
+                        icon = if (enableMemoryAutoUpdate) Icons.Rounded.Save else Icons.Outlined.Save,
+                        isChecked = enableMemoryAutoUpdate,
+                        onToggle = onToggleMemoryAutoUpdate,
                         onInfoClick = {
                             infoPopupContent =
-                                context.getString(R.string.memory_attachment) to
-                                    context.getString(R.string.memory_attachment_desc)
+                                context.getString(R.string.memory_auto_update) to
+                                    context.getString(R.string.memory_auto_update_desc)
                         },
                     )
 
