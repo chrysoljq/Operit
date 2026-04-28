@@ -6956,10 +6956,6 @@ Ahora puede usar el modo AutoGLM en la interfaz de conversación.</string>
     <string name="quick_plugin_creator_requirement_empty">Primero ingresa los requisitos del plugin</string>
     <string name="mcp_plugin_comment_view_thread">Ver hilo</string>
     <string name="mcp_plugin_user_comments">Comentarios de usuarios</string>
-    <string name="web_session_shortcut_label">Navegador</string>
-    <string name="web_session_shortcut_long_label">Inicio rápido del navegador</string>
-    <string name="web_session_shortcut_open_failed">Error al iniciar el acceso directo del navegador</string>
-
     <string name="quick_plugin_creator_setup_failed">Error al instalar o actualizar el Skill de creación de paquetes</string>
     <string name="pkg_toolpkg_workflow_templates">Plantillas de flujo de trabajo: %1$d</string>
     <string name="pkg_toolpkg_workspace_templates">Plantillas de espacio de trabajo: %1$d</string>

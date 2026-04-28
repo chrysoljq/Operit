@@ -55,6 +55,7 @@ import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.plugins.toolpkg.ToolPkgAiProviderRegistry
+import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.settings.DebouncedModelConfigAutoSaveEffect
 import com.ai.assistance.operit.ui.features.settings.ModelConfigSaveCoordinator
 import com.ai.assistance.operit.ui.features.settings.RegisterModelConfigSaveAction
@@ -1235,6 +1236,7 @@ internal fun SettingsTextField(
                             keyboardActions = keyboardActions,
                             visualTransformation = visualTransformation,
                             interactionSource = resolvedInteractionSource,
+                            modifier = Modifier.fillMaxWidth().bringIntoViewOnImeFocus(),
                             textStyle =
                                     TextStyle(
                                             color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,

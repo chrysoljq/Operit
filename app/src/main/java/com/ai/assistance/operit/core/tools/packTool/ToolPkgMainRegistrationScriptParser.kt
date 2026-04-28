@@ -170,12 +170,14 @@ internal object ToolPkgMainRegistrationScriptParser {
 
             val runtime = item.optString("runtime").trim().ifBlank { TOOLPKG_RUNTIME_COMPOSE_DSL }
             val title = parseLocalizedText(item.opt("title"), fallback = id)
+            val keepAlive = item.optBoolean("keepAlive", false)
             modules.add(
                 ToolPkgRegisteredUiModule(
                     id = id,
                     runtime = runtime,
                     screen = screen,
-                    title = title
+                    title = title,
+                    keepAlive = keepAlive
                 )
             )
         }
@@ -218,13 +220,15 @@ internal object ToolPkgMainRegistrationScriptParser {
 
             val runtime = item.optString("runtime").trim().ifBlank { TOOLPKG_RUNTIME_COMPOSE_DSL }
             val title = parseLocalizedText(item.opt("title"), fallback = id)
+            val keepAlive = item.optBoolean("keepAlive", false)
             routes.add(
                 ToolPkgRegisteredUiRoute(
                     id = id,
                     routeId = routeId,
                     runtime = runtime,
                     screen = screen,
-                    title = title
+                    title = title,
+                    keepAlive = keepAlive
                 )
             )
         }

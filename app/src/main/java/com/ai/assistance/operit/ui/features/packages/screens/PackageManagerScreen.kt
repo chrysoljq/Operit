@@ -109,7 +109,7 @@ fun PackageManagerScreen(
     onNavigateToSkillMarket: () -> Unit = {},
     onNavigateToArtifactMarket: () -> Unit = {},
     onStartPluginCreation: (String) -> Unit = {},
-    onOpenToolPkgPluginConfig: (String, String, String) -> Unit = { _, _, _ -> },
+    onOpenToolPkgPluginConfig: (String, String, String, Boolean) -> Unit = { _, _, _, _ -> },
     onNavigateToMCPDetail: ((com.ai.assistance.operit.data.api.GitHubIssue) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -757,9 +757,9 @@ fun PackageManagerScreen(
                         selectedTool = tool
                         showScriptExecution = true
                     },
-                    onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title ->
+                    onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title, keepAlive ->
                         showDetails = false
-                        onOpenToolPkgPluginConfig(containerPackageName, uiModuleId, title)
+                        onOpenToolPkgPluginConfig(containerPackageName, uiModuleId, title, keepAlive)
                     },
                     onDismiss = {
                         showDetails = false

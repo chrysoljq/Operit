@@ -52,6 +52,7 @@ internal class PackageManagerToolPkgFacade(
                     screen = route.screen,
                     title = moduleTitle,
                     description = containerDescription,
+                    keepAlive = route.keepAlive,
                     moduleSpec =
                         mapOf(
                             "id" to route.id,
@@ -59,7 +60,8 @@ internal class PackageManagerToolPkgFacade(
                             "runtime" to route.runtime,
                             "screen" to route.screen,
                             "title" to moduleTitle,
-                            "toolPkgId" to container.packageName
+                            "toolPkgId" to container.packageName,
+                            "keepAlive" to route.keepAlive
                         )
                 )
             }
@@ -94,6 +96,7 @@ internal class PackageManagerToolPkgFacade(
                     screen = route.screen,
                     title = routeTitle,
                     description = containerDescription,
+                    keepAlive = route.keepAlive,
                     moduleSpec =
                         mapOf(
                             "id" to route.id,
@@ -101,7 +104,8 @@ internal class PackageManagerToolPkgFacade(
                             "runtime" to route.runtime,
                             "screen" to route.screen,
                             "title" to routeTitle,
-                            "toolPkgId" to container.packageName
+                            "toolPkgId" to container.packageName,
+                            "keepAlive" to route.keepAlive
                         )
                 )
             }

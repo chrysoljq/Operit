@@ -133,6 +133,29 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     )
 
     handler.registerTool(
+            name = "execute_in_terminal_session_streaming",
+            descriptionGenerator = { tool ->
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value
+                s(R.string.toolreg_execute_in_terminal_session_desc, sessionId ?: "", command)
+            },
+            executor =
+                    object : ToolExecutor {
+                        override fun invoke(tool: AITool): ToolResult {
+                            val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
+                            return terminalTool.executeCommandInSession(tool)
+                        }
+
+                        override fun invokeAndStream(
+                                tool: AITool
+                        ): kotlinx.coroutines.flow.Flow<ToolResult> {
+                            val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
+                            return terminalTool.executeCommandInSessionStream(tool)
+                        }
+                    }
+    )
+
+    handler.registerTool(
             name = "execute_hidden_terminal_command",
             descriptionGenerator = { tool ->
                 val command = tool.parameters.find { it.name == "command" }?.value ?: ""

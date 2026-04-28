@@ -11,6 +11,7 @@ import type {
   ComposeTextFieldStyle,
   ComposeTextStyle,
   ComposeCanvasCommand,
+  ComposeContentScale,
 } from "./compose-dsl";
 
 /**
@@ -698,7 +699,14 @@ export interface ComposeGeneratedImageProps extends ComposeCommonProps {
   alpha?: number;
   contentAlignment?: ComposeAlignment;
   contentDescription: string;
+  contentScale?: ComposeContentScale;
+  fileUri?: string;
+  icon?: string;
   name?: string;
+  path?: string;
+  src?: string;
+  uri?: string;
+  url?: string;
   zIndex?: number;
 }
 

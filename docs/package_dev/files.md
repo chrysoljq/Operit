@@ -138,9 +138,13 @@ grep(path, pattern, {
 
 ### 压缩、打开、分享、下载
 
-#### `zip(source, destination, environment?)`
+#### `zip(source, destination, environment?, include_root_directory?)`
 
 压缩文件或目录。
+
+- `include_root_directory` 仅在 `source` 为目录时生效。
+- 默认 `true`：压缩包内会保留源目录名作为顶层目录。
+- 传 `false`：只压缩目录内容本身，不额外套一层顶层目录。
 
 #### `unzip(source, destination, environment?)`
 

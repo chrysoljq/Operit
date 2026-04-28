@@ -130,6 +130,9 @@ class MessageProcessingDelegate(
         var streamCollectionJob: Job? = null,
         var stateCollectionJob: Job? = null,
         var currentTurnOptions: ChatTurnOptions = ChatTurnOptions(),
+        var requestSentAt: Long = 0L,
+        var requestStartElapsed: Long = 0L,
+        var firstResponseElapsed: Long? = null,
         val isLoading: MutableStateFlow<Boolean> = MutableStateFlow(false)
     )
 
@@ -293,14 +296,93 @@ class MessageProcessingDelegate(
         )
     }
 
-    private suspend fun detachStreamingAiMessage(chatId: String) {
+    private data class TurnCancellationSnapshot(
+        val inputTokens: Int,
+        val outputTokens: Int,
+        val cachedInputTokens: Int,
+        val sentAt: Long,
+        val outputDurationMs: Long,
+        val waitDurationMs: Long,
+    )
+
+    private fun readCurrentTurnCancellationSnapshot(chatId: String): TurnCancellationSnapshot? {
+        val service =
+            EnhancedAIService.getChatInstance(context, chatId)
+                ?: getEnhancedAiService()
+                ?: return null
+        val runtime = runtimeFor(chatId)
+        return runCatching {
+            val snapshot = service.captureCurrentTurnTokenSnapshot()
+            val sentAt = runtime.requestSentAt
+            val firstResponseElapsed = runtime.firstResponseElapsed
+            val waitDurationMs =
+                if (runtime.requestStartElapsed > 0L && firstResponseElapsed != null) {
+                    (firstResponseElapsed - runtime.requestStartElapsed).coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+            val outputDurationMs =
+                if (firstResponseElapsed != null) {
+                    (messageTimingNow() - firstResponseElapsed).coerceAtLeast(0L)
+                } else {
+                    0L
+                }
+            TurnCancellationSnapshot(
+                inputTokens = snapshot.inputTokens,
+                outputTokens = snapshot.outputTokens,
+                cachedInputTokens = snapshot.cachedInputTokens,
+                sentAt = sentAt,
+                outputDurationMs = outputDurationMs,
+                waitDurationMs = waitDurationMs,
+            )
+        }.onFailure {
+            AppLogger.w(TAG, "读取取消请求的统计快照失败", it)
+        }.getOrNull()
+    }
+
+    private suspend fun detachStreamingAiMessage(
+        chatId: String,
+        snapshot: TurnCancellationSnapshot? = null,
+    ) {
+        val messages = getChatHistory(chatId)
         val streamingMessage =
-            getChatHistory(chatId).lastOrNull { it.sender == "ai" && it.contentStream != null }
+            messages.lastOrNull { it.sender == "ai" && it.contentStream != null }
                 ?: return
         val finalContent = resolveFinalContent(streamingMessage)
         streamingMessage.content = finalContent
-        val finalMessage = streamingMessage.copy(content = finalContent, contentStream = null)
+        val finalMessage =
+            snapshot?.let { stats ->
+                streamingMessage.withTurnMetrics(
+                    inputTokens = stats.inputTokens,
+                    outputTokens = stats.outputTokens,
+                    cachedInputTokens = stats.cachedInputTokens,
+                    sentAt = stats.sentAt.takeIf { it > 0L } ?: streamingMessage.sentAt,
+                    outputDurationMs = stats.outputDurationMs,
+                    waitDurationMs = stats.waitDurationMs,
+                )
+            }?.copy(content = finalContent, contentStream = null)
+                ?: streamingMessage.copy(content = finalContent, contentStream = null)
         withContext(Dispatchers.Main) {
+            snapshot?.let { stats ->
+                val matchingUserMessage =
+                    messages.lastOrNull { message ->
+                        message.sender == "user" &&
+                            message.sentAt == (stats.sentAt.takeIf { it > 0L } ?: streamingMessage.sentAt)
+                    }
+                if (matchingUserMessage != null) {
+                    addMessageToChat(
+                        chatId,
+                        matchingUserMessage.withTurnMetrics(
+                            inputTokens = stats.inputTokens,
+                            outputTokens = stats.outputTokens,
+                            cachedInputTokens = stats.cachedInputTokens,
+                            sentAt = stats.sentAt.takeIf { it > 0L } ?: matchingUserMessage.sentAt,
+                            outputDurationMs = stats.outputDurationMs,
+                            waitDurationMs = stats.waitDurationMs,
+                        ),
+                    )
+                }
+            }
             addMessageToChat(chatId, finalMessage)
         }
     }
@@ -308,6 +390,8 @@ class MessageProcessingDelegate(
     private suspend fun cancelMessageInternal(chatId: String, keepPartialResponse: Boolean) {
         val chatRuntime = runtimeFor(chatId)
         val currentTurnOptions = chatRuntime.currentTurnOptions
+        val cancellationSnapshot =
+            if (keepPartialResponse) readCurrentTurnCancellationSnapshot(chatId) else null
         val jobsToCancel =
             linkedSetOf<Job>().apply {
                 chatRuntime.sendJob?.let { add(it) }
@@ -331,12 +415,15 @@ class MessageProcessingDelegate(
         chatRuntime.streamCollectionJob = null
 
         if (keepPartialResponse) {
-            detachStreamingAiMessage(chatId)
+            detachStreamingAiMessage(chatId, snapshot = cancellationSnapshot)
         }
 
         chatRuntime.responseStream = null
         chatRuntime.isLoading.value = false
         chatRuntime.currentTurnOptions = ChatTurnOptions()
+        chatRuntime.requestSentAt = 0L
+        chatRuntime.requestStartElapsed = 0L
+        chatRuntime.firstResponseElapsed = null
         updateGlobalLoadingState()
         setChatInputProcessingState(chatId, EnhancedInputProcessingState.Idle)
 
@@ -731,6 +818,9 @@ class MessageProcessingDelegate(
 
                 requestSentAt = System.currentTimeMillis()
                 requestStartElapsed = messageTimingNow()
+                chatRuntime.requestSentAt = requestSentAt
+                chatRuntime.requestStartElapsed = requestStartElapsed
+                chatRuntime.firstResponseElapsed = null
                 if (userMessageAdded && chatId != null) {
                     userMessage = userMessage.copy(sentAt = requestSentAt)
                     addMessageToChat(chatId, userMessage)
@@ -957,6 +1047,7 @@ class MessageProcessingDelegate(
                                     hasLoggedFirstChunk = true
                                     if (firstResponseElapsed == null) {
                                         firstResponseElapsed = messageTimingNow()
+                                        chatRuntime.firstResponseElapsed = firstResponseElapsed
                                     }
                                     logMessageTiming(
                                         stage = "delegate.firstResponseChunk",
@@ -1617,6 +1708,9 @@ class MessageProcessingDelegate(
         chatRuntime.stateCollectionJob?.cancel()
         chatRuntime.stateCollectionJob = null
         chatRuntime.currentTurnOptions = ChatTurnOptions()
+        chatRuntime.requestSentAt = 0L
+        chatRuntime.requestStartElapsed = 0L
+        chatRuntime.firstResponseElapsed = null
         chatRuntime.isLoading.value = false
 
         updateGlobalLoadingState()

@@ -524,6 +524,32 @@ export interface TerminalCommandResultData {
 }
 
 /**
+ * Terminal command streaming event data
+ */
+export interface TerminalStreamEventData {
+    /** Event type, currently "start" or "chunk" */
+    type: string;
+
+    /** The command being executed */
+    command: string;
+
+    /** ID of the terminal session used for execution */
+    sessionId: string;
+
+    /** Incremental output chunk for "chunk" events */
+    chunk?: string | null;
+
+    /** Zero-based chunk index */
+    chunkIndex?: number | null;
+
+    /** Total received character count so far */
+    receivedChars?: number | null;
+
+    /** Returns a formatted string representation of the stream event */
+    toString(): string;
+}
+
+/**
  * Hidden terminal command execution result data
  */
 export interface HiddenTerminalCommandResultData {

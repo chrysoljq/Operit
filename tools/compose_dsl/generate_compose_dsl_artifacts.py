@@ -809,6 +809,45 @@ def ensure_renderer_contract(component: str, params: Sequence[Param]) -> None:
 
 def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Param]) -> str:
     component = spec.dsl_name
+    if component == "Image":
+        return textwrap.dedent(
+            """
+            @Composable
+            internal fun renderImageNode(
+                node: ToolPkgComposeDslNode,
+                onAction: (String, Any?) -> Unit,
+                nodePath: String,
+                modifierResolver: ComposeDslModifierResolver
+            ) {
+                val props = node.props
+                val imageModel = props.imageModelOrNull()
+                val alignment = props.boxAlignment("contentAlignment")
+                val alpha = props.floatOrNull("alpha") ?: 1f
+                val contentScale = props.contentScale("contentScale")
+                val modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
+                if (imageModel != null) {
+                    androidx.compose.foundation.Image(
+                        painter = rememberAsyncImagePainter(model = imageModel),
+                        contentDescription = props.stringOrNull("contentDescription"),
+                        modifier = modifier,
+                        alignment = alignment,
+                        alpha = alpha,
+                        contentScale = contentScale
+                    )
+                } else {
+                    androidx.compose.foundation.Image(
+                        painter = rememberVectorPainter(iconFromName(props.string("name", props.string("icon", "info")))),
+                        contentDescription = props.stringOrNull("contentDescription"),
+                        modifier = modifier,
+                        alignment = alignment,
+                        alpha = alpha,
+                        contentScale = contentScale
+                    )
+                }
+            }
+            """
+        ).strip()
+
     if component == "Row":
         return textwrap.dedent(
             """
@@ -1812,6 +1851,19 @@ def build_ts_generated_file(
         if component == "Icon":
             emitted.setdefault("size", ("number", False))
 
+        if component == "Image":
+            emitted.setdefault("contentDescription", ("string", False))
+            emitted.setdefault("url", ("string", False))
+            emitted.setdefault("uri", ("string", False))
+            emitted.setdefault("path", ("string", False))
+            emitted.setdefault("fileUri", ("string", False))
+            emitted.setdefault("src", ("string", False))
+            emitted.setdefault("name", ("string", False))
+            emitted.setdefault("icon", ("string", False))
+            emitted.setdefault("alpha", ("number", False))
+            emitted.setdefault("contentAlignment", ("ComposeAlignment", False))
+            emitted.setdefault("contentScale", ("ComposeContentScale", False))
+
         if component == "Row":
             emitted.setdefault("onClick", ("() => void | Promise<void>", False))
 
@@ -1951,7 +2003,7 @@ def main() -> None:
         all_components,
         ts_output,
         extra_ts_components=extra_ts_components,
-        extra_ts_imports=["ComposeCanvasCommand"]
+        extra_ts_imports=["ComposeCanvasCommand", "ComposeContentScale"]
     )
     build_kotlin_registry_file(all_components, kt_output)
     build_kotlin_renderers_file(all_params, all_components, kt_renderers_output)

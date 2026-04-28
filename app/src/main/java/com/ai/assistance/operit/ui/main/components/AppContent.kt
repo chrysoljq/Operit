@@ -1,18 +1,24 @@
 package com.ai.assistance.operit.ui.main.components
 
-import androidx.compose.foundation.background
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -27,6 +33,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -58,6 +65,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -65,13 +73,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.zIndex
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.annotation.RequiresApi
-import android.os.Build
-import androidx.compose.runtime.compositionLocalOf
-import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.setValue
@@ -82,6 +86,38 @@ import com.ai.assistance.operit.api.chat.AIForegroundService
 
 // 定义一个 CompositionLocal，用于向下传递当前屏幕是否可见的状态
 val LocalIsCurrentScreen = compositionLocalOf { true }
+val LocalSetScreenSoftInputMode = compositionLocalOf<(Int?) -> Unit> { {} }
+val LocalSetUseScreenImePadding = compositionLocalOf<(Boolean) -> Unit> { {} }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+private fun Activity.manifestSoftInputMode(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getActivityInfo(
+            componentName,
+            PackageManager.ComponentInfoFlags.of(0),
+        ).softInputMode
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.getActivityInfo(componentName, 0).softInputMode
+    }
+
+@Composable
+private fun ImeWakeListeningEffect(
+    context: Context,
+    density: androidx.compose.ui.unit.Density,
+) {
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+
+    LaunchedEffect(context, imeVisible) {
+        AIForegroundService.setWakeListeningSuspendedForIme(context, imeVisible)
+    }
+}
 
 // 用于屏幕切换动画的状态
 private enum class ScreenVisibility {
@@ -119,17 +155,16 @@ fun AppContent(
 ) {
     // Get background image state
     val context = LocalContext.current
+    val hostActivity = remember(context) { context.findActivity() }
+    val manifestSoftInputMode = remember(hostActivity) { hostActivity?.manifestSoftInputMode() }
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
     val pageTransitionDurationMillis = if (enableNavigationAnimation) 280 else 400
     val drawerRelayTransitionDurationMillis = 320
     val pageTransitionOffsetPx =
         with(density) { if (useTabletLayout) 28.dp.toPx() else 20.dp.toPx() }
     val drawerNavigationOffsetPx =
         with(density) { if (useTabletLayout) 40.dp.toPx() else 30.dp.toPx() }
-    LaunchedEffect(imeVisible) {
-        AIForegroundService.setWakeListeningSuspendedForIme(context, imeVisible)
-    }
+    ImeWakeListeningEffect(context = context, density = density)
     val preferencesManager = UserPreferencesManager.getInstance(context)
     val useBackgroundImage =
             preferencesManager.useBackgroundImage.collectAsState(initial = false).value
@@ -186,8 +221,34 @@ fun AppContent(
             }
     // 屏幕缓存 Map - 保存已访问过的屏幕，使其状态得以保留
     val screenCache = remember { mutableStateMapOf<String, @Composable () -> Unit>() }
+    val screenKeepAliveCache = remember { mutableStateMapOf<String, Boolean>() }
     val screenStateHolder = rememberSaveableStateHolder()
-    val currentScreenKey = currentRouteEntry.instanceId
+    val currentScreenKey =
+        remember(currentRouteEntry.instanceId, currentScreen) {
+            if (currentScreen.keepAlive) {
+                currentScreen.stableScreenKey() ?: currentRouteEntry.instanceId
+            } else {
+                currentRouteEntry.instanceId
+            }
+        }
+    var currentScreenSoftInputMode by remember(currentScreenKey) { mutableStateOf<Int?>(null) }
+    var currentScreenUsesImePadding by remember(currentScreenKey) { mutableStateOf(false) }
+    val effectiveSoftInputMode =
+        currentScreenSoftInputMode
+            ?: manifestSoftInputMode
+            ?: WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+
+    SideEffect {
+        hostActivity?.window?.setSoftInputMode(effectiveSoftInputMode)
+    }
+
+    androidx.compose.runtime.DisposableEffect(hostActivity, manifestSoftInputMode) {
+        onDispose {
+            if (hostActivity != null && manifestSoftInputMode != null) {
+                hostActivity.window.setSoftInputMode(manifestSoftInputMode)
+            }
+        }
+    }
 
     CompositionLocalProvider(
         LocalAppBarContentColor provides appBarContentColor,
@@ -300,7 +361,15 @@ fun AppContent(
             Surface(
                 modifier = Modifier
                     .padding(innerPadding)
-                    .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                    .consumeWindowInsets(innerPadding)
+                    .navigationBarsPadding()
+                    .then(
+                        if (currentScreenUsesImePadding) {
+                            Modifier.imePadding()
+                        } else {
+                            Modifier
+                        }
+                    )
                     .fillMaxSize(),
                 color =
                 if (hasBackgroundImage) Color.Transparent
@@ -342,6 +411,7 @@ fun AppContent(
                         // 将当前屏幕的 Composable 缓存起来
                         if (!screenCache.containsKey(currentScreenKey)) {
                             val screenSnapshot = currentScreen
+                            screenKeepAliveCache[currentScreenKey] = screenSnapshot.keepAlive
                             screenCache[currentScreenKey] = {
                                 when (screenSnapshot) {
                                     is Screen.ToolPkgComposeDsl ->
@@ -419,6 +489,7 @@ fun AppContent(
                             if (!canCrossfade) {
                                 if (removalKey != null && removalKey != currentScreenKey) {
                                     screenCache.remove(removalKey)
+                                    screenKeepAliveCache.remove(removalKey)
                                     screenStateHolder.removeState(removalKey)
                                 }
                                 pendingRemovalKey = null
@@ -443,6 +514,7 @@ fun AppContent(
                             pendingRemovalKey?.let { keyToRemove ->
                                 if (keyToRemove != currentScreenKey) {
                                     screenCache.remove(keyToRemove)
+                                    screenKeepAliveCache.remove(keyToRemove)
                                     screenStateHolder.removeState(keyToRemove)
                                 }
                             }
@@ -450,11 +522,16 @@ fun AppContent(
                         }
 
                         val renderKeys = buildList {
+                            screenKeepAliveCache.forEach { (screenKey, keepAlive) ->
+                                if (keepAlive && screenKey != currentScreenKey) {
+                                    add(screenKey)
+                                }
+                            }
                             if (effectivePreviousKey != null && effectivePreviousKey != currentScreenKey) {
                                 add(effectivePreviousKey)
                             }
                             add(currentScreenKey)
-                        }
+                        }.distinct()
 
                         renderKeys.forEach { screenKey ->
                             val screenContent = screenCache[screenKey] ?: return@forEach
@@ -592,7 +669,19 @@ fun AppContent(
                                 ) {
                                     Box(modifier = Modifier.fillMaxSize()) {
                                         screenStateHolder.SaveableStateProvider(screenKey) {
-                                            CompositionLocalProvider(LocalIsCurrentScreen provides isCurrentScreen) {
+                                            CompositionLocalProvider(
+                                                LocalIsCurrentScreen provides isCurrentScreen,
+                                                LocalSetScreenSoftInputMode provides { mode ->
+                                                    if (isCurrentScreen && currentScreenSoftInputMode != mode) {
+                                                        currentScreenSoftInputMode = mode
+                                                    }
+                                                },
+                                                LocalSetUseScreenImePadding provides { enabled ->
+                                                    if (isCurrentScreen && currentScreenUsesImePadding != enabled) {
+                                                        currentScreenUsesImePadding = enabled
+                                                    }
+                                                }
+                                            ) {
                                                 screenContent()
                                             }
                                         }

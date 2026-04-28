@@ -37,7 +37,8 @@ internal data class ToolPkgUiModuleRuntime(
     val id: String,
     val runtime: String,
     val screen: String,
-    val title: LocalizedText
+    val title: LocalizedText,
+    val keepAlive: Boolean = false
 )
 
 internal data class ToolPkgUiRouteRuntime(
@@ -45,7 +46,8 @@ internal data class ToolPkgUiRouteRuntime(
     val routeId: String,
     val runtime: String,
     val screen: String,
-    val title: LocalizedText
+    val title: LocalizedText,
+    val keepAlive: Boolean = false
 )
 
 internal data class ToolPkgNavigationEntryRuntime(
@@ -181,7 +183,8 @@ internal data class ToolPkgRegisteredUiModule(
     val id: String,
     val runtime: String,
     val screen: String,
-    val title: LocalizedText
+    val title: LocalizedText,
+    val keepAlive: Boolean = false
 )
 
 internal data class ToolPkgRegisteredUiRoute(
@@ -189,7 +192,8 @@ internal data class ToolPkgRegisteredUiRoute(
     val routeId: String,
     val runtime: String,
     val screen: String,
-    val title: LocalizedText
+    val title: LocalizedText,
+    val keepAlive: Boolean = false
 )
 
 internal data class ToolPkgRegisteredNavigationEntry(
@@ -283,12 +287,13 @@ internal object ToolPkgArchiveParser {
                 ?: throw IllegalArgumentException("Failed to read manifest entry")
         val manifestText = manifestBytes.toString(StandardCharsets.UTF_8)
         val manifest = parseToolPkgManifest(manifestText, manifestEntryName)
+        val manifestBasePath = manifestEntryName.substringBeforeLast('/', missingDelimiterValue = "")
 
         if (manifest.toolpkgId.isBlank()) {
             throw IllegalArgumentException("manifest.toolpkg_id is required")
         }
         val normalizedMainEntry =
-            normalizeZipEntryPath(manifest.main)
+            resolveManifestRelativeZipEntryPath(manifestBasePath, manifest.main)
                 ?: throw IllegalArgumentException("manifest.main is required")
         if (!containsZipEntry(entries, normalizedMainEntry)) {
             throw IllegalArgumentException("Cannot find manifest.main entry '${manifest.main}'")
@@ -325,8 +330,13 @@ internal object ToolPkgArchiveParser {
             val packageName = normalizedSubpackageId
 
             try {
+                val normalizedSubpackageEntry =
+                    resolveManifestRelativeZipEntryPath(manifestBasePath, subpackage.entry)
+                        ?: throw IllegalArgumentException(
+                            "Invalid subpackage entry '${subpackage.entry}'"
+                        )
                 val entryBytes =
-                    findZipEntryContent(entries, subpackage.entry)
+                    findZipEntryContent(entries, normalizedSubpackageEntry)
                         ?: throw IllegalArgumentException(
                             "Cannot find subpackage entry '${subpackage.entry}'"
                         )
@@ -392,7 +402,7 @@ internal object ToolPkgArchiveParser {
                     )
                 }
                 val normalizedPath =
-                    normalizeResourcePath(resource.path)
+                    resolveManifestRelativeResourcePath(manifestBasePath, resource.path)
                         ?: throw IllegalArgumentException("Invalid resource path: ${resource.path}")
                 if (isDirectoryResourceMime(resource.mime)) {
                     if (!containsZipEntriesUnderDirectory(entries, normalizedPath)) {
@@ -508,7 +518,8 @@ internal object ToolPkgArchiveParser {
                             routeId = buildToolPkgRouteId(manifest.toolpkgId, module.id),
                             runtime = module.runtime,
                             screen = module.screen,
-                            title = module.title
+                            title = module.title,
+                            keepAlive = module.keepAlive
                         )
                     )
                 }
@@ -568,7 +579,8 @@ internal object ToolPkgArchiveParser {
                     id = id,
                     runtime = runtimeName,
                     screen = normalizedScreenPath,
-                    title = module.title
+                    title = module.title,
+                    keepAlive = module.keepAlive
                 )
             )
             uiRoutes.add(
@@ -577,7 +589,8 @@ internal object ToolPkgArchiveParser {
                     routeId = routeId,
                     runtime = runtimeName,
                     screen = normalizedScreenPath,
-                    title = module.title
+                    title = module.title,
+                    keepAlive = module.keepAlive
                 )
             )
         }
@@ -1054,9 +1067,25 @@ internal object ToolPkgArchiveParser {
         return normalized
     }
 
+    fun resolveManifestRelativeZipEntryPath(manifestBasePath: String, rawPath: String): String? {
+        val normalized = normalizeZipEntryPath(rawPath) ?: return null
+        if (manifestBasePath.isBlank()) {
+            return normalized
+        }
+        return normalizeZipEntryPath("$manifestBasePath/$normalized")
+    }
+
     fun normalizeResourcePath(rawPath: String): String? {
         val normalized = normalizeZipEntryPath(rawPath) ?: return null
         return normalized.trimEnd('/').ifBlank { null }
+    }
+
+    fun resolveManifestRelativeResourcePath(manifestBasePath: String, rawPath: String): String? {
+        val normalized = normalizeResourcePath(rawPath) ?: return null
+        if (manifestBasePath.isBlank()) {
+            return normalized
+        }
+        return normalizeResourcePath("$manifestBasePath/$normalized")
     }
 
     fun isDirectoryResourceMime(mime: String?): Boolean {

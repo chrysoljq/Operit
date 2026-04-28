@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
+import android.widget.Toast
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -60,8 +61,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -849,8 +852,11 @@ private fun MessageItem(
             expanded = showContextMenu,
             onDismissRequest = { showContextMenu = false },
             modifier = Modifier
-                .width(180.dp)
-                .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(6.dp)),
+                .width(180.dp),
+            shape = RoundedCornerShape(6.dp),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 1f),
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
             properties = PopupProperties(
                 focusable = true,
                 dismissOnBackPress = true,
@@ -1221,6 +1227,8 @@ private fun MessageCopyPreviewBottomSheet(
     text: String,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1249,6 +1257,23 @@ private fun MessageCopyPreviewBottomSheet(
                     .heightIn(max = 520.dp)
                     .padding(bottom = 12.dp)
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(text))
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.message_copied_to_clipboard),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                ) {
+                    Text(text = stringResource(id = R.string.copy_all_content))
+                }
+            }
         }
     }
 }

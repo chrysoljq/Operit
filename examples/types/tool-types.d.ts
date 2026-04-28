@@ -144,6 +144,7 @@ export interface ToolResultMap {
 
     // Terminal operations
     'execute_terminal': TerminalCommandResultData;
+    'execute_in_terminal_session_streaming': TerminalCommandResultData;
     'execute_hidden_terminal_command': HiddenTerminalCommandResultData;
     'get_terminal_session_screen': TerminalSessionScreenResultData;
 

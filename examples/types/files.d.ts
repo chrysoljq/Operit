@@ -186,8 +186,9 @@ export namespace Files {
      * @param source - Source path
      * @param destination - Destination path
      * @param environment - Execution environment ("android" or "linux"), default "android"
+     * @param include_root_directory - When zipping a directory, whether to keep the source directory itself as the top-level folder, default true
      */
-    function zip(source: string, destination: string, environment?: FileEnvironment): Promise<FileOperationData>;
+    function zip(source: string, destination: string, environment?: FileEnvironment, include_root_directory?: boolean): Promise<FileOperationData>;
 
     /**
      * Unzip an archive

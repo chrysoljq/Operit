@@ -283,6 +283,25 @@ data class TerminalCommandResultData(
     }
 }
 
+/** 终端命令流式事件数据 */
+@Serializable
+data class TerminalStreamEventData(
+        val type: String,
+        val command: String,
+        val sessionId: String,
+        val chunk: String? = null,
+        val chunkIndex: Int? = null,
+        val receivedChars: Int? = null
+) : ToolResultData() {
+    override fun toString(): String {
+        return when (type) {
+            "chunk" -> chunk.orEmpty()
+            "start" -> "Terminal stream started"
+            else -> "Terminal stream event: $type"
+        }
+    }
+}
+
 /** 隐藏终端命令执行结果数据 */
 @Serializable
 data class HiddenTerminalCommandResultData(

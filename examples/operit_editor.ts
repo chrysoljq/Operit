@@ -2509,7 +2509,7 @@ async function build_toolpkg_archive_from_folder(source: ToolPkgResolvedSource) 
   );
   await ensure_android_directory(tempBuildDir);
   const archivePath = path_join(tempBuildDir, `${safe_debug_file_stem(source.packageId, "toolpkg")}.toolpkg`);
-  await Tools.Files.zip(source.folderPath, archivePath, "android");
+  await Tools.Files.zip(source.folderPath, archivePath, "android", false);
 
   if (!(await android_path_exists(archivePath))) {
     throw new Error(`Failed to create ToolPkg archive: ${archivePath}`);

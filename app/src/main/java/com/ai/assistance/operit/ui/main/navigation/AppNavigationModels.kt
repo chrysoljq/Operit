@@ -47,6 +47,7 @@ data class RouteSpec(
     val icon: ImageVector? = null,
     val ownerPackageName: String? = null,
     val toolPkgUiModuleId: String? = null,
+    val keepAlive: Boolean = false,
     val reuseOnTop: Boolean = true
 )
 

@@ -329,7 +329,7 @@
             android:name=".services.FloatingChatService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|specialUse" />
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".core.tools.system.ScreenCaptureService"
@@ -352,7 +352,11 @@
             android:name=".api.chat.AIForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|microphone|specialUse" />
+            android:foregroundServiceType="dataSync|microphone|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user-requested assistant runtime alive for external HTTP control when no standard foreground service type fully describes that mode." />
+        </service>
         
         <!-- 添加广播接收器配置 -->
         <receiver
@@ -399,7 +403,11 @@
             android:name=".services.UIDebuggerService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Shows a user-triggered floating UI debugger overlay across apps for inspection tasks that do not match other foreground service types." />
+        </service>
         
         <!-- Voice Assistant Widget Receiver -->
         <receiver

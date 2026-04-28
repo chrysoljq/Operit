@@ -25,7 +25,7 @@ function shellQuote(value) {
     return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 }
 function bashCommand(script) {
-    return `bash -lc ${shellQuote(`set -e\n${script}`)}`;
+    return `bash -lc ${shellQuote(script)}`;
 }
 function toPort(raw) {
     const value = Number(raw ?? DEFAULT_PORT);
@@ -54,6 +54,44 @@ async function execServerCommand(command, timeoutMs) {
     const sessionId = await ensureServerTerminalSession();
     return await Tools.System.terminal.exec(sessionId, command, timeoutMs);
 }
+function normalizeProgressText(raw) {
+    const text = String(raw ?? "").replace(/\r/g, "").trim();
+    if (!text) {
+        return null;
+    }
+    const lines = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    if (lines.length === 0) {
+        return null;
+    }
+    return lines[lines.length - 1] || null;
+}
+function reportProgress(onProgress, message, progress) {
+    if (!onProgress) {
+        return;
+    }
+    onProgress({
+        message,
+        progress,
+    });
+}
+async function execServerCommandStreaming(command, timeoutMs, onProgress) {
+    const sessionId = await ensureServerTerminalSession();
+    return await Tools.System.terminal.execStreaming(sessionId, command, {
+        timeoutMs,
+        onIntermediateResult: (event) => {
+            if (!onProgress || !event || event.type !== "chunk") {
+                return;
+            }
+            const nextMessage = normalizeProgressText(event.chunk);
+            if (nextMessage) {
+                onProgress(nextMessage);
+            }
+        },
+    });
+}
 async function resolveResourceZip(resourceKey, outputName) {
     const resourcePath = await ToolPkg.readResource(resourceKey, outputName);
     const normalized = String(resourcePath || "").trim();
@@ -72,9 +110,11 @@ async function replaceLinuxPath(sourcePath, destinationPath) {
     await deleteLinuxPathIfExists(destinationPath);
     await Tools.Files.move(sourcePath, destinationPath, "linux");
 }
-async function prepareLinuxRuntime() {
+async function prepareLinuxRuntime(onProgress) {
+    reportProgress(onProgress, "正在读取记账本内置资源", 18);
     const webAssetZip = await resolveResourceZip(WEB_ASSET_RESOURCE_KEY, "sidebar_account_book_web_assets.zip");
     const serverRuntimeZip = await resolveResourceZip(SERVER_RUNTIME_RESOURCE_KEY, "sidebar_account_book_server_runtime.zip");
+    reportProgress(onProgress, "正在复制网页与服务资源", 26);
     await Tools.Files.copy(webAssetZip, LINUX_WEB_ASSET_ZIP_PATH, false, "android", "linux");
     await Tools.Files.copy(serverRuntimeZip, LINUX_SERVER_RUNTIME_ZIP_PATH, false, "android", "linux");
     await deleteLinuxPathIfExists(LINUX_WEB_STAGE_DIR);
@@ -83,8 +123,10 @@ async function prepareLinuxRuntime() {
     await Tools.Files.mkdir(LINUX_SERVER_STAGE_DIR, true, "linux");
     await Tools.Files.mkdir(LINUX_RUNTIME_DIR, true, "linux");
     await Tools.Files.mkdir(account_book_storage_js_1.ACCOUNT_BOOK_DATA_DIR, true, "linux");
+    reportProgress(onProgress, "正在解压记账本运行资源", 38);
     await Tools.Files.unzip(LINUX_SERVER_RUNTIME_ZIP_PATH, LINUX_SERVER_STAGE_DIR, "linux");
     await Tools.Files.unzip(LINUX_WEB_ASSET_ZIP_PATH, LINUX_WEB_STAGE_DIR, "linux");
+    reportProgress(onProgress, "正在部署记账本网页与服务文件", 48);
     await replaceLinuxPath(`${LINUX_SERVER_STAGE_EXTRACTED_DIR}/package.json`, LINUX_PACKAGE_JSON_PATH);
     await replaceLinuxPath(`${LINUX_SERVER_STAGE_EXTRACTED_DIR}/server.cjs`, LINUX_SERVER_SCRIPT_PATH);
     await replaceLinuxPath(LINUX_WEB_STAGE_EXTRACTED_DIR, LINUX_PUBLIC_DIR);
@@ -164,7 +206,7 @@ async function readRuntimeDependencyState() {
     }
     return { missing };
 }
-async function installRuntimeDependencies() {
+async function installRuntimeDependencies(onProgress) {
     const dependencyState = await readRuntimeDependencyState();
     if (dependencyState.missing.length === 0) {
         return {
@@ -181,7 +223,9 @@ async function installRuntimeDependencies() {
             ...dependencyState.missing.map((dependency) => shellQuote(`${dependency.name}@${dependency.version}`)),
         ].join(" "),
     ].join("\n"));
-    const result = await execServerCommand(command, 120000);
+    const result = await execServerCommandStreaming(command, 120000, (message) => {
+        reportProgress(onProgress, `安装依赖: ${message}`, 64);
+    });
     return {
         ...result,
         missingDependencies: dependencyState.missing.map((dependency) => dependency.name),
@@ -257,7 +301,9 @@ async function startServer(port) {
 async function ensureAccountBookWebServer(params) {
     const port = toPort(params?.port);
     const url = buildServerUrl(port);
+    const onProgress = params?.on_progress;
     if (!params?.force_restart) {
+        reportProgress(onProgress, "检查记账本服务状态", 8);
         const health = await readHealth(port);
         if (health.ok) {
             return {
@@ -273,17 +319,23 @@ async function ensureAccountBookWebServer(params) {
             };
         }
     }
+    reportProgress(onProgress, "停止旧的记账本服务", 12);
     await stopServerIfRequested(Boolean(params?.force_restart));
-    const resources = await prepareLinuxRuntime();
+    const resources = await prepareLinuxRuntime(onProgress);
+    reportProgress(onProgress, "校验记账本运行目录", 54);
     await verifyLinuxRuntimeLayout();
-    const installResult = await installRuntimeDependencies();
+    reportProgress(onProgress, "检查并安装运行依赖", 58);
+    const installResult = await installRuntimeDependencies(onProgress);
+    reportProgress(onProgress, "校验依赖安装结果", 74);
     const dependencyState = await readRuntimeDependencyState();
     if (dependencyState.missing.length > 0) {
         throw new Error(`Runtime dependencies are still missing after install: ${dependencyState.missing
             .map((dependency) => dependency.name)
             .join(", ")}`);
     }
+    reportProgress(onProgress, "正在启动记账本网页服务", 82);
     const sessionId = await startServer(port);
+    reportProgress(onProgress, "等待记账本网页服务响应", 90);
     const started = await waitForHealth(port);
     if (!started) {
         return {

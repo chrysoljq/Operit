@@ -52,6 +52,15 @@ export type ComposeCanvasNumber = number | ComposeUnitValue;
 
 export type ComposeTextOverflow = "clip" | "ellipsis";
 
+export type ComposeContentScale =
+  | "fit"
+  | "crop"
+  | "fillBounds"
+  | "fillWidth"
+  | "fillHeight"
+  | "inside"
+  | "none";
+
 export interface ComposeTextMeasureRequest {
   text: string;
   fontSize?: number;
@@ -346,6 +355,7 @@ export interface ComposeTextFieldStyle {
 export interface ComposeCommonProps {
   key?: string;
   onLoad?: () => void | Promise<void>;
+  topBarTitle?: ComposeChildren;
   modifier?: ComposeModifierValue;
   zIndex?: number;
   weight?: number;

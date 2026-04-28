@@ -2416,7 +2416,7 @@ description: one-line summary of what this skill does
         const tempBuildDir = path_join(OPERIT_CLEAN_ON_EXIT_DIR, `operit_editor_toolpkg_build_${safe_debug_file_stem(source.packageId, "toolpkg")}_${Date.now()}`);
         await ensure_android_directory(tempBuildDir);
         const archivePath = path_join(tempBuildDir, `${safe_debug_file_stem(source.packageId, "toolpkg")}.toolpkg`);
-        await Tools.Files.zip(source.folderPath, archivePath, "android");
+        await Tools.Files.zip(source.folderPath, archivePath, "android", false);
         if (!(await android_path_exists(archivePath))) {
             throw new Error(`Failed to create ToolPkg archive: ${archivePath}`);
         }

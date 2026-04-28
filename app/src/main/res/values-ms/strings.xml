@@ -6887,10 +6887,6 @@ Kini anda boleh menggunakan mod AutoGLM di antara muka perbualan.</string>
     <string name="quick_plugin_creator_requirement_empty">Sila masukkan keperluan plugin terlebih dahulu</string>
     <string name="mcp_plugin_comment_view_thread">Lihat tingkat</string>
     <string name="mcp_plugin_user_comments">Komen pengguna</string>
-    <string name="web_session_shortcut_label">Pelayar</string>
-    <string name="web_session_shortcut_long_label">Lancarkan pelayar dengan pantas</string>
-    <string name="web_session_shortcut_open_failed">Gagal melancarkan pelayar dengan pantas</string>
-
     <string name="quick_plugin_creator_setup_failed">Pemasangan atau kemas kini Skill penciptaan pakej gagal</string>
     <string name="pkg_toolpkg_workflow_templates">Bilangan templat aliran kerja: %1$d</string>
     <string name="pkg_toolpkg_workspace_templates">Bilangan templat ruang kerja: %1$d</string>

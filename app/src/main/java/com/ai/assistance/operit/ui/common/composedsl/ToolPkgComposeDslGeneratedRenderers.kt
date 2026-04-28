@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.sp
+import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
 
@@ -3190,13 +3192,30 @@ internal fun renderImageNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
-    androidx.compose.foundation.Image(
-        imageVector = iconFromName(props.string("name", props.string("icon", "info"))),
-        contentDescription = props.stringOrNull("contentDescription"),
-        modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
-        alignment = props.boxAlignment("contentAlignment"),
-        alpha = (props.floatOrNull("alpha") ?: 0f)
-    )
+    val imageModel = props.imageModelOrNull()
+    val alignment = props.boxAlignment("contentAlignment")
+    val alpha = props.floatOrNull("alpha") ?: 1f
+    val contentScale = props.contentScale("contentScale")
+    val modifier = applyScopedCommonModifier(Modifier, props, modifierResolver)
+    if (imageModel != null) {
+        androidx.compose.foundation.Image(
+            painter = rememberAsyncImagePainter(model = imageModel),
+            contentDescription = props.stringOrNull("contentDescription"),
+            modifier = modifier,
+            alignment = alignment,
+            alpha = alpha,
+            contentScale = contentScale
+        )
+    } else {
+        androidx.compose.foundation.Image(
+            painter = rememberVectorPainter(iconFromName(props.string("name", props.string("icon", "info")))),
+            contentDescription = props.stringOrNull("contentDescription"),
+            modifier = modifier,
+            alignment = alignment,
+            alpha = alpha,
+            contentScale = contentScale
+        )
+    }
 }
 
 @Composable

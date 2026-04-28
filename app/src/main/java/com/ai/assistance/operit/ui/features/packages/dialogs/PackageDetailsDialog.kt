@@ -36,7 +36,7 @@ fun PackageDetailsDialog(
         toolPackage: ToolPackage?,
         packageManager: PackageManager,
         onRunScript: (String, PackageTool) -> Unit,
-        onOpenToolPkgPluginConfig: (String, String, String) -> Unit,
+        onOpenToolPkgPluginConfig: (String, String, String, Boolean) -> Unit,
         onDismiss: () -> Unit,
         onPackageDeleted: () -> Unit
 ) {
@@ -721,7 +721,7 @@ private fun EmptyToolsCard(message: String) {
 @Composable
 private fun ToolPkgPluginConfigCard(
     modules: List<PackageManager.ToolPkgToolboxUiModule>,
-    onOpenToolPkgPluginConfig: (String, String, String) -> Unit
+    onOpenToolPkgPluginConfig: (String, String, String, Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -733,7 +733,8 @@ private fun ToolPkgPluginConfigCard(
                     onOpenToolPkgPluginConfig(
                         module.containerPackageName,
                         module.uiModuleId,
-                        module.title
+                        module.title,
+                        module.keepAlive
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

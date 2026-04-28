@@ -10,6 +10,8 @@ import com.ai.assistance.operit.core.tools.system.Terminal
 import com.ai.assistance.operit.terminal.provider.type.HiddenExecResult
 import com.ai.assistance.operit.terminal.view.domain.ansi.TerminalChar
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.util.concurrent.ConcurrentHashMap
 
 /** 终端命令执行工具 - 非流式输出版本 执行终端命令并一次性收集全部输出后返回 */
@@ -189,6 +191,154 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         error = context.getString(R.string.terminal_error_execute_command, e.message ?: "")
                 )
             }
+        }
+    }
+
+    /** 在指定的终端会话中执行命令并流式返回输出 */
+    fun executeCommandInSessionStream(tool: AITool): Flow<ToolResult> = flow {
+        try {
+            val command = tool.parameters.find { param -> param.name == "command" }?.value ?: ""
+            val sessionId = tool.parameters.find { param -> param.name == "session_id" }?.value
+
+            if (sessionId.isNullOrBlank()) {
+                emit(
+                    ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = context.getString(R.string.terminal_error_missing_session_id)
+                    )
+                )
+                return@flow
+            }
+
+            val timeout =
+                tool.parameters
+                    .find { param -> param.name == "timeout_ms" }
+                    ?.value
+                    ?.toLongOrNull()
+                    ?: 1800000L
+
+            val terminal = Terminal.getInstance(context)
+
+            if (terminal.terminalState.value.sessions.none { it.id == sessionId }) {
+                sessionNameToIdMap.entries.removeIf { it.value == sessionId }
+                emit(
+                    ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = context.getString(R.string.terminal_error_session_not_exist, sessionId)
+                    )
+                )
+                return@flow
+            }
+
+            emit(
+                ToolResult(
+                    toolName = tool.name,
+                    success = true,
+                    result =
+                        TerminalStreamEventData(
+                            type = "start",
+                            command = command,
+                            sessionId = sessionId,
+                            chunkIndex = 0,
+                            receivedChars = 0
+                        ),
+                    error = ""
+                )
+            )
+
+            val outputFlow = terminal.executeCommandFlow(sessionId, command)
+            val events = mutableListOf<String>()
+            var completionOutput: String? = null
+            var exitCode = 0
+            var hasCompleted = false
+            var didTimeout = false
+            var chunkIndex = 0
+            var receivedChars = 0
+
+            try {
+                withTimeout(timeout) {
+                    outputFlow.collect { event ->
+                        if (event.isCompleted) {
+                            completionOutput = event.outputChunk
+                            exitCode = 0
+                            hasCompleted = true
+                            return@collect
+                        }
+
+                        val chunk = event.outputChunk
+                        if (chunk.isEmpty()) {
+                            return@collect
+                        }
+
+                        events.add(chunk)
+                        receivedChars += chunk.length
+                        emit(
+                            ToolResult(
+                                toolName = tool.name,
+                                success = true,
+                                result =
+                                    TerminalStreamEventData(
+                                        type = "chunk",
+                                        command = command,
+                                        sessionId = sessionId,
+                                        chunk = chunk,
+                                        chunkIndex = chunkIndex,
+                                        receivedChars = receivedChars
+                                    ),
+                                error = ""
+                            )
+                        )
+                        chunkIndex += 1
+                    }
+                }
+            } catch (e: TimeoutCancellationException) {
+                AppLogger.w(TAG, "Command execution timed out after ${timeout}ms")
+                hasCompleted = true
+                exitCode = -1
+                didTimeout = true
+            }
+
+            val fullOutput = completionOutput?.takeIf { it.isNotEmpty() } ?: events.joinToString("")
+            val errorMessage =
+                when {
+                    didTimeout ->
+                        context.getString(
+                            R.string.terminal_error_command_timeout,
+                            timeout
+                        )
+                    !hasCompleted -> context.getString(R.string.terminal_error_command_failed)
+                    else -> null
+                }
+
+            emit(
+                ToolResult(
+                    toolName = tool.name,
+                    success = errorMessage == null,
+                    result =
+                        TerminalCommandResultData(
+                            command = command,
+                            output = fullOutput,
+                            exitCode = exitCode,
+                            sessionId = sessionId,
+                            timedOut = didTimeout
+                        ),
+                    error = errorMessage
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "流式执行终端命令时出错", e)
+            emit(
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = context.getString(R.string.terminal_error_execute_command, e.message ?: "")
+                )
+            )
         }
     }
 

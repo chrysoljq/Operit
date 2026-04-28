@@ -10,6 +10,7 @@
     "zh": "直接对记账数据执行查询、创建、更新、删除和汇总。",
     "en": "Query, create, update, delete, and summarize account-book entries directly."
   },
+  "enabled_by_default": true,
   "category": "Data",
   "tools": [
     {
@@ -45,12 +46,12 @@
         "en": "Create a new entry."
       },
       "parameters": [
-        { "name": "type", "type": "string", "required": false },
-        { "name": "title", "type": "string", "required": true },
-        { "name": "amount", "type": "number", "required": true },
-        { "name": "category", "type": "string", "required": false },
-        { "name": "date", "type": "string", "required": false },
-        { "name": "note", "type": "string", "required": false }
+        { "name": "type", "description": { "zh": "账目类型，如 income 或 expense。", "en": "Entry type, such as income or expense." }, "type": "string", "required": false },
+        { "name": "title", "description": { "zh": "账目标题。", "en": "Entry title." }, "type": "string", "required": true },
+        { "name": "amount", "description": { "zh": "金额。", "en": "Amount." }, "type": "number", "required": true },
+        { "name": "category", "description": { "zh": "分类。", "en": "Category." }, "type": "string", "required": false },
+        { "name": "date", "description": { "zh": "日期，建议使用 ISO 字符串。", "en": "Date, preferably as an ISO string." }, "type": "string", "required": false },
+        { "name": "note", "description": { "zh": "备注。", "en": "Note." }, "type": "string", "required": false }
       ]
     },
     {
@@ -60,13 +61,13 @@
         "en": "Update an existing entry."
       },
       "parameters": [
-        { "name": "id", "type": "string", "required": true },
-        { "name": "type", "type": "string", "required": false },
-        { "name": "title", "type": "string", "required": false },
-        { "name": "amount", "type": "number", "required": false },
-        { "name": "category", "type": "string", "required": false },
-        { "name": "date", "type": "string", "required": false },
-        { "name": "note", "type": "string", "required": false }
+        { "name": "id", "description": { "zh": "要更新的账目 id。", "en": "Entry id to update." }, "type": "string", "required": true },
+        { "name": "type", "description": { "zh": "新的账目类型。", "en": "New entry type." }, "type": "string", "required": false },
+        { "name": "title", "description": { "zh": "新的账目标题。", "en": "New entry title." }, "type": "string", "required": false },
+        { "name": "amount", "description": { "zh": "新的金额。", "en": "New amount." }, "type": "number", "required": false },
+        { "name": "category", "description": { "zh": "新的分类。", "en": "New category." }, "type": "string", "required": false },
+        { "name": "date", "description": { "zh": "新的日期。", "en": "New date." }, "type": "string", "required": false },
+        { "name": "note", "description": { "zh": "新的备注。", "en": "New note." }, "type": "string", "required": false }
       ]
     },
     {

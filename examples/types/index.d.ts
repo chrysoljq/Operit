@@ -40,6 +40,9 @@ import {
     FileInfoData as _FileInfoData,
     HttpResponseData as _HttpResponseData,
     VisitWebResultData as _VisitWebResultData,
+    TerminalCommandResultData as _TerminalCommandResultData,
+    TerminalStreamEventData as _TerminalStreamEventData,
+    HiddenTerminalCommandResultData as _HiddenTerminalCommandResultData,
     CombinedOperationResultData as _CombinedOperationResultData,
     AutomationExecutionResultData as _AutomationExecutionResultData,
     FilePartContentData as _FilePartContentData,
@@ -184,6 +187,9 @@ declare global {
     type FileInfoData = _FileInfoData;
     type HttpResponseData = _HttpResponseData;
     type VisitWebResultData = _VisitWebResultData;
+    type TerminalCommandResultData = _TerminalCommandResultData;
+    type TerminalStreamEventData = _TerminalStreamEventData;
+    type HiddenTerminalCommandResultData = _HiddenTerminalCommandResultData;
     type CombinedOperationResultData = _CombinedOperationResultData;
     type AutomationExecutionResultData = _AutomationExecutionResultData;
     type FilePartContentData = _FilePartContentData;

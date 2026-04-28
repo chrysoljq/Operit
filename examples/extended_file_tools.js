@@ -55,7 +55,8 @@
             "parameters": [
                 { "name": "source", "description": { "zh": "源路径", "en": "Source path" }, "type": "string", "required": true },
                 { "name": "destination", "description": { "zh": "输出 zip 文件路径", "en": "Destination zip path" }, "type": "string", "required": true },
-                { "name": "environment", "description": { "zh": "可选：android/linux", "en": "Optional: android/linux" }, "type": "string", "required": false }
+                { "name": "environment", "description": { "zh": "可选：android/linux", "en": "Optional: android/linux" }, "type": "string", "required": false },
+                { "name": "include_root_directory", "description": { "zh": "压缩目录时是否保留源目录名作为顶层目录，默认 true", "en": "When zipping a directory, keep the source directory name as the top-level folder, default true" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -104,7 +105,7 @@ const ExtendedFileTools = (function () {
         return { success: !!result, message: '获取信息完成', data: result };
     }
     async function zip_files(params) {
-        const result = await Tools.Files.zip(params.source, params.destination, params.environment);
+        const result = await Tools.Files.zip(params.source, params.destination, params.environment, params.include_root_directory);
         return { success: !!result, message: '压缩完成', data: result };
     }
     async function unzip_files(params) {

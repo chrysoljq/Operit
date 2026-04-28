@@ -102,8 +102,11 @@ sealed class Screen(
         open val titleRes: Int? = null,
         // 是否参与 AppContent 的跨页淡入淡出。
         // 某些包含实时渲染视图的页面在转场中保留上一页会产生明显残影。
-        open val participatesInCrossfadeTransition: Boolean = true
+        open val participatesInCrossfadeTransition: Boolean = true,
+        open val keepAlive: Boolean = false
 ) {
+    open fun stableScreenKey(): String? = null
+
     // 屏幕内容渲染函数
     @Composable
     open fun Content(
@@ -187,12 +190,13 @@ sealed class Screen(
                         source = chatEntry.source
                     )
                 },
-                onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title ->
+                onOpenToolPkgPluginConfig = { containerPackageName, uiModuleId, title, keepAlive ->
                     navigateTo(
                         ToolPkgPluginConfig(
                             containerPackageName = containerPackageName,
                             uiModuleId = uiModuleId,
-                            title = title
+                            title = title,
+                            keepAlive = keepAlive
                         )
                     )
                 }
@@ -1054,8 +1058,12 @@ sealed class Screen(
     data class ToolPkgComposeDsl(
         val containerPackageName: String,
         val uiModuleId: String,
-        val title: String
+        val title: String,
+        override val keepAlive: Boolean = false
     ) : Screen() {
+        override fun stableScreenKey(): String? =
+            "toolpkg_keepalive:$containerPackageName:$uiModuleId"
+
         @Composable
         override fun Content(
                 navController: NavController,
@@ -1082,8 +1090,12 @@ sealed class Screen(
     data class ToolPkgPluginConfig(
         val containerPackageName: String,
         val uiModuleId: String,
-        val title: String
+        val title: String,
+        override val keepAlive: Boolean = false
     ) : Screen(navItem = NavItem.Packages) {
+        override fun stableScreenKey(): String? =
+            "toolpkg_keepalive:$containerPackageName:$uiModuleId"
+
         @Composable
         override fun Content(
                 navController: NavController,

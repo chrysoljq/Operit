@@ -23,6 +23,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.ui.common.input.bringIntoViewOnImeFocus
 import com.ai.assistance.operit.ui.features.chat.components.config.TokenInfoDialog
 import kotlinx.coroutines.CoroutineScope
 
@@ -148,7 +149,7 @@ fun ConfigurationScreen(
                                         )
                                 },
                                 visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().bringIntoViewOnImeFocus(),
                                 shape = RoundedCornerShape(6.dp),
                                 colors =
                                         OutlinedTextFieldDefaults.colors(

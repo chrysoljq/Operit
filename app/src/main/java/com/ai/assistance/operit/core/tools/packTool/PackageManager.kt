@@ -157,7 +157,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val screen: String,
         val title: String,
         val description: String,
-        val moduleSpec: Map<String, Any?>
+        val moduleSpec: Map<String, Any?>,
+        val keepAlive: Boolean = false
     )
 
     data class ToolPkgUiRoute(
@@ -169,7 +170,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val screen: String,
         val title: String,
         val description: String,
-        val moduleSpec: Map<String, Any?>
+        val moduleSpec: Map<String, Any?>,
+        val keepAlive: Boolean = false
     )
 
     data class ToolPkgNavigationEntry(

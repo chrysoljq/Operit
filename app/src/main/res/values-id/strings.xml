@@ -6889,10 +6889,6 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="quick_plugin_creator_requirement_empty">Silakan masukkan kebutuhan plugin terlebih dahulu</string>
     <string name="mcp_plugin_comment_view_thread">Lihat lantai</string>
     <string name="mcp_plugin_user_comments">Komentar pengguna</string>
-    <string name="web_session_shortcut_label">Peramban</string>
-    <string name="web_session_shortcut_long_label">Mulai peramban dengan cepat</string>
-    <string name="web_session_shortcut_open_failed">Gagal memulai pintasan peramban</string>
-
     <string name="quick_plugin_creator_setup_failed">Pembuatan Skill plugin gagal dipasang atau diperbarui</string>
     <string name="pkg_toolpkg_workflow_templates">Jumlah template alur kerja: %1$d</string>
     <string name="pkg_toolpkg_workspace_templates">Jumlah template ruang kerja: %1$d</string>

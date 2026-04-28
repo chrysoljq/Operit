@@ -55,7 +55,8 @@
             "parameters": [
                 { "name": "source", "description": { "zh": "源路径", "en": "Source path" }, "type": "string", "required": true },
                 { "name": "destination", "description": { "zh": "输出 zip 文件路径", "en": "Destination zip path" }, "type": "string", "required": true },
-                { "name": "environment", "description": { "zh": "可选：android/linux", "en": "Optional: android/linux" }, "type": "string", "required": false }
+                { "name": "environment", "description": { "zh": "可选：android/linux", "en": "Optional: android/linux" }, "type": "string", "required": false },
+                { "name": "include_root_directory", "description": { "zh": "压缩目录时是否保留源目录名作为顶层目录，默认 true", "en": "When zipping a directory, keep the source directory name as the top-level folder, default true" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -117,8 +118,13 @@ const ExtendedFileTools = (function () {
         return { success: !!result, message: '获取信息完成', data: result };
     }
 
-    async function zip_files(params: { source: string; destination: string; environment?: FileEnvironment }): Promise<ToolResponse> {
-        const result = await Tools.Files.zip(params.source, params.destination, params.environment);
+    async function zip_files(params: { source: string; destination: string; environment?: FileEnvironment; include_root_directory?: boolean }): Promise<ToolResponse> {
+        const result = await Tools.Files.zip(
+            params.source,
+            params.destination,
+            params.environment,
+            params.include_root_directory
+        );
         return { success: !!result, message: '压缩完成', data: result };
     }
 
@@ -173,7 +179,7 @@ const ExtendedFileTools = (function () {
         move_file: (params: { source: string; destination: string; environment?: FileEnvironment }) => wrapToolExecution(move_file, params),
         copy_file: (params: { source: string; destination: string; recursive?: boolean; source_environment?: FileEnvironment; dest_environment?: FileEnvironment }) => wrapToolExecution(copy_file, params),
         file_info: (params: { path: string; environment?: FileEnvironment }) => wrapToolExecution(file_info, params),
-        zip_files: (params: { source: string; destination: string; environment?: FileEnvironment }) => wrapToolExecution(zip_files, params),
+        zip_files: (params: { source: string; destination: string; environment?: FileEnvironment; include_root_directory?: boolean }) => wrapToolExecution(zip_files, params),
         unzip_files: (params: { source: string; destination: string; environment?: FileEnvironment }) => wrapToolExecution(unzip_files, params),
         open_file: (params: { path: string; environment?: FileEnvironment }) => wrapToolExecution(open_file, params),
         share_file: (params: { path: string; title?: string; environment?: FileEnvironment }) => wrapToolExecution(share_file, params),

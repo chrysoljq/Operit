@@ -288,7 +288,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                 service = this,
                 notificationId = NOTIFICATION_ID,
                 notification = notification,
-                types = ForegroundServiceCompat.buildTypes(dataSync = true, specialUse = true)
+                types = ForegroundServiceCompat.buildTypes(dataSync = true)
             )
 
         } catch (e: Exception) {

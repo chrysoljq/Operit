@@ -3881,6 +3881,13 @@ open class StandardFileSystemTools(protected val context: Context) {
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
         val zipPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
         val environment = tool.parameters.find { it.name == "environment" }?.value
+        val includeRootDirectory =
+            when (tool.parameters.find { it.name == "include_root_directory" }?.value?.trim()?.lowercase()) {
+                null, "" -> true
+                "true", "1", "yes", "y", "on" -> true
+                "false", "0", "no", "n", "off" -> false
+                else -> true
+            }
         PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
         PathValidator.validateAndroidPath(zipPath, tool.name, "destination")?.let { return it }
 
@@ -3921,8 +3928,12 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             ZipOutputStream(BufferedOutputStream(FileOutputStream(destZipFile))).use { zos ->
                 if (sourceFile.isDirectory) {
-                    // For directories, add all files recursively
-                    addDirectoryToZip(sourceFile, sourceFile.name, zos)
+                    // Keep legacy behavior by default, but allow callers to zip only directory contents.
+                    if (includeRootDirectory) {
+                        addDirectoryToZip(sourceFile, sourceFile.name, zos)
+                    } else {
+                        addDirectoryContentsToZip(sourceFile, sourceFile, zos)
+                    }
                 } else {
                     // For a single file, add it directly
                     val entryName = sourceFile.name
@@ -3987,6 +3998,33 @@ open class StandardFileSystemTools(protected val context: Context) {
             }
 
             val entryName = "$baseName/${file.name}"
+            zos.putNextEntry(ZipEntry(entryName))
+
+            FileInputStream(file).use { fis ->
+                BufferedInputStream(fis).use { bis ->
+                    var len: Int
+                    while (bis.read(buffer).also { len = it } > 0) {
+                        zos.write(buffer, 0, len)
+                    }
+                }
+            }
+
+            zos.closeEntry()
+        }
+    }
+
+    /** Helper method to add directory contents to zip without prefixing the source directory name */
+    private fun addDirectoryContentsToZip(rootDir: File, currentDir: File, zos: ZipOutputStream) {
+        val buffer = ByteArray(1024)
+        val files = currentDir.listFiles() ?: return
+
+        for (file in files) {
+            if (file.isDirectory) {
+                addDirectoryContentsToZip(rootDir, file, zos)
+                continue
+            }
+
+            val entryName = file.relativeTo(rootDir).invariantSeparatorsPath
             zos.putNextEntry(ZipEntry(entryName))
 
             FileInputStream(file).use { fis ->

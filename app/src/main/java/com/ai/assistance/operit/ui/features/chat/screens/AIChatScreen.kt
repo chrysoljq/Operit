@@ -1,14 +1,9 @@
 package com.ai.assistance.operit.ui.features.chat.screens
 
-import android.app.Activity
-import android.content.Context
-import android.content.pm.PackageManager
-import android.content.ContextWrapper
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import com.ai.assistance.operit.util.AppLogger
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -87,6 +81,8 @@ import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
 import com.ai.assistance.operit.ui.common.rememberLocal
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
+import com.ai.assistance.operit.ui.main.components.LocalSetScreenSoftInputMode
+import com.ai.assistance.operit.ui.main.components.LocalSetUseScreenImePadding
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.clipToBounds
@@ -277,8 +273,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         preferencesManager.bubbleAiContentPaddingLeft.collectAsState(initial = 12f)
     val bubbleAiContentPaddingRight by
         preferencesManager.bubbleAiContentPaddingRight.collectAsState(initial = 12f)
-    val hostActivity = remember(context) { context.findActivity() }
-
     // Collect chat area horizontal padding from preferences
     val chatAreaHorizontalPadding by preferencesManager.chatAreaHorizontalPadding.collectAsState(initial = 16f)
 
@@ -743,42 +737,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT &&
             !showWebView &&
             !showAiComputer
-    val shouldUseWorkspaceImeResize = showWebView || showAiComputer
-    val manifestSoftInputMode = remember(hostActivity) { hostActivity?.manifestSoftInputMode() }
-    LaunchedEffect(inputStyle, showWebView, showAiComputer, hostActivity) {
-        val window = hostActivity?.window
-        if (window != null) {
-            val targetSoftInputMode =
-                if (shouldUseChatLocalImeHandling) {
-                    // 聊天输入页：由 Compose 局部位移处理输入法
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-                } else if (shouldUseWorkspaceImeResize) {
-                    // 工作区/终端等页面：使用系统 resize，避免输入框被键盘遮挡
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                } else {
-                    // 常规页面保持 pan，与 Manifest 默认行为一致
-                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
-                }
-            window.setSoftInputMode(targetSoftInputMode)
-        }
-    }
-    DisposableEffect(hostActivity, manifestSoftInputMode) {
-        onDispose {
-            val window = hostActivity?.window
-            if (window != null && manifestSoftInputMode != null) {
-                window.setSoftInputMode(manifestSoftInputMode)
-            }
-        }
-    }
-
     var hasEverShownWebView by remember { mutableStateOf(false) }
     LaunchedEffect(showWebView, isWorkspacePreparing) {
         if (showWebView || isWorkspacePreparing) {
             hasEverShownWebView = true
         }
     }
-    val view = LocalView.current
-
     // 当手势状态改变时，通知父组件
     LaunchedEffect(chatScreenGestureConsumed, showWebView) {
         val finalGestureState = chatScreenGestureConsumed
@@ -808,6 +772,22 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val setTopBarActions = LocalTopBarActions.current
     val appBarContentColor = LocalAppBarContentColor.current
     val isCurrentScreen = LocalIsCurrentScreen.current
+    val setScreenSoftInputMode = LocalSetScreenSoftInputMode.current
+    val setUseScreenImePadding = LocalSetUseScreenImePadding.current
+    val requestedSoftInputMode =
+        if (shouldUseChatLocalImeHandling) {
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        } else {
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        }
+    val shouldUseGlobalImePadding = !shouldUseChatLocalImeHandling
+
+    SideEffect {
+        if (isCurrentScreen) {
+            setScreenSoftInputMode(requestedSoftInputMode)
+            setUseScreenImePadding(shouldUseGlobalImePadding)
+        }
+    }
 
 
     // 当showWebView或showAiComputer状态改变时，更新TopAppBar的actions
@@ -1860,20 +1840,3 @@ private fun WorkspaceFileSelectorOverlay(
     }
 }
 
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
-
-private fun Activity.manifestSoftInputMode(): Int =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        packageManager.getActivityInfo(
-            componentName,
-            PackageManager.ComponentInfoFlags.of(0)
-        ).softInputMode
-    } else {
-        @Suppress("DEPRECATION")
-        packageManager.getActivityInfo(componentName, 0).softInputMode
-    }

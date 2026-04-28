@@ -492,6 +492,7 @@ export namespace ToolPkg {
         screen: ComposeDslScreen;
         params?: ToolParams;
         title?: LocalizedText;
+        keepAlive?: boolean;
     }
 
     export interface UiRouteRegistration {
@@ -502,6 +503,7 @@ export namespace ToolPkg {
         screen: ComposeDslScreen;
         params?: ToolParams;
         title?: LocalizedText;
+        keepAlive?: boolean;
     }
 
     export type NavigationSurface =

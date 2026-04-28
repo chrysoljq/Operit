@@ -24,7 +24,8 @@ object AppRouteCatalog {
                     title = route.title,
                     icon = Icons.Default.Extension,
                     ownerPackageName = route.containerPackageName,
-                    toolPkgUiModuleId = route.uiModuleId
+                    toolPkgUiModuleId = route.uiModuleId,
+                    keepAlive = route.keepAlive
                 )
             }
         val toolPkgNavigationEntries =
@@ -82,7 +83,8 @@ object AppRouteCatalog {
         return Screen.ToolPkgComposeDsl(
             containerPackageName = containerPackageName,
             uiModuleId = uiModuleId,
-            title = spec.title ?: uiModuleId
+            title = spec.title ?: uiModuleId,
+            keepAlive = spec.keepAlive
         )
     }
 

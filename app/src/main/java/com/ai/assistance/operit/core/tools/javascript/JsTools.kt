@@ -636,6 +636,19 @@ fun getJsToolsDefinition(): String {
                         }
                         return toolCall("execute_in_terminal_session", params);
                     },
+                    execStreaming: (sessionId, command, options = {}) => {
+                        const params = { session_id: sessionId, command };
+                        const toolOptions = {};
+                        if (options && typeof options === "object") {
+                            if (options.timeoutMs !== undefined && options.timeoutMs !== null) {
+                                params.timeout_ms = String(options.timeoutMs);
+                            }
+                            if (typeof options.onIntermediateResult === "function") {
+                                toolOptions.onIntermediateResult = options.onIntermediateResult;
+                            }
+                        }
+                        return toolCall("execute_in_terminal_session_streaming", params, toolOptions);
+                    },
                     hiddenExec: (command, options = {}) => {
                         const params = { command };
                         if (options && typeof options === "object") {

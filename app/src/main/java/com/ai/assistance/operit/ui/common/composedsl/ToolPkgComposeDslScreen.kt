@@ -1,14 +1,9 @@
 package com.ai.assistance.operit.ui.common.composedsl
 
 import android.graphics.Color as AndroidColor
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
-import android.content.pm.PackageManager as AndroidPackageManager
 import android.net.Uri
 import android.os.Build
-import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -62,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,6 +94,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -115,7 +112,11 @@ import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslNode
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslParser
 import com.ai.assistance.operit.core.tools.packTool.ToolPkgComposeDslRenderResult
 import com.ai.assistance.operit.ui.components.CustomScaffold
+import com.ai.assistance.operit.ui.main.LocalTopBarTitleContent
+import com.ai.assistance.operit.ui.main.TopBarTitleContent
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
+import com.ai.assistance.operit.ui.main.components.LocalSetScreenSoftInputMode
+import com.ai.assistance.operit.ui.main.components.LocalSetUseScreenImePadding
 import com.ai.assistance.operit.ui.features.token.webview.WebViewConfig
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -123,9 +124,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
 import java.util.Locale
 
 private const val TAG = "ToolPkgComposeDslScreen"
+
+private fun ToolPkgComposeDslNode.containsNodeType(typeToken: String): Boolean {
+    if (normalizeToken(type) == typeToken) {
+        return true
+    }
+    if (children.any { child -> child.containsNodeType(typeToken) }) {
+        return true
+    }
+    return slots.values.any { slotChildren ->
+        slotChildren.any { child -> child.containsNodeType(typeToken) }
+    }
+}
 
 private fun buildComposeDslExecutionContextKey(
     containerPackageName: String,
@@ -139,36 +153,6 @@ internal fun normalizeToken(raw: String): String =
         .replace("-", "")
         .replace("_", "")
         .trim()
-
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
-
-private fun Activity.manifestSoftInputMode(): Int =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        packageManager.getActivityInfo(
-            componentName,
-            AndroidPackageManager.ComponentInfoFlags.of(0)
-        ).softInputMode
-    } else {
-        @Suppress("DEPRECATION")
-        packageManager.getActivityInfo(componentName, 0).softInputMode
-    }
-
-private fun composeDslTreeContainsWebView(node: ToolPkgComposeDslNode): Boolean {
-    if (normalizeToken(node.type) == "webview") {
-        return true
-    }
-    if (node.children.any(::composeDslTreeContainsWebView)) {
-        return true
-    }
-    return node.slots.values.any { slotChildren ->
-        slotChildren.any(::composeDslTreeContainsWebView)
-    }
-}
 
 private fun buildZeroArgGetterByToken(
     ownerClass: Class<*>,
@@ -239,8 +223,9 @@ fun ToolPkgComposeDslToolScreen(
 ) {
     val context = LocalContext.current
     val isCurrentScreen = LocalIsCurrentScreen.current
-    val hostActivity = remember(context) { context.findActivity() }
-    val manifestSoftInputMode = remember(hostActivity) { hostActivity?.manifestSoftInputMode() }
+    val setTopBarTitleContent = LocalTopBarTitleContent.current
+    val setScreenSoftInputMode = LocalSetScreenSoftInputMode.current
+    val setUseScreenImePadding = LocalSetUseScreenImePadding.current
     val scope = rememberCoroutineScope()
     val renderMutex = remember { Mutex() }
     val currentLanguage =
@@ -285,6 +270,14 @@ fun ToolPkgComposeDslToolScreen(
         }
     var nextDispatchTicket by remember(containerPackageName, uiModuleId) { mutableStateOf(1L) }
     val settledDispatchTickets = remember(containerPackageName, uiModuleId) { mutableSetOf<Long>() }
+    val requiresWebViewImeResize =
+        remember(renderResult?.tree) {
+            renderResult?.tree?.containsNodeType("webview") == true
+        }
+    val topBarTitleNodes =
+        remember(renderResult?.tree) {
+            renderResult?.tree?.slots?.get("topBarTitle").orEmpty()
+        }
 
     fun buildModuleSpec(screenPath: String?): Map<String, Any?> =
         mapOf(
@@ -344,6 +337,10 @@ fun ToolPkgComposeDslToolScreen(
         if (normalizedActionId.isBlank()) {
             return
         }
+        AppLogger.d(
+            TAG,
+            "compose_dsl dispatchAction: routeInstanceId=$routeInstanceId, package=$containerPackageName, uiModuleId=$uiModuleId, actionId=$normalizedActionId, payload=$payload"
+        )
         val dispatchTicket = nextDispatchTicket
         nextDispatchTicket += 1
 
@@ -426,6 +423,40 @@ fun ToolPkgComposeDslToolScreen(
                 error = errorMessage
             )
             settledDispatchTickets.add(dispatchTicket)
+        }
+    }
+
+    SideEffect {
+        if (!isCurrentScreen) {
+            setTopBarTitleContent(null)
+            return@SideEffect
+        }
+
+        if (topBarTitleNodes.isNotEmpty()) {
+            setTopBarTitleContent(
+                TopBarTitleContent {
+                    CompositionLocalProvider(
+                        LocalComposeDslActionHandler provides ::dispatchAction,
+                        LocalComposeDslRouteInstanceId provides routeInstanceId
+                    ) {
+                        renderComposeDslNodes(
+                            nodes = topBarTitleNodes,
+                            onAction = ::dispatchAction,
+                            nodePath = "0:topBarTitle"
+                        )
+                    }
+                }
+            )
+        } else {
+            setTopBarTitleContent(null)
+        }
+
+        if (requiresWebViewImeResize) {
+            setScreenSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            setUseScreenImePadding(true)
+        } else {
+            setScreenSoftInputMode(null)
+            setUseScreenImePadding(false)
         }
     }
 
@@ -555,23 +586,9 @@ fun ToolPkgComposeDslToolScreen(
         }
     }
 
-    val shouldUseResizeIme = renderResult?.tree?.let(::composeDslTreeContainsWebView) == true
-    LaunchedEffect(shouldUseResizeIme, hostActivity, isCurrentScreen) {
-        if (!isCurrentScreen) {
-            return@LaunchedEffect
-        }
-        val window = hostActivity?.window ?: return@LaunchedEffect
-        window.setSoftInputMode(
-            if (shouldUseResizeIme) {
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            } else {
-                manifestSoftInputMode ?: WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
-            }
-        )
-    }
-
     DisposableEffect(executionContextKey) {
         onDispose {
+            setTopBarTitleContent(null)
             ToolPkgComposeDslDebugSnapshotStore.clear(routeInstanceId)
             packageManager.releaseToolPkgExecutionEngine(executionContextKey)
         }
@@ -614,7 +631,10 @@ fun ToolPkgComposeDslToolScreen(
                     }
                 }
                 rootNode != null -> {
-                    CompositionLocalProvider(LocalComposeDslRouteInstanceId provides routeInstanceId) {
+                    CompositionLocalProvider(
+                        LocalComposeDslActionHandler provides ::dispatchAction,
+                        LocalComposeDslRouteInstanceId provides routeInstanceId
+                    ) {
                         // Let compose_dsl content own its own scrolling behavior.
                         // Wrapping the whole screen in an outer verticalScroll changes
                         // root measurement semantics and breaks full-screen layouts.
@@ -1718,6 +1738,7 @@ private fun applySingleModifierOp(
     op: ComposeDslModifierOp
 ): Modifier {
     val onAction = LocalComposeDslActionHandler.current
+    val nodeInfo = LocalComposeDslDebugNodeInfo.current
     val token = normalizeToken(op.name)
     return when (token) {
         "fillmaxsize" -> {
@@ -1794,7 +1815,13 @@ private fun applySingleModifierOp(
             if (actionId.isNullOrBlank()) {
                 modifier
             } else {
-                modifier.clickable { onAction(actionId, null) }
+                modifier.clickable {
+                    AppLogger.d(
+                        TAG,
+                        "compose_dsl clickable triggered: routeInstanceId=${nodeInfo?.routeInstanceId.orEmpty()}, nodePath=${nodeInfo?.nodePath.orEmpty()}, nodeType=${nodeInfo?.nodeType.orEmpty()}, nodeKey=${nodeInfo?.nodeKey.orEmpty()}, actionId=$actionId"
+                    )
+                    onAction(actionId, null)
+                }
             }
         }
         else -> modifier
@@ -1990,6 +2017,42 @@ internal fun boxAlignmentFromToken(raw: String?): Alignment {
         "bottomcenter", "centerbottom" -> Alignment.BottomCenter
         "bottomend", "endbottom", "bottomright", "rightbottom", "end" -> Alignment.BottomEnd
         else -> Alignment.TopStart
+    }
+}
+
+internal fun Map<String, Any?>.contentScale(key: String): ContentScale {
+    return when (normalizeToken(string(key))) {
+        "crop" -> ContentScale.Crop
+        "fillbounds", "fill" -> ContentScale.FillBounds
+        "fillwidth" -> ContentScale.FillWidth
+        "fillheight" -> ContentScale.FillHeight
+        "inside" -> ContentScale.Inside
+        "none" -> ContentScale.None
+        else -> ContentScale.Fit
+    }
+}
+
+internal fun Map<String, Any?>.imageModelOrNull(): Any? {
+    val rawValue =
+        stringOrNull("url")
+            ?: stringOrNull("uri")
+            ?: stringOrNull("path")
+            ?: stringOrNull("fileUri")
+            ?: stringOrNull("src")
+            ?: return null
+    val normalized = rawValue.trim()
+    if (normalized.isEmpty()) {
+        return null
+    }
+    return when {
+        normalized.startsWith("http://", ignoreCase = true) ||
+            normalized.startsWith("https://", ignoreCase = true) -> normalized
+        normalized.startsWith("content://", ignoreCase = true) ||
+            normalized.startsWith("file://", ignoreCase = true) ||
+            normalized.startsWith("android.resource://", ignoreCase = true) -> Uri.parse(normalized)
+        normalized.startsWith("/") -> File(normalized)
+        Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(normalized) -> File(normalized)
+        else -> normalized
     }
 }
 

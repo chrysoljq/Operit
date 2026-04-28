@@ -1,6 +1,7 @@
 import type { ComposeDslContext, ComposeNode } from "../../../../types/compose-dsl";
 import {
   ensureAccountBookWebServer,
+  type AccountBookWebServerProgressEvent,
   type AccountBookWebServerResult,
 } from "../../shared/account_book_web_runtime.js";
 
@@ -31,6 +32,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
   const [reloadToken, setReloadToken] = ctx.useState("reloadToken", "0");
   const [pageLoading, setPageLoading] = ctx.useState("pageLoading", false);
   const [pageProgress, setPageProgress] = ctx.useState("pageProgress", 0);
+  const [deployProgress, setDeployProgress] = ctx.useState("deployProgress", 0);
   const [statusDetail, setStatusDetail] = ctx.useState(
     "statusDetail",
     "正在准备记账本"
@@ -43,16 +45,37 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
     return Math.max(0, Math.min(100, Math.round(value)));
   }
 
+  function normalizeStatusLine(raw: unknown): string {
+    const text = String(raw ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text || "正在处理中";
+  }
+
+  function buildOverallProgress(): number {
+    if (pageLoading) {
+      return clampProgress(90 + pageProgress * 0.1);
+    }
+    return clampProgress(deployProgress);
+  }
+
   async function ensureServer(forceRestart: boolean): Promise<void> {
     setLoading(true);
     setErrorText("");
     setPageLoading(false);
     setPageProgress(0);
+    setDeployProgress(4);
     setStatusDetail("检查运行环境并拉起记账本网页服务");
     try {
       const result = parseToolResult<EnsureServerResult>(
         await ensureAccountBookWebServer({
           force_restart: forceRestart,
+          on_progress: (event: AccountBookWebServerProgressEvent) => {
+            setStatusDetail(normalizeStatusLine(event?.message));
+            if (typeof event?.progress === "number") {
+              setDeployProgress(clampProgress(event.progress));
+            }
+          },
         })
       );
       if (!result?.success || !result?.url) {
@@ -64,6 +87,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
       setServerUrl(result.url);
       setReloadToken(String(Date.now()));
       setStatusDetail("正在连接网页并准备渲染界面");
+      setDeployProgress(90);
       setPageLoading(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -75,12 +99,8 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
     }
   }
 
-  const progressValue = clampProgress(pageProgress);
-  const overlayDetail = errorText
-    ? errorText
-    : pageLoading
-      ? statusDetail
-      : statusDetail;
+  const progressValue = buildOverallProgress();
+  const overlayDetail = errorText ? errorText : statusDetail;
   const isOverlayVisible = Boolean(errorText) || loading || pageLoading || !serverUrl;
 
   const loadingOverlay = UI.Box(
@@ -130,13 +150,26 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
             contentAlignment: "center",
           },
           !errorText
-            ? UI.LinearProgressIndicator({
-                width: 128,
-                progress:
-                  pageLoading && progressValue > 0
-                    ? progressValue / 100
-                    : undefined,
-              })
+            ? UI.Column(
+                {
+                  width: 220,
+                  spacing: 8,
+                  horizontalAlignment: "center",
+                },
+                [
+                  UI.Text({
+                    text: `${progressValue}%`,
+                    style: "labelMedium",
+                    color: colors.primary,
+                    maxLines: 1,
+                    overflow: "ellipsis",
+                  }),
+                  UI.LinearProgressIndicator({
+                    width: 220,
+                    progress: progressValue / 100,
+                  }),
+                ]
+              )
             : UI.Spacer({ width: 0, height: 0 })
         ),
         UI.Box(
@@ -148,6 +181,8 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
             text: overlayDetail,
             style: "bodyMedium",
             color: errorText ? colors.error : colors.onSurfaceVariant,
+            maxLines: 1,
+            overflow: "ellipsis",
           })
         ),
       ]
@@ -174,6 +209,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
             onPageStarted: () => {
               setPageLoading(true);
               setPageProgress(0);
+              setDeployProgress(90);
               setStatusDetail("页面已打开，正在请求资源");
             },
             onProgressChanged: (event) => {
@@ -185,15 +221,11 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
             },
             onPageFinished: () => {
               setPageProgress(100);
+              setDeployProgress(100);
               setStatusDetail("正在显示记账页面");
               setPageLoading(false);
             },
-            onReceivedError: () => {
-              setPageProgress(0);
-              setPageLoading(false);
-              setErrorText("网页加载失败");
-              setStatusDetail("请稍后重试");
-            },
+            onReceivedError: () => {},
           }),
           isOverlayVisible ? loadingOverlay : UI.Spacer({ height: 0 }),
         ]
