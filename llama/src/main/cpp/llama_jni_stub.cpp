@@ -524,7 +524,7 @@ static ToolCallGrammarConfigNative buildToolCallGrammarConfig(const common_chat_
     ToolCallGrammarConfigNative config;
     config.grammar = params.grammar;
     config.lazy = params.grammar_lazy;
-    config.generationPrompt = params.generation_prompt;
+    config.generationPrompt = params.prompt;
 
     for (const auto & trigger : params.grammar_triggers) {
         switch (trigger.type) {
