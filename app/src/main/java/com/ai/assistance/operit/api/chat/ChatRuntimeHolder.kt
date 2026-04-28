@@ -33,36 +33,42 @@ class ChatRuntimeHolder private constructor(context: Context) {
     }
 
     fun getCore(slot: ChatRuntimeSlot): ChatServiceCore {
-        // 方案A：FLOATING 共享 MAIN 的 core 实例，实现天然同步
-        val effectiveSlot = when (slot) {
-            ChatRuntimeSlot.FLOATING -> ChatRuntimeSlot.MAIN
-            else -> slot
-        }
-        return cores.getOrPut(effectiveSlot) {
+        return cores.getOrPut(slot) {
             ChatServiceCore(
                 context = appContext,
                 coroutineScope = runtimeScope,
-                selectionMode = ChatSelectionMode.FOLLOW_GLOBAL
+                selectionMode = when (slot) {
+                    ChatRuntimeSlot.MAIN -> ChatSelectionMode.FOLLOW_GLOBAL
+                    ChatRuntimeSlot.FLOATING -> ChatSelectionMode.LOCAL_ONLY
+                }
             )
         }
     }
 
     private fun observeStats() {
-        // 方案A：FLOATING 和 MAIN 共享同一个 core，只需统计一次
-        val sharedCore = getCore(ChatRuntimeSlot.MAIN)
+        val mainCore = getCore(ChatRuntimeSlot.MAIN)
+        val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
 
         runtimeScope.launch {
-            sharedCore.activeStreamingChatIds.collect { activeChatIds ->
-                _activeConversationCount.value = activeChatIds.size
+            combine(
+                mainCore.activeStreamingChatIds,
+                floatingCore.activeStreamingChatIds
+            ) { mainActiveChatIds, floatingActiveChatIds ->
+                (mainActiveChatIds + floatingActiveChatIds).size
+            }.collect { count ->
+                _activeConversationCount.value = count
             }
         }
 
         runtimeScope.launch {
             combine(
-                sharedCore.activeStreamingChatIds,
-                sharedCore.currentTurnToolInvocationCountByChatId
-            ) { activeChatIds, counts ->
-                countCurrentTurnToolsForActiveChats(activeChatIds, counts)
+                mainCore.activeStreamingChatIds,
+                mainCore.currentTurnToolInvocationCountByChatId,
+                floatingCore.activeStreamingChatIds,
+                floatingCore.currentTurnToolInvocationCountByChatId
+            ) { mainActiveChatIds, mainCounts, floatingActiveChatIds, floatingCounts ->
+                countCurrentTurnToolsForActiveChats(mainActiveChatIds, mainCounts) +
+                    countCurrentTurnToolsForActiveChats(floatingActiveChatIds, floatingCounts)
             }.collect { count ->
                 _currentSessionToolCount.value = count
             }
@@ -77,8 +83,104 @@ class ChatRuntimeHolder private constructor(context: Context) {
     }
 
     private fun setupCrossSessionSync() {
-        // 方案A：FLOATING 和 MAIN 共享同一个 core，无需跨实例同步
-        // 保留空方法以备将来扩展
+        registerChatSelectionSync(
+            sourceSlot = ChatRuntimeSlot.MAIN,
+            targetSlot = ChatRuntimeSlot.FLOATING
+        )
+        registerTurnSync(
+            sourceSlot = ChatRuntimeSlot.MAIN,
+            targetSlot = ChatRuntimeSlot.FLOATING
+        )
+        registerTurnSync(
+            sourceSlot = ChatRuntimeSlot.FLOATING,
+            targetSlot = ChatRuntimeSlot.MAIN
+        )
+    }
+
+    private fun registerTurnSync(
+        sourceSlot: ChatRuntimeSlot,
+        targetSlot: ChatRuntimeSlot
+    ) {
+        val sourceCore = getCore(sourceSlot)
+        val targetCore = getCore(targetSlot)
+
+        sourceCore.setAdditionalOnTurnComplete { chatId, inputTokens, outputTokens, windowSize ->
+            if (chatId.isNullOrBlank()) {
+                return@setAdditionalOnTurnComplete
+            }
+            if (targetCore.currentChatId.value != chatId) {
+                return@setAdditionalOnTurnComplete
+            }
+
+            runtimeScope.launch {
+                try {
+                    targetCore.reloadChatMessagesSmart(chatId)
+                    targetCore.getTokenStatisticsDelegate()
+                        .setTokenCounts(chatId, inputTokens, outputTokens, windowSize)
+                    AppLogger.d(
+                        TAG,
+                        "跨 Session smart 同步完成: $sourceSlot -> $targetSlot, chatId=$chatId, input=$inputTokens, output=$outputTokens, window=$windowSize"
+                    )
+                } catch (e: Exception) {
+                    AppLogger.e(
+                        TAG,
+                        "跨 Session smart 同步失败: $sourceSlot -> $targetSlot, chatId=$chatId",
+                        e
+                    )
+                }
+            }
+        }
+    }
+
+    fun syncMainChatSelectionToFloating(chatId: String) {
+        if (chatId.isBlank()) return
+        syncChatSelection(
+            sourceSlot = ChatRuntimeSlot.MAIN,
+            targetSlot = ChatRuntimeSlot.FLOATING,
+            chatId = chatId
+        )
+    }
+
+    private fun registerChatSelectionSync(
+        sourceSlot: ChatRuntimeSlot,
+        targetSlot: ChatRuntimeSlot
+    ) {
+        val sourceCore = getCore(sourceSlot)
+
+        runtimeScope.launch {
+            sourceCore.currentChatId
+                .collect { chatId ->
+                    if (chatId.isNullOrBlank()) {
+                        return@collect
+                    }
+                    syncChatSelection(sourceSlot, targetSlot, chatId)
+                }
+        }
+    }
+
+    private fun syncChatSelection(
+        sourceSlot: ChatRuntimeSlot,
+        targetSlot: ChatRuntimeSlot,
+        chatId: String
+    ) {
+        val targetCore = getCore(targetSlot)
+        if (targetCore.currentChatId.value == chatId) {
+            return
+        }
+
+        try {
+            targetCore.switchChatLocal(chatId)
+            AppLogger.d(
+                TAG,
+                "跨 Session 当前聊天同步: $sourceSlot -> $targetSlot, chatId=$chatId"
+            )
+        } catch (e: Exception) {
+            AppLogger.e(
+                TAG,
+                "跨 Session 当前聊天同步失败: $sourceSlot -> $targetSlot, chatId=$chatId",
+                e
+            )
+        }
     }
 
     companion object {
