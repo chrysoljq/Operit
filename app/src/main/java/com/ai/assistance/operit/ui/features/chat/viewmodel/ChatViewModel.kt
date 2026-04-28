@@ -681,7 +681,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun switchChat(chatId: String) {
         chatHistoryDelegate.switchChat(chatId)
-        chatRuntimeHolder.syncMainChatSelectionToFloating(chatId)
 
         // 如果当前WebView正在显示，则更新工作区并触发刷新
         if (_showWebView.value) {
@@ -2033,16 +2032,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             launcher: ActivityResultLauncher<String>,
             onPermissionGranted: () -> Unit
     ) {
-        val hasMicPermission =
-                android.content.pm.PackageManager.PERMISSION_GRANTED ==
-                        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
         val canDrawOverlays = Settings.canDrawOverlays(context)
 
-        if (!hasMicPermission) {
-            launcher.launch(Manifest.permission.RECORD_AUDIO)
-        } else if (!canDrawOverlays) {
+        if (!canDrawOverlays) {
             openOverlayPermissionSettings()
         } else {
+            // 悬浮窗权限已授予，直接启动（麦克风权限在用户点击语音按钮时再检查）
             onPermissionGranted()
         }
     }
