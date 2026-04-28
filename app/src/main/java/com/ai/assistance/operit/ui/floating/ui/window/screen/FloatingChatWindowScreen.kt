@@ -459,16 +459,10 @@ private fun TitleBar(
                         icon = Icons.Default.Home,
                         description = stringResource(R.string.floating_back_to_main),
                         onClick = {
-                            // 启动 MainActivity 返回主应用
+                            // 启动 MainActivity 返回主应用（共享 core 后无需同步 chatId）
                             try {
                                 val context = floatContext.chatService
                                 if (context != null) {
-                                    runBlocking {
-                                        try {
-                                            context.getChatCore().syncCurrentChatIdToGlobal()
-                                        } catch (_: Exception) {
-                                        }
-                                    }
                                     val intent = Intent(
                                         context,
                                         com.ai.assistance.operit.ui.main.MainActivity::class.java
