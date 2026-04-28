@@ -821,12 +821,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
      * 如果切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
      * 如果切换到不同聊天，创建独立 core
      */
+    @Synchronized
     fun switchChat(chatId: String) {
-        runtimeHolder.switchFloatingChat(chatId)
-        // 更新当前使用的 core
-        chatCore = runtimeHolder.getFloatingCore()
-        chatCore.setUiBridge(EmptyChatServiceUiBridge)
-        AppLogger.d(TAG, "悬浮窗切换聊天完成，当前 core: ${if (chatCore == runtimeHolder.getCore(ChatRuntimeSlot.MAIN)) "主界面" else "独立"}")
+        try {
+            runtimeHolder.switchFloatingChat(chatId)
+            // 更新当前使用的 core
+            val newCore = runtimeHolder.getFloatingCore()
+            newCore.setUiBridge(EmptyChatServiceUiBridge)
+            chatCore = newCore
+            AppLogger.d(TAG, "悬浮窗切换聊天完成，当前 core: ${if (chatCore == runtimeHolder.getCore(ChatRuntimeSlot.MAIN)) "主界面" else "独立"}")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "悬浮窗切换聊天失败", e)
+        }
     }
 
 }

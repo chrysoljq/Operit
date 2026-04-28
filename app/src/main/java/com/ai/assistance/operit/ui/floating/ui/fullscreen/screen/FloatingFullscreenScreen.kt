@@ -414,13 +414,22 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                     val group = autoNewChatGroup.trim().ifBlank {
                         WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP
                     }
-                    // 创建新聊天，并同步回主界面
+                    // 创建新聊天
                     floatContext.chatService?.getChatCore()?.createNewChat(
                         group = group,
                         inheritGroupFromCurrent = false
                     )
-                    // 同步当前聊天到主界面
-                    floatContext.chatService?.getChatCore()?.syncCurrentChatIdToGlobal()
+                    // 如果悬浮窗使用的是主界面的 core（共享模式），同步到主界面
+                    // 如果是独立 core，不同步，避免意外改变主界面
+                    val chatService = floatContext.chatService
+                    if (chatService != null) {
+                        val runtimeHolder = com.ai.assistance.operit.api.chat.ChatRuntimeHolder.getInstance(chatService)
+                        val currentCore = chatService.getChatCore()
+                        val mainCore = runtimeHolder.getCore(com.ai.assistance.operit.api.chat.ChatRuntimeSlot.MAIN)
+                        if (currentCore == mainCore) {
+                            currentCore.syncCurrentChatIdToGlobal()
+                        }
+                    }
                 }
             ) {
                 Icon(

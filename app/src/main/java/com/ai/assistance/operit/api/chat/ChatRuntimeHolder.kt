@@ -51,18 +51,19 @@ class ChatRuntimeHolder private constructor(context: Context) {
      * 如果悬浮窗和主界面看同一个聊天，返回主界面的 core（共享）
      * 如果看不同聊天，返回悬浮窗的独立 core
      */
+    @Synchronized
     fun getFloatingCore(): ChatServiceCore {
         val mainCore = getCore(ChatRuntimeSlot.MAIN)
-        val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
-        
         val mainChatId = mainCore.currentChatId.value
-        val floatingChatId = floatingCore.currentChatId.value
         
-        // 如果悬浮窗没有独立聊天，或者和主界面看同一个聊天，返回主界面的 core
-        return if (floatingChatId == null || floatingChatId == mainChatId) {
+        // 先检查是否已有独立 core
+        val existingFloatingCore = cores[ChatRuntimeSlot.FLOATING]
+        
+        // 如果没有独立 core，或者独立 core 和主界面看同一个聊天，返回主界面的 core
+        return if (existingFloatingCore == null || existingFloatingCore.currentChatId.value == mainChatId) {
             mainCore
         } else {
-            floatingCore
+            existingFloatingCore
         }
     }
 
@@ -71,14 +72,19 @@ class ChatRuntimeHolder private constructor(context: Context) {
      * 如果切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
      * 如果切换到不同聊天，创建独立 core
      */
+    @Synchronized
     fun switchFloatingChat(chatId: String) {
         val mainCore = getCore(ChatRuntimeSlot.MAIN)
         val mainChatId = mainCore.currentChatId.value
         
         if (chatId == mainChatId) {
             // 切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
-            cores.remove(ChatRuntimeSlot.FLOATING)
-            AppLogger.d(TAG, "悬浮窗切换到主界面聊天，销毁独立 core，重新跟随主界面")
+            val removedCore = cores.remove(ChatRuntimeSlot.FLOATING)
+            if (removedCore != null) {
+                // 取消核心的所有协程
+                removedCore.cancelCurrentMessage()
+                AppLogger.d(TAG, "悬浮窗切换到主界面聊天，销毁独立 core，重新跟随主界面")
+            }
         } else {
             // 切换到不同聊天，创建独立 core
             val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
