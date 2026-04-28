@@ -442,3 +442,17 @@ dependencies {
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
 }
+
+tasks.register<Copy>("copyUiautoApk") {
+    dependsOn(":uiautoserver:assembleDebug")
+    from(project(":uiautoserver").layout.buildDirectory.dir("outputs/apk/debug"))
+    include("uiautoserver-debug.apk")
+    into("src/main/assets/")
+    rename("uiautoserver-debug.apk", "uiautoserver.apk")
+}
+
+afterEvaluate {
+    tasks.named("preBuild") {
+        dependsOn("copyUiautoApk")
+    }
+}
