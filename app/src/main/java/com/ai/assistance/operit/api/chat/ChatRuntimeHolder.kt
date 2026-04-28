@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class ChatRuntimeHolder private constructor(context: Context) {
@@ -42,6 +43,47 @@ class ChatRuntimeHolder private constructor(context: Context) {
                     ChatRuntimeSlot.FLOATING -> ChatSelectionMode.LOCAL_ONLY
                 }
             )
+        }
+    }
+
+    /**
+     * 获取悬浮窗应该使用的 core 实例
+     * 如果悬浮窗和主界面看同一个聊天，返回主界面的 core（共享）
+     * 如果看不同聊天，返回悬浮窗的独立 core
+     */
+    fun getFloatingCore(): ChatServiceCore {
+        val mainCore = getCore(ChatRuntimeSlot.MAIN)
+        val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
+        
+        val mainChatId = mainCore.currentChatId.value
+        val floatingChatId = floatingCore.currentChatId.value
+        
+        // 如果悬浮窗没有独立聊天，或者和主界面看同一个聊天，返回主界面的 core
+        return if (floatingChatId == null || floatingChatId == mainChatId) {
+            mainCore
+        } else {
+            floatingCore
+        }
+    }
+
+    /**
+     * 悬浮窗切换聊天时调用
+     * 如果切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
+     * 如果切换到不同聊天，创建独立 core
+     */
+    fun switchFloatingChat(chatId: String) {
+        val mainCore = getCore(ChatRuntimeSlot.MAIN)
+        val mainChatId = mainCore.currentChatId.value
+        
+        if (chatId == mainChatId) {
+            // 切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
+            cores.remove(ChatRuntimeSlot.FLOATING)
+            AppLogger.d(TAG, "悬浮窗切换到主界面聊天，销毁独立 core，重新跟随主界面")
+        } else {
+            // 切换到不同聊天，创建独立 core
+            val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
+            floatingCore.switchChatLocal(chatId)
+            AppLogger.d(TAG, "悬浮窗切换到独立聊天，创建独立 core: $chatId")
         }
     }
 

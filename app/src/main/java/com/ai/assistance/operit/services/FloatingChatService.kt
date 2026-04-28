@@ -79,6 +79,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     // 聊天服务核心 - 整合所有业务逻辑
     private lateinit var chatCore: ChatServiceCore
+    private lateinit var runtimeHolder: ChatRuntimeHolder
 
     private var lastCrashTime = 0L
     private var crashCount = 0
@@ -222,7 +223,9 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         try {
             acquireWakeLock()
 
-            chatCore = ChatRuntimeHolder.getInstance(applicationContext).getCore(ChatRuntimeSlot.FLOATING)
+            // 使用 getFloatingCore 获取应该使用的 core（同一聊天共享，不同聊天独立）
+            runtimeHolder = ChatRuntimeHolder.getInstance(applicationContext)
+            chatCore = runtimeHolder.getFloatingCore()
             chatCore.setUiBridge(EmptyChatServiceUiBridge)
             AppLogger.d(TAG, "ChatServiceCore 已初始化")
 
@@ -812,5 +815,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
      * @return ChatServiceCore 聊天服务核心实例
      */
     fun getChatCore(): ChatServiceCore = chatCore
+
+    /**
+     * 切换聊天
+     * 如果切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
+     * 如果切换到不同聊天，创建独立 core
+     */
+    fun switchChat(chatId: String) {
+        runtimeHolder.switchFloatingChat(chatId)
+        // 更新当前使用的 core
+        chatCore = runtimeHolder.getFloatingCore()
+        chatCore.setUiBridge(EmptyChatServiceUiBridge)
+        AppLogger.d(TAG, "悬浮窗切换聊天完成，当前 core: ${if (chatCore == runtimeHolder.getCore(ChatRuntimeSlot.MAIN)) "主界面" else "独立"}")
+    }
 
 }

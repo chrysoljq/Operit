@@ -237,7 +237,8 @@ private fun RecentChatSelectorOverlay(
                                         Color.Transparent
                                 )
                                 .clickable {
-                                    chatCore?.switchChatLocal(history.id)
+                                    // 使用 FloatingChatService 的 switchChat 方法，支持动态 core 切换
+                                    floatContext.chatService?.switchChat(history.id)
                                     onDismiss()
                                 }
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
