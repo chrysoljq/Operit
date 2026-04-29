@@ -446,19 +446,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         // Initialize delegates in correct order to avoid circular references
         initializeDelegates()
 
-        // 监听 core 替换（分家场景），更新引用和 delegate
-        viewModelScope.launch {
-            chatRuntimeHolder.coreReplaced.collect { slot ->
-                if (slot == ChatRuntimeSlot.MAIN) {
-                    val newCore = chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN)
-                    if (newCore !== mainChatCore) {
-                        mainChatCore = newCore
-                        initializeDelegates()
-                    }
-                }
-            }
-        }
-
         // Setup additional components
         setupPermissionSystemCollection()
         setupAttachmentDelegateToastCollection()
@@ -694,8 +681,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun switchChat(chatId: String) {
         chatHistoryDelegate.switchChat(chatId)
-        // 通知 runtimeHolder 触发共享/分家检测
-        chatRuntimeHolder.switchChat(ChatRuntimeSlot.MAIN, chatId)
 
         // 如果当前WebView正在显示，则更新工作区并触发刷新
         if (_showWebView.value) {
