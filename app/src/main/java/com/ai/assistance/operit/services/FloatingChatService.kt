@@ -835,4 +835,12 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         }
     }
 
+    /**
+     * 检查当前是否使用共享 core（和主界面看同一个聊天）
+     * @return true 如果使用共享 core，false 如果使用独立 core
+     */
+    fun isUsingSharedCore(): Boolean {
+        return chatCore == runtimeHolder.getCore(ChatRuntimeSlot.MAIN)
+    }
+
 }

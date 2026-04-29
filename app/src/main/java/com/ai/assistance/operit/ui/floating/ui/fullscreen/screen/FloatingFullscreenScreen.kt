@@ -419,16 +419,11 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         group = group,
                         inheritGroupFromCurrent = false
                     )
-                    // 如果悬浮窗使用的是主界面的 core（共享模式），同步到主界面
+                    // 如果悬浮窗使用的是共享 core（和主界面看同一个聊天），同步到主界面
                     // 如果是独立 core，不同步，避免意外改变主界面
                     val chatService = floatContext.chatService
-                    if (chatService != null) {
-                        val runtimeHolder = com.ai.assistance.operit.api.chat.ChatRuntimeHolder.getInstance(chatService)
-                        val currentCore = chatService.getChatCore()
-                        val mainCore = runtimeHolder.getCore(com.ai.assistance.operit.api.chat.ChatRuntimeSlot.MAIN)
-                        if (currentCore == mainCore) {
-                            currentCore.syncCurrentChatIdToGlobal()
-                        }
+                    if (chatService != null && chatService.isUsingSharedCore()) {
+                        chatService.getChatCore()?.syncCurrentChatIdToGlobal()
                     }
                 }
             ) {
