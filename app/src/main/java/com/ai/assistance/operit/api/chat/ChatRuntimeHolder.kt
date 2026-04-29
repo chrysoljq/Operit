@@ -7,7 +7,9 @@ import com.ai.assistance.operit.util.AppLogger
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -16,7 +18,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.launch
 
 /**
  * 聊天运行时持有者
@@ -42,11 +43,17 @@ class ChatRuntimeHolder private constructor(context: Context) {
     private val _currentSessionToolCount = MutableStateFlow(0)
     val currentSessionToolCount: StateFlow<Int> = _currentSessionToolCount.asStateFlow()
 
+    private var statsJob: Job? = null
+
     init {
         ChatRuntimeSlot.values().forEach { slot ->
             cores[slot] = createCore(slot)
         }
         observeStats()
+        // Re-subscribe stats whenever a core is replaced (fork scenario)
+        runtimeScope.launch {
+            coreReplaced.collect { observeStats() }
+        }
     }
 
     fun getCore(slot: ChatRuntimeSlot): ChatServiceCore = cores[slot]!!
@@ -59,40 +66,42 @@ class ChatRuntimeHolder private constructor(context: Context) {
      * - 从共享分家时，两边都会获得 selectionMode 正确的新 core
      */
     fun switchChat(slot: ChatRuntimeSlot, chatId: String) {
-        val otherSlot = if (slot == MAIN) FLOATING else MAIN
-        val otherCore = cores[otherSlot]!!
-        val myCore = cores[slot]!!
+        synchronized(this) {
+            val otherSlot = if (slot == MAIN) FLOATING else MAIN
+            val otherCore = cores[otherSlot]!!
+            val myCore = cores[slot]!!
 
-        if (otherCore.currentChatId.value == chatId) {
-            // 目标和另一边一样 → 共享 core
-            if (myCore !== otherCore) {
-                myCore.cancelCurrentMessage()
-                AppLogger.d(TAG, "$slot 切到 $chatId，与 $otherSlot 共享 core")
-            }
-            cores[slot] = otherCore
-        } else {
-            // 目标不同 → 需要独立 core
-            if (myCore === otherCore) {
-                // 从共享分家：两边都需要新 core（旧 core 的 selectionMode 只适合一方）
-                val oldChatId = otherCore.currentChatId.value
-
-                val myNewCore = createCore(slot)
-                myNewCore.switchChatLocal(chatId)
-                cores[slot] = myNewCore
-                _coreReplaced.tryEmit(slot)
-
-                val otherNewCore = createCore(otherSlot)
-                if (oldChatId != null) {
-                    otherNewCore.switchChatLocal(oldChatId)
+            if (otherCore.currentChatId.value == chatId) {
+                // 目标和另一边一样 → 共享 core
+                if (myCore !== otherCore) {
+                    myCore.cancelCurrentMessage()
+                    AppLogger.d(TAG, "$slot 切到 $chatId，与 $otherSlot 共享 core")
                 }
-                cores[otherSlot] = otherNewCore
-                _coreReplaced.tryEmit(otherSlot)
-
-                AppLogger.d(TAG, "共享分家: $slot→$chatId, $otherSlot→$oldChatId")
+                cores[slot] = otherCore
             } else {
-                // 已经独立 → 直接切
-                myCore.switchChatLocal(chatId)
-                AppLogger.d(TAG, "$slot 切换聊天: $chatId")
+                // 目标不同 → 需要独立 core
+                if (myCore === otherCore) {
+                    // 从共享分家：两边都需要新 core（旧 core 的 selectionMode 只适合一方）
+                    val oldChatId = otherCore.currentChatId.value
+
+                    val myNewCore = createCore(slot)
+                    myNewCore.switchChatLocal(chatId)
+                    cores[slot] = myNewCore
+                    _coreReplaced.tryEmit(slot)
+
+                    val otherNewCore = createCore(otherSlot)
+                    if (oldChatId != null) {
+                        otherNewCore.switchChatLocal(oldChatId)
+                    }
+                    cores[otherSlot] = otherNewCore
+                    _coreReplaced.tryEmit(otherSlot)
+
+                    AppLogger.d(TAG, "共享分家: $slot→$chatId, $otherSlot→$oldChatId")
+                } else {
+                    // 已经独立 → 直接切
+                    myCore.switchChatLocal(chatId)
+                    AppLogger.d(TAG, "$slot 切换聊天: $chatId")
+                }
             }
         }
     }
@@ -111,28 +120,32 @@ class ChatRuntimeHolder private constructor(context: Context) {
     }
 
     private fun observeStats() {
-        val mainCore = getCore(MAIN)
-        val floatingCore = getCore(FLOATING)
+        statsJob?.cancel()
 
-        runtimeScope.launch {
-            combine(
-                mainCore.activeStreamingChatIds,
-                floatingCore.activeStreamingChatIds
-            ) { a, b -> (a + b).size }.collect {
-                _activeConversationCount.value = it
+        statsJob = runtimeScope.launch {
+            val mainCore = getCore(MAIN)
+            val floatingCore = getCore(FLOATING)
+
+            launch {
+                combine(
+                    mainCore.activeStreamingChatIds,
+                    floatingCore.activeStreamingChatIds
+                ) { a, b -> (a + b).size }.collect {
+                    _activeConversationCount.value = it
+                }
             }
-        }
 
-        runtimeScope.launch {
-            combine(
-                mainCore.activeStreamingChatIds,
-                mainCore.currentTurnToolInvocationCountByChatId,
-                floatingCore.activeStreamingChatIds,
-                floatingCore.currentTurnToolInvocationCountByChatId
-            ) { ma, mc, fa, fc ->
-                countTools(ma, mc) + countTools(fa, fc)
-            }.collect {
-                _currentSessionToolCount.value = it
+            launch {
+                combine(
+                    mainCore.activeStreamingChatIds,
+                    mainCore.currentTurnToolInvocationCountByChatId,
+                    floatingCore.activeStreamingChatIds,
+                    floatingCore.currentTurnToolInvocationCountByChatId
+                ) { ma, mc, fa, fc ->
+                    countTools(ma, mc) + countTools(fa, fc)
+                }.collect {
+                    _currentSessionToolCount.value = it
+                }
             }
         }
     }

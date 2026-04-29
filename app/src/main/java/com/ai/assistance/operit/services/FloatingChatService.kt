@@ -48,6 +48,7 @@ import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
@@ -81,7 +82,15 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     private lateinit var chatCore: ChatServiceCore
     private lateinit var runtimeHolder: ChatRuntimeHolder
     private var lastFloatingChatId: String? = null
+    // Best-effort flag to prevent the currentChatId collector from triggering
+    // a redundant fork during self-initiated switches. Due to Main dispatcher
+    // ordering, the StateFlow collector fires after switchChat() returns, so
+    // this flag is typically false by the time the collector reads it. The
+    // isSharingCore() check in the collector provides the actual defense.
+    @Volatile
     private var isSelfSwitching = false
+    private var collectorJobs: List<Job> = emptyList()
+    private var enhancedServiceJob: Job? = null
 
     private var lastCrashTime = 0L
     private var crashCount = 0
@@ -810,20 +819,26 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     }
     
     private fun setupCoreCollectors() {
+        // Cancel previously launched collectors to avoid leaking old core subscriptions
+        collectorJobs.forEach { it.cancel() }
+        collectorJobs = emptyList()
+        enhancedServiceJob?.cancel()
+        enhancedServiceJob = null
+
         // 订阅聊天历史
-        serviceScope.launch {
+        collectorJobs += serviceScope.launch {
             chatCore.chatHistory.collect { messages ->
                 chatMessages.value = messages
             }
         }
         // 订阅附件
-        serviceScope.launch {
+        collectorJobs += serviceScope.launch {
             chatCore.attachments.collect { newAttachments ->
                 attachments.value = newAttachments
             }
         }
         // 订阅输入处理状态
-        serviceScope.launch {
+        collectorJobs += serviceScope.launch {
             combine(
                 chatCore.currentChatId,
                 chatCore.inputProcessingStateByChatId
@@ -835,7 +850,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             }
         }
         // 监听 chatId 变化：如果共享 core 时主页面切走了，需要分家
-        serviceScope.launch {
+        collectorJobs += serviceScope.launch {
             chatCore.currentChatId.collect { newChatId ->
                 if (isSelfSwitching) return@collect
                 val oldChatId = lastFloatingChatId
@@ -855,7 +870,8 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         }
         // 设置 EnhancedAIService 就绪回调
         chatCore.setOnEnhancedAiServiceReady { aiService ->
-            serviceScope.launch {
+            enhancedServiceJob?.cancel()
+            enhancedServiceJob = serviceScope.launch {
                 try {
                     aiService.inputProcessingState.collect { _ -> }
                 } catch (e: kotlinx.coroutines.CancellationException) {
