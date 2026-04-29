@@ -115,6 +115,7 @@ class FloatingWindowDelegate(
 
         // If the service is already running (started by wake/workflow/widget), bind to it.
         tryBindToRunningService()
+        // TODO(fufu): dead code — collect body is empty (assignment commented out), safe to delete after testing
         setupInputStateCollection()
     }
 
@@ -231,6 +232,7 @@ class FloatingWindowDelegate(
         isBoundToService = false
     }
 
+    // TODO(fufu): dead code — collect body is empty (assignment commented out), safe to delete after testing
     private fun setupInputStateCollection() {
         coroutineScope.launch {
             inputProcessingState.collect { state ->

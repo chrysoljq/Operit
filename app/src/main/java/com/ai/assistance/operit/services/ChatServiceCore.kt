@@ -58,6 +58,7 @@ class ChatServiceCore(
     private var onEnhancedAiServiceReady: ((EnhancedAIService) -> Unit)? = null
     
     // 额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景）
+    // TODO(fufu): dead code — no callers after switchChat refactor, safe to delete after testing
     private var additionalOnTurnComplete: ((String?, Int, Int, Int) -> Unit)? = null
     private var uiBridge: ChatServiceUiBridge = EmptyChatServiceUiBridge
 
@@ -168,6 +169,7 @@ class ChatServiceCore(
                         chatIdOverride = chatId
                     )
                 }
+                // TODO(fufu): dead code — no callers after switchChat refactor, safe to delete after testing
                 additionalOnTurnComplete?.invoke(chatId, inputTokens, outputTokens, windowSize)
             },
             getIsAutoReadEnabled = {
@@ -464,6 +466,7 @@ class ChatServiceCore(
         enhancedAiService?.let { callback(it) }
     }
     
+    // TODO(fufu): dead code — no callers after switchChat refactor, safe to delete after testing
     /** 设置额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景） */
     fun setAdditionalOnTurnComplete(callback: ((chatId: String?, inputTokens: Int, outputTokens: Int, windowSize: Int) -> Unit)?) {
         additionalOnTurnComplete = callback

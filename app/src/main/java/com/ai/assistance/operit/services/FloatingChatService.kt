@@ -240,6 +240,19 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             AppLogger.d(TAG, "ChatServiceCore 已初始化")
             setupCoreCollectors()
 
+            // 触发共享检测：如果主页面已在同一聊天，共享 core
+            val initialChatId = chatCore.currentChatId.value
+            if (initialChatId != null) {
+                runtimeHolder.switchChat(ChatRuntimeSlot.FLOATING, initialChatId)
+                val possiblySharedCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+                if (possiblySharedCore !== chatCore) {
+                    AppLogger.d(TAG, "初始化时与主页面共享 core")
+                    chatCore = possiblySharedCore
+                    chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                    setupCoreCollectors()
+                }
+            }
+
             // 监听 core 被替换（分家场景：主页面切走时，悬浮窗的 core 会被替换）
             serviceScope.launch {
                 runtimeHolder.coreReplaced.collect { slot ->
