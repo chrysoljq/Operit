@@ -681,7 +681,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     fun switchChat(chatId: String) {
         chatHistoryDelegate.switchChat(chatId)
-        chatRuntimeHolder.syncMainChatSelectionToFloating(chatId)
 
         // 如果当前WebView正在显示，则更新工作区并触发刷新
         if (_showWebView.value) {

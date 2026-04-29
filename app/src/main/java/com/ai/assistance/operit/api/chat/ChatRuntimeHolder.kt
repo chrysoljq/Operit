@@ -13,16 +13,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
+/**
+ * 聊天运行时持有者
+ *
+ * 主界面和悬浮窗是平等的，各自拥有独立的 core。
+ * 同一会话时 turn sync 会自动同步消息，无需共享 core 实例。
+ */
 class ChatRuntimeHolder private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cores = ConcurrentHashMap<ChatRuntimeSlot, ChatServiceCore>()
-    private val floatingCoreLock = ReentrantLock()
     private val _activeConversationCount = MutableStateFlow(0)
     val activeConversationCount: StateFlow<Int> = _activeConversationCount.asStateFlow()
     private val _currentSessionToolCount = MutableStateFlow(0)
@@ -46,55 +48,6 @@ class ChatRuntimeHolder private constructor(context: Context) {
                     ChatRuntimeSlot.FLOATING -> ChatSelectionMode.LOCAL_ONLY
                 }
             )
-        }
-    }
-
-    /**
-     * 获取悬浮窗应该使用的 core 实例
-     * 如果悬浮窗和主界面看同一个聊天，返回主界面的 core（共享）
-     * 如果看不同聊天，返回悬浮窗的独立 core
-     */
-    fun getFloatingCore(): ChatServiceCore {
-        floatingCoreLock.withLock {
-            val mainCore = getCore(ChatRuntimeSlot.MAIN)
-            val mainChatId = mainCore.currentChatId.value
-            
-            // 先检查是否已有独立 core
-            val existingFloatingCore = cores[ChatRuntimeSlot.FLOATING]
-            
-            // 如果没有独立 core，或者独立 core 和主界面看同一个聊天，返回主界面的 core
-            return if (existingFloatingCore == null || existingFloatingCore.currentChatId.value == mainChatId) {
-                mainCore
-            } else {
-                existingFloatingCore
-            }
-        }
-    }
-
-    /**
-     * 悬浮窗切换聊天时调用
-     * 如果切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
-     * 如果切换到不同聊天，创建独立 core
-     */
-    fun switchFloatingChat(chatId: String) {
-        floatingCoreLock.withLock {
-            val mainCore = getCore(ChatRuntimeSlot.MAIN)
-            val mainChatId = mainCore.currentChatId.value
-            
-            if (chatId == mainChatId) {
-                // 切换到和主界面一样的聊天，销毁独立 core，重新跟随主界面
-                val removedCore = cores.remove(ChatRuntimeSlot.FLOATING)
-                if (removedCore != null) {
-                    // 取消核心的所有协程
-                    removedCore.cancelCurrentMessage()
-                    AppLogger.d(TAG, "悬浮窗切换到主界面聊天，销毁独立 core，重新跟随主界面")
-                }
-            } else {
-                // 切换到不同聊天，创建独立 core
-                val floatingCore = getCore(ChatRuntimeSlot.FLOATING)
-                floatingCore.switchChatLocal(chatId)
-                AppLogger.d(TAG, "悬浮窗切换到独立聊天，创建独立 core: $chatId")
-            }
         }
     }
 
@@ -135,11 +88,11 @@ class ChatRuntimeHolder private constructor(context: Context) {
         return activeChatIds.sumOf { chatId -> countMap[chatId] ?: 0 }
     }
 
+    /**
+     * 双向 turn 同步
+     * 当两边碰巧看同一个聊天时，一方完成对话会自动 reload 另一方的消息
+     */
     private fun setupCrossSessionSync() {
-        registerChatSelectionSync(
-            sourceSlot = ChatRuntimeSlot.MAIN,
-            targetSlot = ChatRuntimeSlot.FLOATING
-        )
         registerTurnSync(
             sourceSlot = ChatRuntimeSlot.MAIN,
             targetSlot = ChatRuntimeSlot.FLOATING
@@ -161,6 +114,7 @@ class ChatRuntimeHolder private constructor(context: Context) {
             if (chatId.isNullOrBlank()) {
                 return@setAdditionalOnTurnComplete
             }
+            // 只有当两边看同一个聊天时才同步
             if (targetCore.currentChatId.value != chatId) {
                 return@setAdditionalOnTurnComplete
             }
@@ -172,7 +126,7 @@ class ChatRuntimeHolder private constructor(context: Context) {
                         .setTokenCounts(chatId, inputTokens, outputTokens, windowSize)
                     AppLogger.d(
                         TAG,
-                        "跨 Session smart 同步完成: $sourceSlot -> $targetSlot, chatId=$chatId, input=$inputTokens, output=$outputTokens, window=$windowSize"
+                        "跨 Session smart 同步完成: $sourceSlot -> $targetSlot, chatId=$chatId"
                     )
                 } catch (e: Exception) {
                     AppLogger.e(
@@ -182,57 +136,6 @@ class ChatRuntimeHolder private constructor(context: Context) {
                     )
                 }
             }
-        }
-    }
-
-    fun syncMainChatSelectionToFloating(chatId: String) {
-        if (chatId.isBlank()) return
-        syncChatSelection(
-            sourceSlot = ChatRuntimeSlot.MAIN,
-            targetSlot = ChatRuntimeSlot.FLOATING,
-            chatId = chatId
-        )
-    }
-
-    private fun registerChatSelectionSync(
-        sourceSlot: ChatRuntimeSlot,
-        targetSlot: ChatRuntimeSlot
-    ) {
-        val sourceCore = getCore(sourceSlot)
-
-        runtimeScope.launch {
-            sourceCore.currentChatId
-                .collect { chatId ->
-                    if (chatId.isNullOrBlank()) {
-                        return@collect
-                    }
-                    syncChatSelection(sourceSlot, targetSlot, chatId)
-                }
-        }
-    }
-
-    private fun syncChatSelection(
-        sourceSlot: ChatRuntimeSlot,
-        targetSlot: ChatRuntimeSlot,
-        chatId: String
-    ) {
-        val targetCore = getCore(targetSlot)
-        if (targetCore.currentChatId.value == chatId) {
-            return
-        }
-
-        try {
-            targetCore.switchChatLocal(chatId)
-            AppLogger.d(
-                TAG,
-                "跨 Session 当前聊天同步: $sourceSlot -> $targetSlot, chatId=$chatId"
-            )
-        } catch (e: Exception) {
-            AppLogger.e(
-                TAG,
-                "跨 Session 当前聊天同步失败: $sourceSlot -> $targetSlot, chatId=$chatId",
-                e
-            )
         }
     }
 
