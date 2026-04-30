@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.api.ArtifactProjectDetailResponse
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
@@ -69,7 +70,6 @@ import com.ai.assistance.operit.data.preferences.GitHubUser
 import com.ai.assistance.operit.data.skill.SkillRepository
 import com.ai.assistance.operit.ui.features.github.GitHubLoginWebViewDialog
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketBrowseConfig
-import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketItem
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketScope
 import com.ai.assistance.operit.ui.features.packages.market.BindMarketSearchToTopBar
 import com.ai.assistance.operit.ui.features.packages.market.MarketBrowseSection
@@ -78,7 +78,7 @@ import com.ai.assistance.operit.ui.features.packages.market.SkillMarketBrowseCon
 import com.ai.assistance.operit.ui.features.packages.market.rememberArtifactMarketBrowseEntry
 import com.ai.assistance.operit.ui.features.packages.market.rememberMcpMarketBrowseEntry
 import com.ai.assistance.operit.ui.features.packages.market.rememberSkillMarketBrowseEntry
-import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactMarketViewModel
+import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactProjectMarketViewModel
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.viewmodel.MCPMarketViewModel
 import com.ai.assistance.operit.ui.features.packages.screens.skill.viewmodel.SkillMarketViewModel
 import kotlinx.coroutines.flow.collect
@@ -165,10 +165,10 @@ private fun ArtifactMarketPane(
     onNavigateToDetail: (GitHubIssue) -> Unit
 ) {
     val context = LocalContext.current
-    val viewModel: ArtifactMarketViewModel =
+    val viewModel: ArtifactProjectMarketViewModel =
         viewModel(
             key = "artifact-market-all",
-            factory = ArtifactMarketViewModel.Factory(
+            factory = ArtifactProjectMarketViewModel.Factory(
                 context.applicationContext,
                 ArtifactMarketScope.ALL
             )
@@ -179,12 +179,10 @@ private fun ArtifactMarketPane(
     val hasMore by viewModel.hasMore.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val sortOption by viewModel.sortOption.collectAsState()
-    val marketStats by viewModel.marketStats.collectAsState()
     val installingIds by viewModel.installingIds.collectAsState()
-    val installedArtifactIds by viewModel.installedArtifactIds.collectAsState()
+    val projectInstallStates by viewModel.projectInstallStates.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-
-    var pendingUnsupportedInstall by remember { mutableStateOf<ArtifactMarketItem?>(null) }
+    var selectedProject by remember { mutableStateOf<ArtifactProjectDetailResponse?>(null) }
 
     BindMarketSearchToTopBar(
         enabled = true,
@@ -192,10 +190,6 @@ private fun ArtifactMarketPane(
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         searchPlaceholderRes = ArtifactMarketBrowseConfig.searchPlaceholderRes
     )
-
-    LaunchedEffect(Unit) {
-        viewModel.refreshInstalledArtifacts()
-    }
 
     errorMessage?.let { error ->
         LaunchedEffect(error) {
@@ -215,59 +209,34 @@ private fun ArtifactMarketPane(
         onSortOptionChanged = viewModel::onSortOptionChanged,
         onRefresh = {
             viewModel.loadMarketData()
-            viewModel.refreshInstalledArtifacts()
         },
         onLoadMore = viewModel::loadMoreMarketData,
         config = ArtifactMarketBrowseConfig,
-        itemKey = { it.issue.id },
+        itemKey = { it.projectId },
         entryFactory = { item ->
             rememberArtifactMarketBrowseEntry(
                 item = item,
-                marketStats = marketStats,
+                projectInstallStates = projectInstallStates,
                 installingIds = installingIds,
-                installedArtifactIds = installedArtifactIds,
-                isCompatible = viewModel.isCompatible(item.metadata),
-                compatibilityLabel = viewModel.supportedVersionLabel(item.metadata),
-                onViewDetails = onNavigateToDetail,
-                onInstallRequest = { candidate ->
-                    if (viewModel.isCompatible(candidate.metadata)) {
-                        viewModel.installArtifact(candidate)
-                    } else {
-                        pendingUnsupportedInstall = candidate
-                    }
-                }
+                onViewDetails = { projectId ->
+                    viewModel.openProject(
+                        projectId = projectId,
+                        onOpenSingleNode = onNavigateToDetail,
+                        onOpenNodeTree = { selectedProject = it }
+                    )
+                },
+                onInstallRequest = viewModel::installDefaultNode
             )
         }
     )
 
-    pendingUnsupportedInstall?.let { item ->
-        AlertDialog(
-            onDismissRequest = { pendingUnsupportedInstall = null },
-            title = { Text(stringResource(R.string.unsupported_artifact_version_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.unsupported_artifact_version_message,
-                        item.metadata.displayName,
-                        viewModel.currentAppVersion,
-                        viewModel.supportedVersionLabel(item.metadata)
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.installArtifact(item)
-                        pendingUnsupportedInstall = null
-                    }
-                ) {
-                    Text(stringResource(R.string.continue_download_anyway))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingUnsupportedInstall = null }) {
-                    Text(stringResource(R.string.cancel))
-                }
+    selectedProject?.let { project ->
+        ArtifactProjectNodeTreeDialog(
+            project = project,
+            onDismissRequest = { selectedProject = null },
+            onSelectNode = { issue ->
+                selectedProject = null
+                onNavigateToDetail(issue)
             }
         )
     }

@@ -1326,6 +1326,11 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun registerToolPkgDesktopWidget(specJson: String) {
+            toolPkgRegistrationSession.appendDesktopWidget(specJson)
+        }
+
+        @JavascriptInterface
         fun registerToolPkgAppLifecycleHook(specJson: String) {
             toolPkgRegistrationSession.appendAppLifecycleHook(specJson)
         }

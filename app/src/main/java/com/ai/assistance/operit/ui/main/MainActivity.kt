@@ -61,6 +61,8 @@ import android.net.Uri
 import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.ui.features.github.GitHubOAuthCoordinator
+import com.ai.assistance.operit.widget.ToolPkgDesktopWidgetHost
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -109,6 +111,9 @@ class MainActivity : ComponentActivity() {
     private var pendingGitHubAuthUri: Uri? = null
     private var pendingShortcutNavItem: NavItem? = null
     private var pendingShortcutRequestId: Long = 0L
+    private var pendingRouteId: String? = null
+    private var pendingRouteArgs: Map<String, Any?> = emptyMap()
+    private var pendingRouteRequestId: Long = 0L
 
     // 通知权限请求启动器
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -272,6 +277,19 @@ class MainActivity : ComponentActivity() {
             return true
         }
 
+        val pendingWidgetRouteId =
+            intent?.getStringExtra(ToolPkgDesktopWidgetHost.EXTRA_OPEN_ROUTE_ID)?.trim().orEmpty()
+        if (pendingWidgetRouteId.isNotBlank()) {
+            pendingRouteId = pendingWidgetRouteId
+            pendingRouteArgs =
+                parseRouteArgsJson(
+                    intent?.getStringExtra(ToolPkgDesktopWidgetHost.EXTRA_OPEN_ROUTE_ARGS_JSON)
+                )
+            pendingRouteRequestId = System.currentTimeMillis()
+            AppLogger.d(TAG, "Shortcut requested opening route: $pendingWidgetRouteId")
+            return true
+        }
+
         val intentUri = intent?.data
         if (GitHubAuthPreferences.isOAuthRedirectUri(intentUri)) {
             pendingGitHubAuthUri = intentUri
@@ -384,6 +402,27 @@ class MainActivity : ComponentActivity() {
             .filter { it.isNotBlank() }
             .distinct()
             .toList()
+    }
+
+    private fun parseRouteArgsJson(raw: String?): Map<String, Any?> {
+        val text = raw?.trim().orEmpty()
+        if (text.isBlank()) {
+            return emptyMap()
+        }
+        return try {
+            val json = JSONObject(text)
+            buildMap {
+                val keys = json.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = json.opt(key)
+                    put(key, if (value == JSONObject.NULL) null else value)
+                }
+            }
+        } catch (error: Exception) {
+            AppLogger.e(TAG, "Failed to parse pending route args json", error)
+            emptyMap()
+        }
     }
 
     // ======== 设置初始占位内容 ========
@@ -693,6 +732,10 @@ class MainActivity : ComponentActivity() {
                             val shortcutNavItem = if (!showPreferencesGuide) pendingShortcutNavItem else null
                             val shortcutNavRequestId =
                                 if (!showPreferencesGuide) pendingShortcutRequestId else 0L
+                            val routeNavRequest = if (!showPreferencesGuide) pendingRouteId else null
+                            val routeNavArgs = if (!showPreferencesGuide) pendingRouteArgs else emptyMap()
+                            val routeNavRequestId =
+                                if (!showPreferencesGuide) pendingRouteRequestId else 0L
                             val initialNavItem = when {
                                 showPreferencesGuide -> NavItem.UserPreferencesGuide
                                 shortcutNavItem != null -> shortcutNavItem
@@ -706,10 +749,20 @@ class MainActivity : ComponentActivity() {
                                         toolHandler = toolHandler,
                                         shortcutNavRequest = shortcutNavItem,
                                         shortcutNavRequestId = shortcutNavRequestId,
+                                        routeNavRequest = routeNavRequest,
+                                        routeNavArgs = routeNavArgs,
+                                        routeNavRequestId = routeNavRequestId,
                                         onShortcutNavHandled = { handledRequestId ->
                                             if (pendingShortcutRequestId == handledRequestId) {
                                                 pendingShortcutNavItem = null
                                                 pendingShortcutRequestId = 0L
+                                            }
+                                        },
+                                        onRouteNavHandled = { handledRequestId ->
+                                            if (pendingRouteRequestId == handledRequestId) {
+                                                pendingRouteId = null
+                                                pendingRouteArgs = emptyMap()
+                                                pendingRouteRequestId = 0L
                                             }
                                         }
                                 )

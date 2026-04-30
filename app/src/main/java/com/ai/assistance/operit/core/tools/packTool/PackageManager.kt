@@ -30,6 +30,7 @@ import com.ai.assistance.operit.data.model.PackageToolPromptCategory
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceConfig
+import com.ai.assistance.operit.widget.ToolPkgDesktopWidgetHost
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
@@ -192,6 +193,19 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         val functionSource: String? = null
     )
 
+    data class ToolPkgDesktopWidget(
+        val containerPackageName: String,
+        val toolPkgId: String,
+        val widgetId: String,
+        val routeId: String,
+        val renderRouteId: String,
+        val title: String,
+        val subtitle: String,
+        val description: String,
+        val icon: String?,
+        val order: Int
+    )
+
     data class PackageLoadErrorInfo(
         val packageName: String,
         val message: String,
@@ -342,6 +356,14 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                     error
                 )
             }
+        }
+        runCatching {
+            ToolPkgDesktopWidgetHost.refreshAll(context)
+        }.onFailure { error ->
+            logToolPkgError(
+                "toolpkg desktop widget refresh failed: ${error.message ?: error.javaClass.simpleName}",
+                error
+            )
         }
     }
 
@@ -1259,6 +1281,12 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         resolveContext: Context? = null
     ): List<ToolPkgUiRoute> {
         return toolPkgFacade.getToolPkgUiRoutes(runtime, resolveContext)
+    }
+
+    fun getToolPkgDesktopWidgets(
+        resolveContext: Context? = null
+    ): List<ToolPkgDesktopWidget> {
+        return toolPkgFacade.getToolPkgDesktopWidgets(resolveContext)
     }
 
     fun getToolPkgNavigationEntries(

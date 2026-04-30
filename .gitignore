@@ -44,7 +44,6 @@ app/src/main/assets/pets
 .windsurf
 
 tmp
-AGENTS.md
 CLAUDE.md
 
 gradle/gradle-8.7-bin.zip

@@ -2752,7 +2752,6 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="workspace_not_exists_or_not_dir">Ruang kerja tidak ada atau bukan direktori</string>
     <string name="workspace_is_empty">Ruang kerja kosong</string>
     <string name="workspace_no_errors_found">Belum ditemukan kesalahan</string>
-    <string name="workspace_error_get_errors">Terjadi pengecualian saat mengambil informasi kesalahan: %1$s</string>
     <string name="workspace_no_recent_changes">Belum ada perubahan terbaru</string>
     <string name="workspace_recently_modified_files">File yang baru dimodifikasi:\n%1$s</string>
     <string name="workspace_error_get_changes">Terjadi pengecualian saat mengambil catatan perubahan: %1$s</string>
@@ -2804,7 +2803,6 @@ Sekarang Anda dapat menggunakan mode AutoGLM di antarmuka percakapan.</string>
     <string name="workspace_minutes_ago">%1$d menit yang lalu</string>
     <string name="workspace_just_now">Baru saja</string>
     <string name="workspace_file_time_ago">%1$s (%2$s)</string>
-    <string name="workspace_error_check_errors">Gagal mengambil kesalahan ruang kerja</string>
     <string name="workspace_error_check_suggestions">Gagal mengambil saran ruang kerja</string>
     <string name="workspace_error_generate_attachment">Gagal menghasilkan lampiran ruang kerja</string>
     <string name="workspace_error_invalid_path">Jalur ruang kerja tidak ada atau bukan direktori: %1$s</string>

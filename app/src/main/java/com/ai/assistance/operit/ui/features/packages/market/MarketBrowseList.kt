@@ -26,9 +26,11 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,26 +53,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 
-data class MarketBrowseChip(
-    val label: String,
-    val containerColor: Color,
-    val contentColor: Color
-)
-
 data class MarketBrowseCardModel(
     val title: String,
     val description: String,
     val ownerUsername: String = "",
-    val publisherAvatarUrl: String? = null,
     val thumbsUpCount: Int = 0,
     val heartCount: Int = 0,
     val downloads: Int = 0,
-    val chips: List<MarketBrowseChip> = emptyList(),
     val actionState: MarketBrowseActionState = MarketBrowseActionState.Available
 )
 
 sealed interface MarketBrowseActionState {
     data object Available : MarketBrowseActionState
+    data object Updatable : MarketBrowseActionState
     data object Installed : MarketBrowseActionState
     data class Installing(val progress: Float? = null) : MarketBrowseActionState
     data class Unavailable(val kind: MarketUnavailableKind = MarketUnavailableKind.Info) :
@@ -399,101 +394,107 @@ private fun MarketBrowseMetaCount(
 }
 
 @Composable
-private fun MarketBrowseChipView(chip: MarketBrowseChip) {
-    Surface(shape = RoundedCornerShape(999.dp), color = chip.containerColor) {
-        Text(
-            text = chip.label,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = chip.contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
 private fun MarketBrowseInstallButton(
     state: MarketBrowseActionState,
     onClick: () -> Unit
 ) {
-    val containerColor =
-        when (state) {
-            MarketBrowseActionState.Installed -> MaterialTheme.colorScheme.secondaryContainer
-            is MarketBrowseActionState.Installing -> MaterialTheme.colorScheme.primaryContainer
-            MarketBrowseActionState.Available -> MaterialTheme.colorScheme.primary
-            is MarketBrowseActionState.Unavailable -> MaterialTheme.colorScheme.surfaceVariant
-        }
+    val ui = resolveMarketBrowseInstallButtonUi(state, MaterialTheme.colorScheme)
 
-    val contentColor =
-        when (state) {
-            MarketBrowseActionState.Installed -> MaterialTheme.colorScheme.onSecondaryContainer
-            is MarketBrowseActionState.Installing -> MaterialTheme.colorScheme.onPrimaryContainer
-            MarketBrowseActionState.Available -> MaterialTheme.colorScheme.onPrimary
-            is MarketBrowseActionState.Unavailable -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-
-    val enabled = state == MarketBrowseActionState.Available
-
-    Surface(shape = CircleShape, color = containerColor) {
+    Surface(shape = CircleShape, color = ui.containerColor) {
         IconButton(
             onClick = {
-                if (enabled) {
+                if (ui.enabled) {
                     onClick()
                 }
             },
             modifier = Modifier.size(34.dp)
         ) {
-            when (state) {
-                MarketBrowseActionState.Installed -> {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(18.dp)
+            if (ui.isLoading) {
+                val progress = ui.progress
+                if (progress != null) {
+                    CircularProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = ui.contentColor
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = ui.contentColor
                     )
                 }
-
-                MarketBrowseActionState.Available -> {
-                    Icon(
-                        Icons.Default.Download,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                is MarketBrowseActionState.Installing -> {
-                    val progress = state.progress
-                    if (progress != null) {
-                        CircularProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = contentColor
-                        )
-                    } else {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = contentColor
-                        )
-                    }
-                }
-
-                is MarketBrowseActionState.Unavailable -> {
-                    Icon(
-                        imageVector =
-                            when (state.kind) {
-                                MarketUnavailableKind.Info -> Icons.Default.Info
-                                MarketUnavailableKind.Warning -> Icons.Default.Warning
-                            },
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+            } else {
+                Icon(
+                    imageVector = ui.icon,
+                    contentDescription = null,
+                    tint = ui.contentColor,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
+    }
+}
+
+private data class MarketBrowseInstallButtonUi(
+    val containerColor: Color,
+    val contentColor: Color,
+    val enabled: Boolean,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val isLoading: Boolean = false,
+    val progress: Float? = null
+)
+
+private fun resolveMarketBrowseInstallButtonUi(
+    state: MarketBrowseActionState,
+    colorScheme: ColorScheme
+): MarketBrowseInstallButtonUi {
+    return when (state) {
+        MarketBrowseActionState.Available ->
+            MarketBrowseInstallButtonUi(
+                containerColor = colorScheme.primary,
+                contentColor = colorScheme.onPrimary,
+                enabled = true,
+                icon = Icons.Default.Download
+            )
+
+        MarketBrowseActionState.Updatable ->
+            MarketBrowseInstallButtonUi(
+                containerColor = colorScheme.primary,
+                contentColor = colorScheme.onPrimary,
+                enabled = true,
+                icon = Icons.Default.Update
+            )
+
+        MarketBrowseActionState.Installed ->
+            MarketBrowseInstallButtonUi(
+                containerColor = colorScheme.secondaryContainer,
+                contentColor = colorScheme.onSecondaryContainer,
+                enabled = false,
+                icon = Icons.Default.Check
+            )
+
+        is MarketBrowseActionState.Installing ->
+            MarketBrowseInstallButtonUi(
+                containerColor = colorScheme.primaryContainer,
+                contentColor = colorScheme.onPrimaryContainer,
+                enabled = false,
+                icon = Icons.Default.Download,
+                isLoading = true,
+                progress = state.progress
+            )
+
+        is MarketBrowseActionState.Unavailable ->
+            MarketBrowseInstallButtonUi(
+                containerColor = colorScheme.surfaceVariant,
+                contentColor = colorScheme.onSurfaceVariant,
+                enabled = false,
+                icon =
+                    when (state.kind) {
+                        MarketUnavailableKind.Info -> Icons.Default.Info
+                        MarketUnavailableKind.Warning -> Icons.Default.Warning
+                    }
+            )
     }
 }

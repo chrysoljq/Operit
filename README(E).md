@@ -83,7 +83,7 @@ Customize AI personality and speaking style, with character card backup/export (
 | Tool Category | Features |
 |--------------|----------|
 | 🐧 **Linux Environment** | Complete Ubuntu 24 with apt package management, Python/Node.js runtime, custom repositories |
-| 📁 **File System** | Read/write files, search, compress/decompress, format conversion, Git integration, syntax checking |
+| 📁 **File System** | Read/write files, search, compress/decompress, format conversion, Git integration |
 | 🌐 **Network Tools** | HTTP requests, web access, file upload/download, web development and export |
 | ⚙️ **System Operations** | App installation, permission management, UI automation via Accessibility / ADB / Root (includes AutoGLM auto-click agent, supports adb root virtual display / multi-display) |
 | 🎬 **Media Processing** | Video conversion, frame extraction, OCR/vision understanding, camera capture, audio/video reading |
@@ -336,7 +336,7 @@ Rich MCP ecosystem
 <td>2025-10-05</td>
 <td>
 • MCP enhancements: uvx/npx support, faster startup<br>
-• Workspace Git ignore, syntax checking<br>
+• Workspace Git ignore<br>
 • Camera capture, HTML rendering, regex filtering
 </td>
 </tr>

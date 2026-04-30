@@ -153,6 +153,34 @@ internal class PackageManagerToolPkgFacade(
             )
     }
 
+    private fun buildToolPkgDesktopWidgets(
+        container: ToolPkgContainerRuntime,
+        localizationContext: Context
+    ): List<PackageManager.ToolPkgDesktopWidget> {
+        return container.desktopWidgets
+            .map { widget ->
+                PackageManager.ToolPkgDesktopWidget(
+                    containerPackageName = container.packageName,
+                    toolPkgId = container.packageName,
+                    widgetId = widget.id,
+                    routeId = widget.routeId,
+                    renderRouteId = widget.renderRouteId,
+                    title = widget.title.resolve(localizationContext).trim().ifBlank { widget.id },
+                    subtitle = widget.subtitle.resolve(localizationContext).trim(),
+                    description = widget.description.resolve(localizationContext).trim(),
+                    icon = widget.icon,
+                    order = widget.order
+                )
+            }
+            .sortedWith(
+                compareBy(
+                    PackageManager.ToolPkgDesktopWidget::order,
+                    PackageManager.ToolPkgDesktopWidget::title,
+                    PackageManager.ToolPkgDesktopWidget::widgetId
+                )
+            )
+    }
+
     private fun buildToolPkgWorkflowTemplates(
         container: ToolPkgContainerRuntime,
         localizationContext: Context
@@ -303,6 +331,30 @@ internal class PackageManagerToolPkgFacade(
                     localizationContext = localizationContext
                 )
             }
+    }
+
+    fun getToolPkgDesktopWidgets(
+        resolveContext: Context? = null
+    ): List<PackageManager.ToolPkgDesktopWidget> {
+        packageManager.ensureInitialized()
+        val enabledSet = packageManager.getEnabledPackageNameSetInternal()
+        val localizationContext = resolveContext ?: packageManager.contextInternal
+        return packageManager.toolPkgContainersInternal.values
+            .filter { container -> enabledSet.contains(container.packageName) }
+            .flatMap { container ->
+                buildToolPkgDesktopWidgets(
+                    container = container,
+                    localizationContext = localizationContext
+                )
+            }
+            .sortedWith(
+                compareBy(
+                    PackageManager.ToolPkgDesktopWidget::order,
+                    PackageManager.ToolPkgDesktopWidget::title,
+                    PackageManager.ToolPkgDesktopWidget::containerPackageName,
+                    PackageManager.ToolPkgDesktopWidget::widgetId
+                )
+            )
     }
 
     fun getToolPkgWorkflowTemplates(

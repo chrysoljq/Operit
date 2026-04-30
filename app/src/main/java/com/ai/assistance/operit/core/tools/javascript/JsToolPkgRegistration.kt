@@ -7,6 +7,7 @@ data class ToolPkgMainRegistrationCapture(
     val toolboxUiModules: List<String>,
     val uiRoutes: List<String>,
     val navigationEntries: List<String>,
+    val desktopWidgets: List<String>,
     val appLifecycleHooks: List<String>,
     val messageProcessingPlugins: List<String>,
     val xmlRenderPlugins: List<String>,
@@ -26,6 +27,7 @@ private enum class RegistrationBucket {
     TOOLBOX_UI,
     UI_ROUTE,
     NAVIGATION_ENTRY,
+    DESKTOP_WIDGET,
     APP_LIFECYCLE,
     MESSAGE_PROCESSING,
     XML_RENDER,
@@ -54,6 +56,7 @@ internal class JsToolPkgRegistrationSession {
     fun appendToolboxUiModule(specJson: String) = append(RegistrationBucket.TOOLBOX_UI, specJson)
     fun appendUiRoute(specJson: String) = append(RegistrationBucket.UI_ROUTE, specJson)
     fun appendNavigationEntry(specJson: String) = append(RegistrationBucket.NAVIGATION_ENTRY, specJson)
+    fun appendDesktopWidget(specJson: String) = append(RegistrationBucket.DESKTOP_WIDGET, specJson)
     fun appendAppLifecycleHook(specJson: String) = append(RegistrationBucket.APP_LIFECYCLE, specJson)
     fun appendMessageProcessingPlugin(specJson: String) =
         append(RegistrationBucket.MESSAGE_PROCESSING, specJson)
@@ -96,6 +99,7 @@ internal class JsToolPkgRegistrationSession {
                 toolboxUiModules = read(RegistrationBucket.TOOLBOX_UI),
                 uiRoutes = read(RegistrationBucket.UI_ROUTE),
                 navigationEntries = read(RegistrationBucket.NAVIGATION_ENTRY),
+                desktopWidgets = read(RegistrationBucket.DESKTOP_WIDGET),
                 appLifecycleHooks = read(RegistrationBucket.APP_LIFECYCLE),
                 messageProcessingPlugins = read(RegistrationBucket.MESSAGE_PROCESSING),
                 xmlRenderPlugins = read(RegistrationBucket.XML_RENDER),
@@ -373,6 +377,11 @@ internal fun buildToolPkgRegistrationBridgeScript(): String {
                     );
                     requireNative('registerToolPkgNavigationEntry')(
                         JSON.stringify(normalized)
+                    );
+                },
+                registerDesktopWidget: function(definition) {
+                    requireNative('registerToolPkgDesktopWidget')(
+                        JSON.stringify(copyObject(definition, ''))
                     );
                 },
                 readResource: readToolPkgResource

@@ -977,6 +977,7 @@
     <string name="quick_plugin_creator_step1_title">1. 更新或者下载包创作 Skill</string>
     <string name="quick_plugin_creator_step1_desc">点击按钮后会自动下载 `install_or_update.js`，并调用 operit_editor 的 debug_run_sandbox_script 执行安装或更新。</string>
     <string name="quick_plugin_creator_run_setup">自动下载并执行</string>
+    <string name="quick_plugin_creator_pull_skill_update">拉取 Skill 更新</string>
     <string name="quick_plugin_creator_setup_success">包创作 Skill 安装或更新完成</string>
     <string name="quick_plugin_creator_setup_failed">包创作 Skill 安装或更新失败</string>
     <string name="quick_plugin_creator_step2_title">2. 输入需求开始创作</string>
@@ -3063,7 +3064,6 @@
     <string name="workspace_not_exists_or_not_dir">工作区不存在或不是目录</string>
     <string name="workspace_is_empty">工作区为空</string>
     <string name="workspace_no_errors_found">暂无发现错误</string>
-    <string name="workspace_error_get_errors">获取错误信息时发生异常: %1$s</string>
     <string name="workspace_no_recent_changes">暂无最近改动</string>
     <string name="workspace_recently_modified_files">最近修改的文件:\n%1$s</string>
     <string name="workspace_error_get_changes">获取改动记录时发生异常: %1$s</string>
@@ -3073,7 +3073,6 @@
     <string name="workspace_minutes_ago">%1$d分钟前</string>
     <string name="workspace_just_now">刚刚</string>
     <string name="workspace_file_time_ago">%1$s (%2$s)</string>
-    <string name="workspace_error_check_errors">获取工作区错误失败</string>
     <string name="workspace_error_check_suggestions">获取工作区建议失败</string>
     <string name="workspace_error_generate_attachment">生成工作区附着失败</string>
     <string name="workspace_error_invalid_path">工作区路径不存在或不是目录: %1$s</string>
@@ -4612,6 +4611,16 @@
     <!-- Voice Assistant Widget -->
     <string name="voice_assistant_widget_description">快速启动 Operit 语音助手</string>
     <string name="voice_assistant_widget_title">语音助手</string>
+    <string name="toolpkg_widget_host_label">自定义小部件</string>
+    <string name="toolpkg_widget_host_description">添加后可绑定到某个插件注册的小组件页面</string>
+    <string name="toolpkg_widget_unconfigured_title">自定义小部件</string>
+    <string name="toolpkg_widget_unconfigured_subtitle">点击选择一个已注册的小组件页面</string>
+    <string name="toolpkg_widget_open_label">点击打开</string>
+    <string name="toolpkg_widget_picker_title">选择桌面小组件</string>
+    <string name="toolpkg_widget_picker_cancel">取消</string>
+    <string name="toolpkg_widget_picker_empty_title">还没有可用的小组件</string>
+    <string name="toolpkg_widget_picker_empty_body">先启用一个注册了 desktop widget 的 ToolPkg，再回来添加。</string>
+    <string name="toolpkg_widget_picker_selecting">正在配置…</string>
 
     <!-- MNN Model Download -->
     <string name="screen_title_mnn_model_download">MNN模型下载</string>

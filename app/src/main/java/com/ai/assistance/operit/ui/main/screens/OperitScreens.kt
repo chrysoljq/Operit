@@ -42,6 +42,8 @@ import com.ai.assistance.operit.ui.features.packages.screens.SkillDetailScreen
 import com.ai.assistance.operit.ui.features.packages.screens.SkillManageScreen
 import com.ai.assistance.operit.ui.features.packages.screens.SkillPublishScreen
 import com.ai.assistance.operit.ui.features.packages.screens.UnifiedMarketScreen
+import com.ai.assistance.operit.ui.features.packages.market.ArtifactPublishClusterContext
+import com.ai.assistance.operit.ui.features.packages.market.PluginCreationIntent
 import com.ai.assistance.operit.ui.features.settings.screens.ChatBackupSettingsScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ChatHistorySettingsScreen
 import com.ai.assistance.operit.ui.features.settings.screens.ContextSummarySettingsScreen
@@ -181,8 +183,8 @@ sealed class Screen(
                 onNavigateToMCPMarket = { navigateTo(Market(MarketHomeTab.MCP)) },
                 onNavigateToSkillMarket = { navigateTo(Market(MarketHomeTab.SKILL)) },
                 onNavigateToArtifactMarket = { navigateTo(Market(MarketHomeTab.ARTIFACT)) },
-                onStartPluginCreation = { prompt ->
-                    PendingChatDraftHandler.setPendingDraft(prompt)
+                onStartPluginCreation = { intent ->
+                    PendingChatDraftHandler.setPendingDraft(intent.toPrompt())
                     val chatEntry = AppRouteCatalog.toEntry(AiChat)
                     AppRouterGateway.resetTo(
                         routeId = chatEntry.routeId,
@@ -276,6 +278,26 @@ sealed class Screen(
         }
     }
 
+    data class ArtifactContinuePublish(
+        val publishContext: ArtifactPublishClusterContext
+    ) : Screen(navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
+        @Composable
+        override fun Content(
+                navController: NavController,
+                navigateTo: ScreenNavigationHandler,
+                onGoBack: () -> Unit,
+                hasBackgroundImage: Boolean,
+                onLoading: (Boolean) -> Unit,
+                onError: (String) -> Unit,
+                onGestureConsumed: (Boolean) -> Unit
+        ) {
+            ArtifactPublishScreen(
+                onNavigateBack = onGoBack,
+                publishContext = publishContext
+            )
+        }
+    }
+
     data class ArtifactEdit(val editingIssue: com.ai.assistance.operit.data.api.GitHubIssue) :
             Screen(navItem = NavItem.Packages, titleRes = R.string.screen_title_artifact_publish) {
         @Composable
@@ -309,7 +331,19 @@ sealed class Screen(
         ) {
             ArtifactDetailScreen(
                 issue = issue,
-                onNavigateBack = onGoBack
+                onNavigateBack = onGoBack,
+                onStartPluginCreation = { intent ->
+                    PendingChatDraftHandler.setPendingDraft(intent.toPrompt())
+                    val chatEntry = AppRouteCatalog.toEntry(AiChat)
+                    AppRouterGateway.resetTo(
+                        routeId = chatEntry.routeId,
+                        args = chatEntry.args,
+                        source = chatEntry.source
+                    )
+                },
+                onContinuePublish = { publishContext ->
+                    navigateTo(ArtifactContinuePublish(publishContext))
+                }
             )
         }
     }

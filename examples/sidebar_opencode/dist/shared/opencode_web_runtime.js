@@ -26,6 +26,9 @@ function toPort(raw) {
 function buildServerUrl(port) {
     return `http://${HOST}:${port}`;
 }
+function buildHealthUrl(port) {
+    return `${buildServerUrl(port)}/global/health`;
+}
 function sleep(ms) {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
@@ -76,6 +79,42 @@ function reportProgress(onProgress, message, progress) {
         progress,
     });
 }
+function normalizeProgressValue(value, fallback) {
+    if (!Number.isFinite(value)) {
+        return fallback;
+    }
+    return Math.max(0, Math.min(100, Math.round(value)));
+}
+function createInstallProgressReporter(onProgress) {
+    let currentProgress = 46;
+    return (message) => {
+        const normalizedMessage = normalizeProgressText(message) || "安装 OpenCode CLI";
+        const lower = normalizedMessage.toLowerCase();
+        let nextProgress = currentProgress;
+        if (lower.includes("resolved") ||
+            lower.includes("reused") ||
+            lower.includes("downloaded") ||
+            lower.includes("added")) {
+            nextProgress = Math.min(76, currentProgress + 2);
+        }
+        else if (lower.includes("packages") ||
+            lower.includes("progress") ||
+            lower.includes("fetch") ||
+            lower.includes("link")) {
+            nextProgress = Math.min(74, currentProgress + 1);
+        }
+        else if (lower.includes("done") ||
+            lower.includes("opencode") ||
+            lower.includes("version")) {
+            nextProgress = Math.max(currentProgress, 78);
+        }
+        else {
+            nextProgress = Math.min(72, currentProgress + 1);
+        }
+        currentProgress = normalizeProgressValue(nextProgress, currentProgress);
+        reportProgress(onProgress, `安装 OpenCode: ${normalizedMessage}`, currentProgress);
+    };
+}
 async function execServerCommandStreaming(command, timeoutMs, onProgress) {
     const sessionId = await ensureServerTerminalSession();
     return await Tools.System.terminal.execStreaming(sessionId, command, {
@@ -116,18 +155,8 @@ async function ensureLinuxRuntime() {
     await Tools.Files.mkdir(LINUX_RUNTIME_DIR, true, "linux");
     await Tools.Files.mkdir(LINUX_PNPM_HOME, true, "linux");
 }
-async function isOpenCodeInstalled() {
-    const result = await execServerCommand(bashCommand([
-        buildCommonEnvScript(),
-        "if command -v opencode >/dev/null 2>&1; then",
-        "  echo yes",
-        "else",
-        "  echo no",
-        "fi",
-    ].join("\n")), 10000);
-    return String(result?.output || "").includes("yes");
-}
 async function ensurePnpmAndOpenCodeInstalled(onProgress) {
+    const reportInstallProgress = createInstallProgressReporter(onProgress);
     const command = bashCommand([
         buildCommonEnvScript(),
         "if ! command -v node >/dev/null 2>&1; then",
@@ -154,9 +183,7 @@ async function ensurePnpmAndOpenCodeInstalled(onProgress) {
         "fi",
         "opencode --version",
     ].join("\n"));
-    return await execServerCommandStreaming(command, 240000, (message) => {
-        reportProgress(onProgress, `安装 OpenCode: ${message}`, 58);
-    });
+    return await execServerCommandStreaming(command, 240000, reportInstallProgress);
 }
 async function stopServerIfRequested(forceRestart) {
     if (!forceRestart) {
@@ -197,7 +224,7 @@ async function startServer(port) {
 }
 async function readHealth(port) {
     try {
-        const result = await Tools.Net.httpGet(buildServerUrl(port));
+        const result = await Tools.Net.httpGet(buildHealthUrl(port));
         const statusCode = Number(result?.statusCode || 0);
         if (statusCode >= 200 && statusCode < 400) {
             return {
@@ -251,12 +278,8 @@ async function ensureOpenCodeWebServer(params) {
     reportProgress(onProgress, "停止旧的 OpenCode 进程", 20);
     await stopServerIfRequested(Boolean(params?.force_restart));
     let installResult = null;
-    reportProgress(onProgress, "检查 OpenCode CLI 是否已安装", 34);
-    const installed = await isOpenCodeInstalled();
-    if (!installed) {
-        reportProgress(onProgress, "正在安装 OpenCode CLI", 46);
-        installResult = await ensurePnpmAndOpenCodeInstalled(onProgress);
-    }
+    reportProgress(onProgress, "检查并准备 OpenCode CLI 运行时", 34);
+    installResult = await ensurePnpmAndOpenCodeInstalled(onProgress);
     reportProgress(onProgress, "正在启动 OpenCode Web 服务", 80);
     const sessionId = await startServer(port);
     reportProgress(onProgress, "等待 OpenCode Web 服务响应", 88);

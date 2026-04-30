@@ -1,12 +1,10 @@
 package com.ai.assistance.operit.ui.features.packages.market
 
 import android.widget.Toast
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.api.ArtifactProjectRankEntryResponse
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.mcp.InstallProgress
 
@@ -36,73 +34,45 @@ val McpMarketBrowseConfig =
 
 @Composable
 fun rememberArtifactMarketBrowseEntry(
-    item: ArtifactMarketItem,
-    marketStats: Map<String, MarketEntryStats>,
+    item: ArtifactProjectRankEntryResponse,
+    projectInstallStates: Map<String, LocalArtifactInstallStateKind>,
     installingIds: Set<String>,
-    installedArtifactIds: Set<String>,
-    isCompatible: Boolean,
-    compatibilityLabel: String,
-    onViewDetails: (GitHubIssue) -> Unit,
-    onInstallRequest: (ArtifactMarketItem) -> Unit
+    onViewDetails: (String) -> Unit,
+    onInstallRequest: (ArtifactProjectRankEntryResponse) -> Unit
 ): MarketBrowseEntry {
-    val metadata = item.metadata
-    val entryId = remember(metadata) { resolveArtifactMarketEntryId(metadata) }
-    val artifactId = metadata.normalizedId.ifBlank { entryId }
-    val isInstalling = artifactId in installingIds
-    val isInstalled = artifactId in installedArtifactIds
-    val artifactTypeLabel =
-        when (PublishArtifactType.fromWireValue(metadata.type)) {
-            PublishArtifactType.SCRIPT -> stringResource(R.string.artifact_type_script)
-            PublishArtifactType.PACKAGE -> stringResource(R.string.artifact_type_package)
-            null -> metadata.type
-        }
+    val isInstalling = item.projectId in installingIds
+    val installState = projectInstallStates[item.projectId] ?: LocalArtifactInstallStateKind.NOT_INSTALLED
 
     return MarketBrowseEntry(
         model =
             MarketBrowseCardModel(
-                title = metadata.displayName.ifBlank { item.issue.title },
-                description = metadata.description,
-                ownerUsername = metadata.publisherLogin,
-                publisherAvatarUrl = item.issue.user.avatarUrl,
-                thumbsUpCount = item.issue.reactions?.thumbs_up ?: 0,
-                heartCount = item.issue.reactions?.heart ?: 0,
-                downloads = marketStats[entryId]?.downloads ?: 0,
-                chips =
-                    listOf(
-                        MarketBrowseChip(
-                            label = artifactTypeLabel,
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        MarketBrowseChip(
-                            label =
-                                stringResource(
-                                    R.string.supported_app_versions_short,
-                                    compatibilityLabel
-                                ),
-                            containerColor =
-                                if (isCompatible) {
-                                    MaterialTheme.colorScheme.secondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.errorContainer
-                                },
-                            contentColor =
-                                if (isCompatible) {
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onErrorContainer
-                                }
-                        )
-                    ),
+                title = item.projectDisplayName,
+                description = truncateMarketBrowseDescription(item.projectDescription),
+                ownerUsername = item.rootPublisherLogin,
+                thumbsUpCount = item.likes,
+                heartCount = 0,
+                downloads = item.downloads,
                 actionState =
-                    when {
-                        isInstalled -> MarketBrowseActionState.Installed
-                        isInstalling -> MarketBrowseActionState.Installing()
-                        item.issue.state == "open" -> MarketBrowseActionState.Available
-                        else -> MarketBrowseActionState.Unavailable(MarketUnavailableKind.Warning)
+                    if (isInstalling) {
+                        MarketBrowseActionState.Installing()
+                    } else {
+                        when (installState) {
+                            LocalArtifactInstallStateKind.EXACT_INSTALLED ->
+                                MarketBrowseActionState.Installed
+
+                            LocalArtifactInstallStateKind.SAME_PROJECT_VARIANT_INSTALLED ->
+                                MarketBrowseActionState.Updatable
+
+                            LocalArtifactInstallStateKind.NAME_CONFLICT,
+                            LocalArtifactInstallStateKind.BUILT_IN_CONFLICT ->
+                                MarketBrowseActionState.Unavailable(MarketUnavailableKind.Warning)
+
+                            LocalArtifactInstallStateKind.NOT_INSTALLED ->
+                                MarketBrowseActionState.Available
+                        }
                     }
             ),
-        onViewDetails = { onViewDetails(item.issue) },
+        onViewDetails = { onViewDetails(item.projectId) },
         onInstall = { onInstallRequest(item) }
     )
 }
@@ -131,7 +101,6 @@ fun rememberSkillMarketBrowseEntry(
                 title = item.title,
                 description = truncateMarketBrowseDescription(item.description),
                 ownerUsername = item.ownerUsername,
-                publisherAvatarUrl = item.publisherAvatarUrl,
                 thumbsUpCount = item.issue.reactions?.thumbs_up ?: 0,
                 heartCount = item.issue.reactions?.heart ?: 0,
                 downloads = marketStats[entryId]?.downloads ?: 0,
@@ -187,7 +156,6 @@ fun rememberMcpMarketBrowseEntry(
                 title = item.title,
                 description = truncateMarketBrowseDescription(item.description),
                 ownerUsername = item.ownerUsername,
-                publisherAvatarUrl = item.publisherAvatarUrl,
                 thumbsUpCount = item.issue.reactions?.thumbs_up ?: 0,
                 heartCount = item.issue.reactions?.heart ?: 0,
                 downloads = marketStats[entryId]?.downloads ?: 0,

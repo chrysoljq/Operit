@@ -1,14 +1,21 @@
 package com.ai.assistance.operit.ui.features.packages.screens
 
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Tag
@@ -16,8 +23,14 @@ import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -26,16 +39,27 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.data.api.ArtifactProjectNodeResponse
 import com.ai.assistance.operit.data.api.GitHubIssue
-import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketItem
-import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketScope
+import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.ui.features.packages.market.ArtifactPublishClusterContext
+import com.ai.assistance.operit.ui.features.packages.market.LocalArtifactInstallStateKind
+import com.ai.assistance.operit.ui.features.packages.market.PluginCreationIntent
 import com.ai.assistance.operit.ui.features.packages.market.PublishArtifactType
 import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailAction
 import com.ai.assistance.operit.ui.features.packages.market.UnifiedMarketDetailBanner
@@ -53,77 +77,115 @@ import com.ai.assistance.operit.ui.features.packages.market.buildMarketCommentRe
 import com.ai.assistance.operit.ui.features.packages.market.formatMarketDetailCompactDate
 import com.ai.assistance.operit.ui.features.packages.market.formatMarketDetailDate
 import com.ai.assistance.operit.ui.features.packages.market.marketDetailInitial
-import com.ai.assistance.operit.ui.features.packages.market.resolveArtifactMarketEntryId
-import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactMarketViewModel
+import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactProjectDetailViewModel
 import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtifactDetailScreen(
     issue: GitHubIssue,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    onStartPluginCreation: (PluginCreationIntent) -> Unit = {},
+    onContinuePublish: (ArtifactPublishClusterContext) -> Unit = {}
 ) {
     val info = remember(issue) { ArtifactIssueParser.parseArtifactInfo(issue) }
     val artifactType = info.type
-    if (artifactType == null) {
+    val projectId = info.projectId.ifBlank { info.normalizedId }
+    val nodeId = info.nodeId.ifBlank { "legacy-${issue.id}" }
+    if (artifactType == null || projectId.isBlank()) {
         InvalidArtifactMetadataScreen()
         return
     }
 
     val context = LocalContext.current
-    val viewModel: ArtifactMarketViewModel =
+    val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val packageManager = remember { PackageManager.getInstance(context, toolHandler) }
+    val scope = rememberCoroutineScope()
+    val viewModel: ArtifactProjectDetailViewModel =
         viewModel(
-            key = "artifact-detail-${artifactType.wireValue}",
+            key = "artifact-detail-$projectId-$nodeId",
             factory =
-                ArtifactMarketViewModel.Factory(
+                ArtifactProjectDetailViewModel.Factory(
                     context.applicationContext,
-                    if (artifactType == PublishArtifactType.PACKAGE) {
-                        ArtifactMarketScope.PACKAGE_ONLY
-                    } else {
-                        ArtifactMarketScope.SCRIPT_ONLY
-                    }
+                    projectId,
+                    nodeId
                 )
         )
 
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
+    val project by viewModel.project.collectAsState()
+    val selectedNode by viewModel.selectedNode.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
-    val comments by viewModel.issueComments.collectAsState()
+    val commentsMap by viewModel.issueComments.collectAsState()
     val isLoadingComments by viewModel.isLoadingComments.collectAsState()
     val isPostingComment by viewModel.isPostingComment.collectAsState()
-    val issueReactions by viewModel.issueReactions.collectAsState()
+    val reactionsMap by viewModel.issueReactions.collectAsState()
     val isLoadingReactions by viewModel.isLoadingReactions.collectAsState()
     val isReacting by viewModel.isReacting.collectAsState()
-    val userAvatarCache by viewModel.userAvatarCache.collectAsState()
-    val installedIds by viewModel.installedArtifactIds.collectAsState()
-    val installingIds by viewModel.installingIds.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val marketStats by viewModel.marketStats.collectAsState()
+    val installingNodeIds by viewModel.installingNodeIds.collectAsState()
+    val isRefreshingInstalledArtifacts by viewModel.isRefreshingInstalledArtifacts.collectAsState()
 
-    val entryId = remember(info.metadata) { info.metadata?.let(::resolveArtifactMarketEntryId).orEmpty() }
-    val currentComments = comments[issue.number].orEmpty()
-    val currentReactions = issueReactions[issue.number].orEmpty()
-    val downloads = marketStats[entryId]?.downloads ?: 0
-    val likes = if (currentReactions.isNotEmpty()) currentReactions.count { it.content == "+1" } else issue.reactions?.thumbs_up ?: 0
-    val favorites = if (currentReactions.isNotEmpty()) currentReactions.count { it.content == "heart" } else issue.reactions?.heart ?: 0
-    val currentUserLogin = currentUser?.login
-    val hasThumbsUp = currentUserLogin != null && currentReactions.any { it.content == "+1" && it.user.login == currentUserLogin }
-    val hasHeart = currentUserLogin != null && currentReactions.any { it.content == "heart" && it.user.login == currentUserLogin }
-    val isInstalled = installedIds.contains(info.normalizedId)
-    val isInstalling = installingIds.contains(info.normalizedId)
-    val isCompatible = info.metadata?.let(viewModel::isCompatible) ?: true
-    val publisherAvatarUrl = userAvatarCache[info.publisherLogin]
-
-    var commentText by remember { mutableStateOf("") }
-    var showCommentDialog by remember { mutableStateOf(false) }
-    var showCompatibilityDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(issue.number, entryId) {
-        viewModel.loadIssueComments(issue.number, artifactType)
-        viewModel.loadIssueReactions(issue.number, artifactType)
-        viewModel.refreshInstalledArtifacts()
-        viewModel.ensureMarketStatsLoaded(entryId)
-        if (info.publisherLogin.isNotBlank()) {
-            viewModel.fetchUserAvatar(info.publisherLogin)
+    val node = selectedNode
+    if (node == null) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.loading),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            InvalidArtifactMetadataScreen()
         }
+        return
+    }
+
+    val currentComments = commentsMap[node.issue.number].orEmpty()
+    val currentReactions = reactionsMap[node.issue.number].orEmpty()
+    val downloads = project?.downloads ?: 0
+    val likes =
+        if (currentReactions.isNotEmpty()) {
+            currentReactions.count { it.content == "+1" }
+        } else {
+            node.issue.reactions?.thumbs_up ?: 0
+        }
+    val favorites =
+        if (currentReactions.isNotEmpty()) {
+            currentReactions.count { it.content == "heart" }
+        } else {
+            node.issue.reactions?.heart ?: 0
+        }
+    val currentUserLogin = currentUser?.login
+    val hasThumbsUp =
+        currentUserLogin != null &&
+            currentReactions.any { it.content == "+1" && it.user.login == currentUserLogin }
+    val hasHeart =
+        currentUserLogin != null &&
+            currentReactions.any { it.content == "heart" && it.user.login == currentUserLogin }
+    val installState = viewModel.installState(node)
+    val isInstalling = installingNodeIds.contains(node.nodeId)
+    val isCompatible = viewModel.isCompatible(node)
+    val supportedVersionLabel = viewModel.supportedVersionLabel(node)
+
+    var commentText by remember(node.issue.number) { mutableStateOf("") }
+    var showCommentDialog by remember(node.issue.number) { mutableStateOf(false) }
+    var showCompatibilityDialog by remember(node.issue.number) { mutableStateOf(false) }
+    var showContinueDialog by remember(node.issue.number) { mutableStateOf(false) }
+    var creationRequirement by remember(node.issue.number) { mutableStateOf("") }
+    var creatorSetupRunning by remember(node.issue.number) { mutableStateOf(false) }
+    var creatorSetupResult by remember(node.issue.number) { mutableStateOf<ToolResult?>(null) }
+
+    LaunchedEffect(node.issue.number) {
+        viewModel.loadIssueComments(node.issue.number)
+        viewModel.loadIssueReactions(node.issue.number)
+        viewModel.refreshInstalledArtifacts()
     }
 
     errorMessage?.let { error ->
@@ -133,25 +195,26 @@ fun ArtifactDetailScreen(
         }
     }
 
-    val primaryActionLabel =
-        when {
-            isInstalled -> stringResource(R.string.downloaded_already)
-            isInstalling -> stringResource(R.string.downloading)
-            artifactType == PublishArtifactType.SCRIPT -> stringResource(R.string.download_script)
-            else -> stringResource(R.string.download_package)
-        }
+    val primaryActionUi =
+        rememberArtifactPrimaryActionUi(
+            issueState = node.issue.state,
+            installState = installState,
+            isInstalling = isInstalling,
+            isRefreshingInstalledArtifacts = isRefreshingInstalledArtifacts,
+            artifactType = artifactType
+        )
 
     val header =
         UnifiedMarketDetailHeader(
-            title = info.title,
-            fallbackAvatarText = marketDetailInitial(info.title),
+            title = node.displayName.ifBlank { info.title },
+            fallbackAvatarText = marketDetailInitial(node.displayName.ifBlank { info.title }),
             participants =
                 listOf(
                     UnifiedMarketDetailParticipant(
                         roleLabel = stringResource(R.string.market_detail_publisher_role),
-                        name = info.publisherLogin.ifBlank { "-" },
-                        avatarUrl = publisherAvatarUrl,
-                        fallbackAvatarText = marketDetailInitial(info.publisherLogin)
+                        name = node.publisherLogin.ifBlank { node.issue.user.login },
+                        avatarUrl = node.issue.user.avatarUrl,
+                        fallbackAvatarText = marketDetailInitial(node.publisherLogin.ifBlank { node.issue.user.login })
                     ),
                     UnifiedMarketDetailParticipant(
                         roleLabel = stringResource(R.string.market_detail_sharer_role),
@@ -162,9 +225,9 @@ fun ArtifactDetailScreen(
                 ),
             badges =
                 buildArtifactBadges(
-                    info = info,
-                    artifactType = artifactType,
-                    supportedVersionLabel = info.metadata?.let(viewModel::supportedVersionLabel)
+                    version = node.version,
+                    artifactType = PublishArtifactType.fromWireValue(node.type) ?: artifactType,
+                    supportedVersionLabel = supportedVersionLabel
                 ),
             metrics =
                 listOf(
@@ -177,12 +240,12 @@ fun ArtifactDetailScreen(
                         label = stringResource(R.string.market_sort_likes)
                     ),
                     UnifiedMarketDetailMetric(
-                        value = formatMarketDetailCompactDate(issue.created_at),
+                        value = formatMarketDetailCompactDate(node.issue.created_at),
                         label = stringResource(R.string.market_detail_published_label)
                     )
                 ),
             statusLabel =
-                if (issue.state == "open") {
+                if (node.issue.state == "open") {
                     stringResource(R.string.market_detail_status_available)
                 } else {
                     stringResource(R.string.market_detail_status_closed)
@@ -191,11 +254,11 @@ fun ArtifactDetailScreen(
 
     val sections =
         buildList {
-            if (info.description.isNotBlank()) {
+            if (node.description.isNotBlank()) {
                 add(
                     UnifiedMarketDetailSection(
                         title = stringResource(R.string.market_detail_about_title),
-                        body = info.description,
+                        body = node.description,
                         icon = Icons.Default.Info,
                         showTitle = false
                     )
@@ -209,7 +272,7 @@ fun ArtifactDetailScreen(
                 UnifiedMarketDetailInfoRow(
                     label = stringResource(R.string.type_label),
                     value =
-                        when (artifactType) {
+                        when (PublishArtifactType.fromWireValue(node.type) ?: artifactType) {
                             PublishArtifactType.PACKAGE -> stringResource(R.string.artifact_type_package)
                             PublishArtifactType.SCRIPT -> stringResource(R.string.artifact_type_script)
                         },
@@ -219,14 +282,14 @@ fun ArtifactDetailScreen(
             add(
                 UnifiedMarketDetailInfoRow(
                     label = stringResource(R.string.version_label),
-                    value = info.version.ifBlank { "-" },
+                    value = node.version.ifBlank { "-" },
                     icon = Icons.Default.Update
                 )
             )
             add(
                 UnifiedMarketDetailInfoRow(
                     label = stringResource(R.string.supported_app_versions),
-                    value = info.metadata?.let(viewModel::supportedVersionLabel) ?: "-",
+                    value = supportedVersionLabel,
                     icon = Icons.Default.Info
                 )
             )
@@ -237,22 +300,23 @@ fun ArtifactDetailScreen(
                     icon = Icons.Default.Info
                 )
             )
-            addIfNotBlank(stringResource(R.string.asset_file_label), info.assetName, Icons.Default.Info)
-            addIfNotBlank(stringResource(R.string.forge_repo_label), info.forgeRepo, Icons.Default.Info)
-            addIfNotBlank(stringResource(R.string.release_tag_label), info.releaseTag, Icons.Default.Tag)
-            addIfNotBlank(stringResource(R.string.sha256_label), info.sha256, Icons.Default.Info)
-            addIfNotBlank(stringResource(R.string.source_file_label), info.sourceFileName, Icons.Default.Info)
+            addIfNotBlank("项目簇", node.projectId, Icons.Default.Tag)
+            addIfNotBlank("节点 ID", node.nodeId, Icons.Default.Tag)
+            addIfNotBlank(stringResource(R.string.asset_file_label), node.assetName, Icons.Default.Info)
+            addIfNotBlank(stringResource(R.string.release_tag_label), node.releaseTag, Icons.Default.Tag)
+            addIfNotBlank(stringResource(R.string.sha256_label), node.sha256, Icons.Default.Info)
+            addIfNotBlank(stringResource(R.string.source_file_label), node.sourceFileName, Icons.Default.Info)
             add(
                 UnifiedMarketDetailInfoRow(
                     label = stringResource(R.string.market_detail_published_label),
-                    value = formatMarketDetailDate(issue.created_at),
+                    value = formatMarketDetailDate(node.issue.created_at),
                     icon = Icons.Default.CalendarToday
                 )
             )
             add(
                 UnifiedMarketDetailInfoRow(
                     label = stringResource(R.string.updated_at_label),
-                    value = formatMarketDetailDate(issue.updated_at),
+                    value = formatMarketDetailDate(node.issue.updated_at),
                     icon = Icons.Default.Update
                 )
             )
@@ -262,8 +326,8 @@ fun ArtifactDetailScreen(
         UnifiedMarketDetailReactionsState(
             title = stringResource(R.string.mcp_plugin_community_feedback),
             helperText = if (currentUser == null) stringResource(R.string.mcp_plugin_login_required) else null,
-            isLoading = issue.number in isLoadingReactions,
-            isMutating = issue.number in isReacting,
+            isLoading = node.issue.number in isLoadingReactions,
+            isMutating = node.issue.number in isReacting,
             options =
                 listOf(
                     UnifiedMarketDetailReactionOption(
@@ -275,7 +339,7 @@ fun ArtifactDetailScreen(
                         enabled = currentUser != null,
                         onClick = {
                             if (!hasThumbsUp) {
-                                viewModel.addReactionToIssue(issue.number, artifactType, "+1")
+                                viewModel.addReactionToIssue(node.issue.number, "+1")
                             }
                         }
                     ),
@@ -288,7 +352,7 @@ fun ArtifactDetailScreen(
                         enabled = currentUser != null,
                         onClick = {
                             if (!hasHeart) {
-                                viewModel.addReactionToIssue(issue.number, artifactType, "heart")
+                                viewModel.addReactionToIssue(node.issue.number, "heart")
                             }
                         }
                     )
@@ -299,11 +363,11 @@ fun ArtifactDetailScreen(
         UnifiedMarketDetailCommentsState(
             title = stringResource(R.string.comments_with_count, currentComments.size),
             comments = currentComments,
-            isLoading = issue.number in isLoadingComments,
-            isPosting = issue.number in isPostingComment,
+            isLoading = node.issue.number in isLoadingComments,
+            isPosting = node.issue.number in isPostingComment,
             canPost = currentUser != null,
             postHint = if (currentUser == null) stringResource(R.string.mcp_plugin_login_required) else null,
-            onRefresh = { viewModel.loadIssueComments(issue.number, artifactType) },
+            onRefresh = { viewModel.loadIssueComments(node.issue.number) },
             onRequestPost = { showCommentDialog = true },
             onReplyToComment = { comment ->
                 commentText = buildMarketCommentReplyDraft(comment)
@@ -316,55 +380,51 @@ fun ArtifactDetailScreen(
         header = header,
         primaryAction =
             UnifiedMarketDetailAction(
-                label = primaryActionLabel,
+                label = primaryActionUi.label,
                 onClick = {
-                    val metadata = info.metadata
-                    if (metadata != null) {
-                        if (viewModel.isCompatible(metadata)) {
-                            viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = metadata))
-                        } else {
-                            showCompatibilityDialog = true
-                        }
+                    if (isCompatible) {
+                        viewModel.installNode(node)
+                    } else {
+                        showCompatibilityDialog = true
                     }
                 },
-                enabled = issue.state == "open" && !isInstalled && !isInstalling,
-                isLoading = isInstalling,
-                icon =
-                    when {
-                        isInstalling -> null
-                        isInstalled -> Icons.Default.Check
-                        else -> Icons.Default.Download
-                    }
+                enabled = primaryActionUi.enabled,
+                isLoading = primaryActionUi.isLoading,
+                icon = primaryActionUi.icon
             ),
-        secondaryAction =
-            if (info.downloadUrl.isNotBlank()) {
-                UnifiedMarketDetailAction(
-                    label = stringResource(R.string.open_asset),
-                    onClick = { openExternalUrl(context, info.downloadUrl) },
-                    icon = Icons.Default.Info
-                )
-            } else {
-                null
-            },
+        secondaryAction = null,
         banner =
-            if (!isCompatible && info.metadata != null) {
-                UnifiedMarketDetailBanner(
-                    title = stringResource(R.string.unsupported_artifact_version_title),
-                    message =
-                        stringResource(
-                            R.string.unsupported_artifact_version_message,
-                            info.title,
-                            viewModel.currentAppVersion,
-                            viewModel.supportedVersionLabel(info.metadata)
-                        ),
-                    icon = Icons.Default.Warning,
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                )
-            } else {
-                null
-            },
+            buildArtifactBanner(
+                node = node,
+                installState = installState,
+                isCompatible = isCompatible,
+                currentAppVersion = viewModel.currentAppVersion,
+                supportedVersionLabel = supportedVersionLabel
+            ),
         sections = sections,
+        overviewExtraContent = {
+            ArtifactNodeContinuePublishCard(
+                node = node,
+                onPublish = {
+                    onContinuePublish(
+                        ArtifactPublishClusterContext(
+                            projectId = node.projectId,
+                            rootNodeId = node.rootNodeId,
+                            runtimePackageId = node.runtimePackageId,
+                            parentNodeIds = listOf(node.nodeId),
+                            lockedDisplayName = node.displayName.ifBlank { info.title },
+                            projectDisplayName =
+                                (project?.projectDisplayName ?: info.projectDisplayName)
+                                    .ifBlank { node.projectDisplayName.ifBlank { info.title } },
+                            projectDescription =
+                                (project?.projectDescription ?: info.projectDescription)
+                                    .ifBlank { node.projectDescription.ifBlank { node.description } }
+                        )
+                    )
+                },
+                onDevelop = { showContinueDialog = true }
+            )
+        },
         metadataTitle = stringResource(R.string.metadata_title),
         metadataRows = metadataRows,
         reactions = reactionsState,
@@ -381,16 +441,16 @@ fun ArtifactDetailScreen(
             },
             onPost = {
                 if (commentText.isNotBlank()) {
-                    viewModel.postIssueComment(issue.number, artifactType, commentText)
+                    viewModel.postIssueComment(node.issue.number, commentText)
                     showCommentDialog = false
                     commentText = ""
                 }
             },
-            isPosting = issue.number in isPostingComment
+            isPosting = node.issue.number in isPostingComment
         )
     }
 
-    if (showCompatibilityDialog && info.metadata != null) {
+    if (showCompatibilityDialog) {
         AlertDialog(
             onDismissRequest = { showCompatibilityDialog = false },
             title = { Text(stringResource(R.string.unsupported_artifact_version_title)) },
@@ -398,16 +458,16 @@ fun ArtifactDetailScreen(
                 Text(
                     stringResource(
                         R.string.unsupported_artifact_version_message,
-                        info.title,
+                        node.displayName.ifBlank { info.title },
                         viewModel.currentAppVersion,
-                        viewModel.supportedVersionLabel(info.metadata)
+                        supportedVersionLabel
                     )
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.installArtifact(ArtifactMarketItem(issue = issue, metadata = info.metadata))
+                        viewModel.installNode(node)
                         showCompatibilityDialog = false
                     }
                 ) {
@@ -421,12 +481,243 @@ fun ArtifactDetailScreen(
             }
         )
     }
+
+    if (showContinueDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showContinueDialog = false
+                creationRequirement = ""
+                creatorSetupRunning = false
+                creatorSetupResult = null
+            },
+            title = { Text("基于当前节点继续开发") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "1. 拉取 Skill 更新",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        FilledTonalButton(
+                            onClick = {
+                                scope.launch {
+                                    creatorSetupRunning = true
+                                    creatorSetupResult = null
+                                    creatorSetupResult =
+                                        withContext(Dispatchers.IO) {
+                                            runQuickPluginCreatorSetup(
+                                                context = context,
+                                                packageManager = packageManager,
+                                                toolHandler = toolHandler
+                                            )
+                                        }
+                                    creatorSetupRunning = false
+                                }
+                            },
+                            enabled = !creatorSetupRunning,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (creatorSetupRunning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.size(8.dp))
+                            }
+                            Text(stringResource(R.string.quick_plugin_creator_pull_skill_update))
+                        }
+                        creatorSetupResult?.let { result ->
+                            Text(
+                                text =
+                                    if (result.success) {
+                                        result.result.toString()
+                                    } else {
+                                        result.error ?: stringResource(R.string.unknown_error)
+                                    },
+                                style = MaterialTheme.typography.bodySmall,
+                                color =
+                                    if (result.success) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    }
+                            )
+                        }
+                    }
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "2. 切换或下载当前版本",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        FilledTonalButton(
+                            onClick = {
+                                if (isCompatible) {
+                                    viewModel.installNode(node)
+                                } else {
+                                    showCompatibilityDialog = true
+                                }
+                            },
+                            enabled = primaryActionUi.enabled,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (primaryActionUi.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.size(8.dp))
+                            } else if (primaryActionUi.icon != null) {
+                                androidx.compose.material3.Icon(
+                                    imageVector = primaryActionUi.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.size(8.dp))
+                            }
+                            Text(primaryActionUi.label)
+                        }
+                    }
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "3. 输入需求开始创作",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "会自动带上当前项目簇、当前节点和 runtimePackageId 继续开发。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = creationRequirement,
+                            onValueChange = { creationRequirement = it },
+                            label = { Text("这次想让 AI 做什么") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val requirement = creationRequirement.trim()
+                        if (requirement.isBlank()) {
+                            return@TextButton
+                        }
+                        creationRequirement = ""
+                        showContinueDialog = false
+                        creatorSetupRunning = false
+                        creatorSetupResult = null
+                        onStartPluginCreation(
+                            PluginCreationIntent.Continue(
+                                projectId = node.projectId,
+                                runtimePackageId = node.runtimePackageId,
+                                parentNodeIds = listOf(node.nodeId),
+                                requirement = requirement
+                            )
+                        )
+                    }
+                ) {
+                    Text("开始基于开发")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showContinueDialog = false
+                        creationRequirement = ""
+                        creatorSetupRunning = false
+                        creatorSetupResult = null
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ArtifactNodeContinuePublishCard(
+    node: ArtifactProjectNodeResponse,
+    onPublish: () -> Unit,
+    onDevelop: () -> Unit
+) {
+    Card(
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.32f)
+            )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "在此版本基础上更新",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "你可以直接基于当前版本发布新版本，也可以先继续创作，再决定什么时候发布。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                onClick = onPublish,
+                enabled = node.runtimePackageId.isNotBlank(),
+                modifier = Modifier.height(38.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Default.Update,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(4.dp))
+                Text(
+                    text = "发布新版本",
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp)
+                )
+            }
+            Button(
+                onClick = onDevelop,
+                enabled = node.runtimePackageId.isNotBlank(),
+                modifier = Modifier.height(38.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(4.dp))
+                Text(
+                    text = "创作新版本",
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp)
+                )
+            }
+        }
+    }
 }
 
 @Composable
 private fun InvalidArtifactMetadataScreen() {
     Box(
-        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -437,9 +728,9 @@ private fun InvalidArtifactMetadataScreen() {
 }
 
 private fun buildArtifactBadges(
-    info: ArtifactIssueParser.ParsedArtifactInfo,
+    version: String,
     artifactType: PublishArtifactType,
-    supportedVersionLabel: String?
+    supportedVersionLabel: String
 ): List<String> {
     return buildList {
         add(
@@ -449,11 +740,59 @@ private fun buildArtifactBadges(
             }
         )
         supportedVersionLabel
-            ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
+            .takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
             ?.let { add("适配 $it") }
-        if (info.version.isNotBlank()) {
-            add("版本 ${normalizeDetailVersionBadge(info.version)}")
+        if (version.isNotBlank()) {
+            add("版本 ${normalizeDetailVersionBadge(version)}")
         }
+    }
+}
+
+@Composable
+private fun buildArtifactBanner(
+    node: ArtifactProjectNodeResponse,
+    installState: LocalArtifactInstallStateKind,
+    isCompatible: Boolean,
+    currentAppVersion: String,
+    supportedVersionLabel: String
+): UnifiedMarketDetailBanner? {
+    return when (installState) {
+        LocalArtifactInstallStateKind.NAME_CONFLICT ->
+            UnifiedMarketDetailBanner(
+                title = "同名冲突",
+                message = "本地已经有同名但不属于当前项目簇的版本 `${node.runtimePackageId}`，需要先手动卸载。",
+                icon = Icons.Default.Warning,
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+
+        LocalArtifactInstallStateKind.BUILT_IN_CONFLICT ->
+            UnifiedMarketDetailBanner(
+                title = "内置包冲突",
+                message = "本地同名包 `${node.runtimePackageId}` 来自内置插件，不能直接覆盖。",
+                icon = Icons.Default.Warning,
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+
+        else ->
+            if (!isCompatible) {
+                UnifiedMarketDetailBanner(
+                    title = stringResource(R.string.unsupported_artifact_version_title),
+                    message =
+                        stringResource(
+                            R.string.unsupported_artifact_version_message,
+                            node.displayName.ifBlank { node.projectDisplayName },
+                            currentAppVersion,
+                            supportedVersionLabel
+                        ),
+                    icon = Icons.Default.Warning,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            } else {
+                null
+            }
     }
 }
 
@@ -462,19 +801,63 @@ private fun normalizeDetailVersionBadge(value: String): String {
     return trimmed.removePrefix("v").removePrefix("V").ifBlank { trimmed }
 }
 
+private data class ArtifactPrimaryActionUi(
+    val label: String,
+    val enabled: Boolean,
+    val isLoading: Boolean,
+    val icon: ImageVector?
+)
+
+@Composable
+private fun rememberArtifactPrimaryActionUi(
+    issueState: String,
+    installState: LocalArtifactInstallStateKind,
+    isInstalling: Boolean,
+    isRefreshingInstalledArtifacts: Boolean,
+    artifactType: PublishArtifactType
+): ArtifactPrimaryActionUi {
+    val isBusy = isInstalling || isRefreshingInstalledArtifacts
+    val label =
+        when {
+            isRefreshingInstalledArtifacts && !isInstalling -> "检查安装中"
+            isInstalling -> stringResource(R.string.downloading)
+            installState == LocalArtifactInstallStateKind.EXACT_INSTALLED ->
+                stringResource(R.string.installed)
+            installState == LocalArtifactInstallStateKind.SAME_PROJECT_VARIANT_INSTALLED -> "切换到此版本"
+            installState == LocalArtifactInstallStateKind.NAME_CONFLICT -> "同名冲突"
+            installState == LocalArtifactInstallStateKind.BUILT_IN_CONFLICT -> "内置包冲突"
+            artifactType == PublishArtifactType.SCRIPT -> stringResource(R.string.download_script)
+            else -> stringResource(R.string.download_package)
+        }
+
+    return ArtifactPrimaryActionUi(
+        label = label,
+        enabled =
+            issueState == "open" &&
+                !isBusy &&
+                installState !in
+                    setOf(
+                        LocalArtifactInstallStateKind.EXACT_INSTALLED,
+                        LocalArtifactInstallStateKind.NAME_CONFLICT,
+                        LocalArtifactInstallStateKind.BUILT_IN_CONFLICT
+                    ),
+        isLoading = isBusy,
+        icon =
+            when {
+                isBusy -> null
+                installState == LocalArtifactInstallStateKind.EXACT_INSTALLED -> Icons.Default.Check
+                installState == LocalArtifactInstallStateKind.SAME_PROJECT_VARIANT_INSTALLED -> Icons.Default.Update
+                else -> Icons.Default.Download
+            }
+    )
+}
+
 private fun MutableList<UnifiedMarketDetailInfoRow>.addIfNotBlank(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: ImageVector
 ) {
     if (value.isNotBlank()) {
         add(UnifiedMarketDetailInfoRow(label = label, value = value, icon = icon))
     }
-}
-
-private fun openExternalUrl(
-    context: android.content.Context,
-    url: String
-) {
-    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 }

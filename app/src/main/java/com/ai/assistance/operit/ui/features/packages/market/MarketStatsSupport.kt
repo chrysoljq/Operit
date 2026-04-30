@@ -61,16 +61,6 @@ fun PublishArtifactType.toMarketStatsType(): MarketStatsType {
     }
 }
 
-fun resolveArtifactMarketStatsType(metadata: ArtifactMarketMetadata): MarketStatsType? {
-    return PublishArtifactType.fromWireValue(metadata.type)?.toMarketStatsType()
-}
-
-fun resolveArtifactMarketEntryId(metadata: ArtifactMarketMetadata): String {
-    return metadata.normalizedId.ifBlank {
-        normalizeMarketArtifactId(metadata.displayName.ifBlank { metadata.assetName })
-    }
-}
-
 fun resolveSkillMarketEntryId(issue: GitHubIssue): String {
     val skillInfo = SkillIssueParser.parseSkillInfo(issue)
     return resolveMarketEntryId(

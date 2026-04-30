@@ -520,6 +520,19 @@ export namespace ToolPkg {
         order?: number;
     }
 
+    export interface DesktopWidgetRegistration {
+        id: string;
+        route?: string;
+        routeId?: string;
+        render?: string;
+        renderRouteId?: string;
+        title?: LocalizedText;
+        subtitle?: LocalizedText;
+        description?: LocalizedText;
+        icon?: string;
+        order?: number;
+    }
+
     export interface AppLifecycleHookRegistration {
         id: string;
         event: AppLifecycleEvent;
@@ -596,6 +609,7 @@ export namespace ToolPkg {
         registerToolboxUiModule(definition: ToolboxUiModuleRegistration): void;
         registerUiRoute(definition: UiRouteRegistration): void;
         registerNavigationEntry(definition: NavigationEntryRegistration): void;
+        registerDesktopWidget(definition: DesktopWidgetRegistration): void;
         registerAppLifecycleHook(definition: AppLifecycleHookRegistration): void;
         registerMessageProcessingPlugin(definition: MessageProcessingPluginRegistration): void;
         registerXmlRenderPlugin(definition: XmlRenderPluginRegistration): void;
@@ -619,6 +633,8 @@ declare global {
     function registerToolPkgUiRoute(definition: ToolPkg.UiRouteRegistration): void;
 
     function registerToolPkgNavigationEntry(definition: ToolPkg.NavigationEntryRegistration): void;
+
+    function registerToolPkgDesktopWidget(definition: ToolPkg.DesktopWidgetRegistration): void;
 
     function registerToolPkgAppLifecycleHook(definition: ToolPkg.AppLifecycleHookRegistration): void;
 

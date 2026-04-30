@@ -3167,7 +3167,6 @@
     <string name="workspace_not_exists_or_not_dir">Workspace does not exist or is not a directory</string>
     <string name="workspace_is_empty">Workspace is empty</string>
     <string name="workspace_no_errors_found">No errors found</string>
-    <string name="workspace_error_get_errors">Exception occurred while getting error info: %1$s</string>
     <string name="workspace_no_recent_changes">No recent changes</string>
     <string name="workspace_recently_modified_files">Recently modified files:\n%1$s</string>
     <string name="workspace_error_get_changes">Exception occurred while getting change records: %1$s</string>
@@ -3177,7 +3176,6 @@
     <string name="workspace_minutes_ago">%1$d minutes ago</string>
     <string name="workspace_just_now">Just now</string>
     <string name="workspace_file_time_ago">%1$s (%2$s)</string>
-    <string name="workspace_error_check_errors">Failed to get workspace errors</string>
     <string name="workspace_error_check_suggestions">Failed to get workspace suggestions</string>
     <string name="workspace_error_generate_attachment">Failed to generate workspace attachment</string>
     <string name="workspace_error_invalid_path">Workspace path does not exist or is not a directory: %1$s</string>
@@ -4511,6 +4509,16 @@
     <!-- Voice Assistant Widget -->
     <string name="voice_assistant_widget_description">Quick launch Operit voice assistant</string>
     <string name="voice_assistant_widget_title">Voice Assistant</string>
+    <string name="toolpkg_widget_host_label">Custom Widget</string>
+    <string name="toolpkg_widget_host_description">Add it and bind it to a widget page registered by a plugin</string>
+    <string name="toolpkg_widget_unconfigured_title">Custom Widget</string>
+    <string name="toolpkg_widget_unconfigured_subtitle">Tap to choose a registered widget page</string>
+    <string name="toolpkg_widget_open_label">Tap to open</string>
+    <string name="toolpkg_widget_picker_title">Choose widget</string>
+    <string name="toolpkg_widget_picker_cancel">Cancel</string>
+    <string name="toolpkg_widget_picker_empty_title">No widgets available yet</string>
+    <string name="toolpkg_widget_picker_empty_body">Enable a ToolPkg that registers a desktop widget, then add it again.</string>
+    <string name="toolpkg_widget_picker_selecting">Configuring…</string>
 
     <!-- Persona Card Generation Screen -->
     <string name="persona_card_generation_title">Character Card to Edit</string>
@@ -7497,6 +7505,7 @@
     <string name="quick_plugin_creator_step1_title">1. Update or download the package creation Skill</string>
     <string name="quick_plugin_creator_step1_desc">Click the button to automatically download install_or_update.js and run the operit_editor debug_run_sandbox_script for installation or update.</string>
     <string name="quick_plugin_creator_run_setup">Auto download and execute</string>
+    <string name="quick_plugin_creator_pull_skill_update">Pull Skill Updates</string>
     <string name="quick_plugin_creator_setup_success">Package creation Skill installation or update completed</string>
     <string name="quick_plugin_creator_step2_title">2. Enter requirements to start creating</string>
     <string name="quick_plugin_creator_requirement_hint">For example: create a tool to batch organize images in the download directory and generate an index</string>

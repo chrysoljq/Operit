@@ -3,7 +3,7 @@ package com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.langu
 import android.graphics.Color
 
 /**
- * 语言支持接口，定义了语言高亮和语法检查的基本功能
+ * 语言支持接口，定义了语言高亮相关的基础能力
  */
 interface LanguageSupport {
     /**
@@ -54,27 +54,10 @@ interface LanguageSupport {
     fun getStringEscapeChar(): Char
     
     /**
-     * 执行语法检查
-     * @param code 要检查的代码
-     * @return 错误信息列表
-     */
-    fun checkSyntax(code: String): List<SyntaxError>
-    
-    /**
      * 获取语言的文件扩展名
      */
     fun getFileExtensions(): List<String>
-    
-    /**
-     * 语法错误信息类
-     */
-    data class SyntaxError(
-        val position: Int,
-        val message: String,
-        val line: Int,
-        val column: Int
-    )
-    
+
     /**
      * 语法高亮颜色 - VSCode Dark+ Theme
      */

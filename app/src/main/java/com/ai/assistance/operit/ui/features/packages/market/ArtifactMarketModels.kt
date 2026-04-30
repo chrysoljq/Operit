@@ -1,22 +1,19 @@
 package com.ai.assistance.operit.ui.features.packages.market
 
-import com.ai.assistance.operit.data.api.GitHubIssue
-import com.ai.assistance.operit.data.api.MarketRankIssueEntryResponse
 import com.ai.assistance.operit.ui.features.packages.utils.IssueBodyMetadataParser
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromJsonElement
 
 const val OPERIT_MARKET_OWNER = "AAswordman"
 const val OPERIT_FORGE_REPO_NAME = "OperitForge"
 
 private const val ARTIFACT_MARKET_JSON_PREFIX = "<!-- operit-market-json: "
-private const val ARTIFACT_MARKET_PARSER_VERSION = "forge-v2"
+private const val ARTIFACT_MARKET_PARSER_VERSION = "forge-v3"
 private const val SCRIPT_MARKET_LABEL = "script-artifact"
 private const val PACKAGE_MARKET_LABEL = "package-artifact"
 private val APP_VERSION_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$""")
@@ -124,9 +121,25 @@ data class LocalPublishableArtifact(
     val inferredVersion: String? = null
 )
 
+data class ArtifactPublishClusterContext(
+    val projectId: String,
+    val rootNodeId: String,
+    val runtimePackageId: String,
+    val parentNodeIds: List<String>,
+    val lockedDisplayName: String,
+    val projectDisplayName: String,
+    val projectDescription: String
+)
+
 data class PublishArtifactDescriptor(
     val type: PublishArtifactType,
-    val normalizedId: String,
+    val projectId: String,
+    val projectDisplayName: String,
+    val projectDescription: String,
+    val runtimePackageId: String,
+    val nodeId: String,
+    val rootNodeId: String,
+    val parentNodeIds: List<String>,
     val displayName: String,
     val description: String,
     val version: String,
@@ -145,7 +158,13 @@ data class PublishReleaseDescriptor(
 
 data class MarketRegistrationPayload(
     val type: PublishArtifactType,
-    val normalizedId: String,
+    val projectId: String,
+    val projectDisplayName: String,
+    val projectDescription: String,
+    val runtimePackageId: String,
+    val nodeId: String,
+    val rootNodeId: String,
+    val parentNodeIds: List<String>,
     val publisherLogin: String,
     val forgeRepo: String,
     val releaseTag: String,
@@ -160,28 +179,84 @@ data class MarketRegistrationPayload(
     val maxSupportedAppVersion: String?
 )
 
-data class ArtifactMarketItem(
-    val issue: GitHubIssue,
-    val metadata: ArtifactMarketMetadata
-)
-
 @Serializable
 data class ArtifactMarketMetadata(
-    val type: String,
-    val normalizedId: String,
-    val publisherLogin: String,
-    val forgeRepo: String,
-    val releaseTag: String,
-    val assetName: String,
-    val downloadUrl: String,
-    val sha256: String,
-    val version: String,
-    val displayName: String,
-    val description: String,
+    val type: String = "",
+    val projectId: String = "",
+    val projectDisplayName: String = "",
+    val projectDescription: String = "",
+    val runtimePackageId: String = "",
+    val nodeId: String = "",
+    val rootNodeId: String = "",
+    val parentNodeIds: List<String> = emptyList(),
+    val publisherLogin: String = "",
+    val releaseTag: String = "",
+    val assetName: String = "",
+    val downloadUrl: String = "",
+    val sha256: String = "",
+    val version: String = "",
+    val displayName: String = "",
+    val description: String = "",
     val sourceFileName: String = "",
     val minSupportedAppVersion: String? = null,
-    val maxSupportedAppVersion: String? = null
+    val maxSupportedAppVersion: String? = null,
+    val normalizedId: String = "",
+    val forgeRepo: String = ""
 )
+
+fun ArtifactMarketMetadata.effectiveProjectId(): String {
+    val candidate =
+        projectId.trim().ifBlank {
+            normalizedId.trim().ifBlank {
+                normalizeMarketArtifactId(runtimePackageId.ifBlank { displayName.ifBlank { assetName } })
+            }
+        }
+    return normalizeMarketArtifactId(candidate)
+}
+
+fun ArtifactMarketMetadata.effectiveProjectDisplayName(): String {
+    return projectDisplayName.trim().ifBlank { displayName.trim() }
+}
+
+fun ArtifactMarketMetadata.effectiveProjectDescription(): String {
+    return projectDescription.trim().ifBlank { description.trim() }
+}
+
+fun ArtifactMarketMetadata.effectiveRuntimePackageId(): String {
+    val candidate =
+        runtimePackageId.trim().ifBlank {
+            normalizedId.trim().ifBlank { effectiveProjectId() }
+        }
+    return candidate.ifBlank { effectiveProjectId() }
+}
+
+fun ArtifactMarketMetadata.effectiveNodeId(issueId: Long? = null): String {
+    val candidate = nodeId.trim()
+    if (candidate.isNotBlank()) {
+        return candidate
+    }
+    return issueId?.let { "legacy-$it" } ?: "legacy-${effectiveProjectId()}"
+}
+
+fun ArtifactMarketMetadata.effectiveRootNodeId(issueId: Long? = null): String {
+    return rootNodeId.trim().ifBlank { effectiveNodeId(issueId) }
+}
+
+fun ArtifactMarketMetadata.effectiveParentNodeIds(): List<String> {
+    return parentNodeIds.map(String::trim).filter(String::isNotBlank)
+}
+
+fun ArtifactMarketMetadata.toPublishClusterContext(issueId: Long? = null): ArtifactPublishClusterContext {
+    return ArtifactPublishClusterContext(
+        projectId = effectiveProjectId(),
+        rootNodeId = effectiveRootNodeId(issueId),
+        runtimePackageId = effectiveRuntimePackageId(),
+        parentNodeIds = effectiveParentNodeIds(),
+        lockedDisplayName = displayName.trim().ifBlank { effectiveProjectDisplayName() },
+        projectDisplayName = effectiveProjectDisplayName(),
+        projectDescription = effectiveProjectDescription()
+    )
+}
 
 fun normalizeMarketArtifactId(raw: String): String {
     val normalized =
@@ -193,6 +268,19 @@ fun normalizeMarketArtifactId(raw: String): String {
     return normalized.ifBlank { "artifact" }
 }
 
+fun sameArtifactRuntimePackageId(
+    left: String,
+    right: String
+): Boolean {
+    val trimmedLeft = left.trim()
+    val trimmedRight = right.trim()
+    if (trimmedLeft.isBlank() || trimmedRight.isBlank()) {
+        return false
+    }
+    return trimmedLeft.equals(trimmedRight, ignoreCase = true) ||
+        normalizeMarketArtifactId(trimmedLeft) == normalizeMarketArtifactId(trimmedRight)
+}
+
 fun parseArtifactMarketMetadata(body: String): ArtifactMarketMetadata? {
     return IssueBodyMetadataParser.parseCommentJson(
         body = body,
@@ -202,28 +290,6 @@ fun parseArtifactMarketMetadata(body: String): ArtifactMarketMetadata? {
     )
 }
 
-fun toArtifactMarketItem(issue: GitHubIssue): ArtifactMarketItem? {
-    val body = issue.body ?: return null
-    val metadata = parseArtifactMarketMetadata(body) ?: return null
-    return ArtifactMarketItem(issue = issue, metadata = metadata)
-}
-
-fun toArtifactMarketItem(entry: MarketRankIssueEntryResponse): ArtifactMarketItem? {
-    val metadata =
-        decodeArtifactMarketMetadata(entry.metadata)
-            ?: entry.issue.body?.let(::parseArtifactMarketMetadata)
-            ?: return null
-    return ArtifactMarketItem(issue = entry.issue, metadata = metadata)
-}
-
-private fun decodeArtifactMarketMetadata(metadata: JsonElement?): ArtifactMarketMetadata? {
-    return metadata?.let {
-        runCatching {
-            MARKET_ARTIFACT_JSON.decodeFromJsonElement<ArtifactMarketMetadata>(it)
-        }.getOrNull()
-    }
-}
-
 fun buildPublishArtifactDescriptor(
     type: PublishArtifactType,
     localArtifact: LocalPublishableArtifact,
@@ -231,20 +297,75 @@ fun buildPublishArtifactDescriptor(
     description: String,
     version: String,
     minSupportedAppVersion: String?,
-    maxSupportedAppVersion: String?
+    maxSupportedAppVersion: String?,
+    publishContext: ArtifactPublishClusterContext? = null
 ): PublishArtifactDescriptor {
-    val normalizedId = normalizeMarketArtifactId(localArtifact.packageName)
+    val runtimePackageId = localArtifact.packageName.trim().ifBlank { localArtifact.packageName }
+    val normalizedRuntimePackageId = normalizeMarketArtifactId(runtimePackageId)
+    val contextRuntimePackageId = publishContext?.runtimePackageId?.trim().orEmpty()
+    if (contextRuntimePackageId.isNotBlank()) {
+        require(
+            normalizeMarketArtifactId(contextRuntimePackageId) == normalizedRuntimePackageId
+        ) {
+            "Continuation publish must keep runtime package id '$contextRuntimePackageId'"
+        }
+    }
+
     val cleanVersion =
         version.trim()
             .removePrefix("v")
             .removePrefix("V")
             .ifBlank { "1.0.0" }
+    val lockedDisplayName = publishContext?.lockedDisplayName?.trim().orEmpty()
+    if (publishContext != null) {
+        require(lockedDisplayName.isNotBlank()) {
+            "Continuation publish must keep source display name"
+        }
+    }
+    val resolvedDisplayName =
+        lockedDisplayName.ifBlank {
+            displayName.trim().ifBlank { localArtifact.displayName }
+        }
     val extension = localArtifact.sourceFile.extension.lowercase().ifBlank { "bin" }
-    val assetName = "$normalizedId-v$cleanVersion.$extension"
+    val nodeId = UUID.randomUUID().toString()
+    val rootNodeId =
+        publishContext?.rootNodeId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: nodeId
+    val projectId =
+        publishContext?.projectId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::normalizeMarketArtifactId)
+            ?: normalizeMarketArtifactId(runtimePackageId)
+    val parentNodeIds =
+        publishContext?.parentNodeIds
+            ?.map(String::trim)
+            ?.filter(String::isNotBlank)
+            .orEmpty()
+    val projectDisplayName =
+        publishContext?.projectDisplayName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: displayName.trim().ifBlank { localArtifact.displayName }
+    val projectDescription =
+        publishContext?.projectDescription
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: description.trim().ifBlank { localArtifact.description }
+    val assetName = "$normalizedRuntimePackageId-v$cleanVersion-${nodeId.take(8)}.$extension"
+
     return PublishArtifactDescriptor(
         type = type,
-        normalizedId = normalizedId,
-        displayName = displayName.trim().ifBlank { localArtifact.displayName },
+        projectId = projectId,
+        projectDisplayName = projectDisplayName,
+        projectDescription = projectDescription,
+        runtimePackageId = runtimePackageId,
+        nodeId = nodeId,
+        rootNodeId = rootNodeId,
+        parentNodeIds = parentNodeIds,
+        displayName = resolvedDisplayName,
         description = description.trim().ifBlank { localArtifact.description },
         version = cleanVersion,
         sourceFile = localArtifact.sourceFile,
@@ -258,7 +379,9 @@ fun buildPublishArtifactDescriptor(
 fun buildPublishReleaseDescriptor(
     descriptor: PublishArtifactDescriptor
 ): PublishReleaseDescriptor {
-    val tagName = "${descriptor.type.releaseTagPrefix}-${descriptor.normalizedId}-v${descriptor.version}"
+    val normalizedRuntimePackageId = normalizeMarketArtifactId(descriptor.runtimePackageId)
+    val tagName =
+        "${descriptor.type.releaseTagPrefix}-${normalizedRuntimePackageId}-v${descriptor.version}-${descriptor.nodeId.take(8)}"
     return PublishReleaseDescriptor(
         tagName = tagName,
         releaseName = "${descriptor.displayName} v${descriptor.version}",
@@ -266,8 +389,14 @@ fun buildPublishReleaseDescriptor(
             buildString {
                 appendLine("${descriptor.type.titleLabel} artifact published by OperitForge.")
                 appendLine()
+                appendLine("Project ID: ${descriptor.projectId}")
+                appendLine("Runtime package ID: ${descriptor.runtimePackageId}")
+                appendLine("Node ID: ${descriptor.nodeId}")
+                appendLine("Root node ID: ${descriptor.rootNodeId}")
+                appendLine(
+                    "Parent node IDs: ${descriptor.parentNodeIds.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"}"
+                )
                 appendLine("Display name: ${descriptor.displayName}")
-                appendLine("Normalized id: ${descriptor.normalizedId}")
                 appendLine("Version: ${descriptor.version}")
                 appendLine(
                     "Supported app versions: ${formatSupportedAppVersions(descriptor.minSupportedAppVersion, descriptor.maxSupportedAppVersion)}"
@@ -281,9 +410,14 @@ fun buildArtifactMarketMetadata(
 ): ArtifactMarketMetadata {
     return ArtifactMarketMetadata(
         type = payload.type.wireValue,
-        normalizedId = payload.normalizedId,
+        projectId = payload.projectId,
+        projectDisplayName = payload.projectDisplayName,
+        projectDescription = payload.projectDescription,
+        runtimePackageId = payload.runtimePackageId,
+        nodeId = payload.nodeId,
+        rootNodeId = payload.rootNodeId,
+        parentNodeIds = payload.parentNodeIds,
         publisherLogin = payload.publisherLogin,
-        forgeRepo = payload.forgeRepo,
         releaseTag = payload.releaseTag,
         assetName = payload.assetName,
         downloadUrl = payload.downloadUrl,
@@ -302,6 +436,7 @@ fun buildArtifactMarketIssueBody(payload: MarketRegistrationPayload): String {
     val json = Json { ignoreUnknownKeys = true; prettyPrint = false }
     val metadataJson = json.encodeToString(metadata)
     val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+    val parentNodeIds = payload.parentNodeIds.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
 
     return buildString {
         appendLine("$ARTIFACT_MARKET_JSON_PREFIX$metadataJson -->")
@@ -310,6 +445,16 @@ fun buildArtifactMarketIssueBody(payload: MarketRegistrationPayload): String {
         appendLine("## ${payload.type.titleLabel}")
         appendLine()
         appendLine(payload.description)
+        appendLine()
+        appendLine("## Project Cluster")
+        appendLine()
+        appendLine("- Project ID: `${payload.projectId}`")
+        appendLine("- Runtime package ID: `${payload.runtimePackageId}`")
+        appendLine("- Node ID: `${payload.nodeId}`")
+        appendLine("- Root node ID: `${payload.rootNodeId}`")
+        appendLine("- Parent node IDs: `$parentNodeIds`")
+        appendLine("- Project display name: `${payload.projectDisplayName}`")
+        appendLine("- Project description: ${payload.projectDescription.ifBlank { "-" }}")
         appendLine()
         appendLine("## Artifact")
         appendLine()
@@ -325,7 +470,11 @@ fun buildArtifactMarketIssueBody(payload: MarketRegistrationPayload): String {
         appendLine("| Field | Value |")
         appendLine("| --- | --- |")
         appendLine("| Type | ${payload.type.wireValue} |")
-        appendLine("| Normalized ID | ${payload.normalizedId} |")
+        appendLine("| Project ID | ${payload.projectId} |")
+        appendLine("| Runtime package ID | ${payload.runtimePackageId} |")
+        appendLine("| Node ID | ${payload.nodeId} |")
+        appendLine("| Root node ID | ${payload.rootNodeId} |")
+        appendLine("| Parent node IDs | $parentNodeIds |")
         appendLine("| Version | ${payload.version} |")
         appendLine("| Supported app versions | ${formatSupportedAppVersions(payload.minSupportedAppVersion, payload.maxSupportedAppVersion)} |")
         appendLine("| Source file | ${payload.sourceFileName.ifBlank { "-" }} |")

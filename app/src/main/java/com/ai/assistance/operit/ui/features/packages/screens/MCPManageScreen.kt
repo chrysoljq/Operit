@@ -3,9 +3,7 @@ package com.ai.assistance.operit.ui.features.packages.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -118,7 +116,6 @@ fun MCPManageScreen(
                     issueNumber = plugin.number,
                     isOpen = plugin.state == "open",
                     supportingContent = {
-                        Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             MarketManageReviewStatusChip(isApproved = isApproved)
                             displayLabels.take(2).forEach { label ->
@@ -129,7 +126,6 @@ fun MCPManageScreen(
                             }
                         }
                         if (displayLabels.size > 2) {
-                            Spacer(modifier = Modifier.height(8.dp))
                             MarketManageGitHubLabelChip(
                                 text = "+${displayLabels.size - 2}",
                                 colorHex = "9e9e9e"

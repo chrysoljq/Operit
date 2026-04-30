@@ -168,6 +168,7 @@ fun UnifiedMarketDetailScreen(
     secondaryAction: UnifiedMarketDetailAction? = null,
     banner: UnifiedMarketDetailBanner? = null,
     sections: List<UnifiedMarketDetailSection> = emptyList(),
+    overviewExtraContent: (@Composable () -> Unit)? = null,
     metadataTitle: String,
     metadataRows: List<UnifiedMarketDetailInfoRow>,
     reactions: UnifiedMarketDetailReactionsState?,
@@ -224,6 +225,12 @@ fun UnifiedMarketDetailScreen(
                             title = metadataTitle,
                             rows = metadataRows
                         )
+                    }
+                }
+
+                if (overviewExtraContent != null) {
+                    item {
+                        overviewExtraContent()
                     }
                 }
             } else {

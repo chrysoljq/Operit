@@ -77,7 +77,11 @@ fun OperitApp(
     toolHandler: AIToolHandler? = null,
     shortcutNavRequest: NavItem? = null,
     shortcutNavRequestId: Long = 0L,
-    onShortcutNavHandled: (Long) -> Unit = {}
+    routeNavRequest: String? = null,
+    routeNavArgs: Map<String, Any?> = emptyMap(),
+    routeNavRequestId: Long = 0L,
+    onShortcutNavHandled: (Long) -> Unit = {},
+    onRouteNavHandled: (Long) -> Unit = {}
 ) {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -115,6 +119,7 @@ fun OperitApp(
     var topBarActions by remember { mutableStateOf<@Composable RowScope.() -> Unit>({}) }
     var topBarTitleContent by remember { mutableStateOf<TopBarTitleContent?>(null) }
     var lastHandledShortcutRequestId by remember { mutableStateOf(0L) }
+    var lastHandledRouteRequestId by remember { mutableStateOf(0L) }
 
     LaunchedEffect(shortcutNavRequestId, shortcutNavRequest) {
         val requestNavItem = shortcutNavRequest
@@ -131,6 +136,33 @@ fun OperitApp(
         routerState.resetTo(targetEntry)
         lastHandledShortcutRequestId = shortcutNavRequestId
         onShortcutNavHandled(shortcutNavRequestId)
+    }
+
+    LaunchedEffect(routeNavRequestId, routeNavRequest, routeNavArgs, navigationModel) {
+        val requestRouteId = routeNavRequest?.trim().orEmpty()
+        if (requestRouteId.isBlank() || routeNavRequestId == 0L) {
+            return@LaunchedEffect
+        }
+        if (routeNavRequestId == lastHandledRouteRequestId) {
+            return@LaunchedEffect
+        }
+        if (navigationModel.routesById[requestRouteId] == null) {
+            AppLogger.w(TAG, "Ignored pending route navigation for unknown routeId=$requestRouteId")
+            lastHandledRouteRequestId = routeNavRequestId
+            onRouteNavHandled(routeNavRequestId)
+            return@LaunchedEffect
+        }
+        isNavigatingBack = false
+        navigationTransitionSource = NavigationTransitionSource.DEFAULT
+        routerState.resetTo(
+            com.ai.assistance.operit.ui.main.navigation.RouteEntry(
+                routeId = requestRouteId,
+                args = routeNavArgs,
+                source = RouteEntrySource.DEFAULT
+            )
+        )
+        lastHandledRouteRequestId = routeNavRequestId
+        onRouteNavHandled(routeNavRequestId)
     }
 
     // 当currentScreen改变时，检查是否需要清空TopBarActions

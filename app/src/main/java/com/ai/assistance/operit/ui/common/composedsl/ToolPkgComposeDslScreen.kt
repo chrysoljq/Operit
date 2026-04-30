@@ -7,13 +7,17 @@ import android.os.Build
 import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
+import android.webkit.SslErrorHandler
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceResponse
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.net.http.SslError
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -786,6 +790,10 @@ private data class ComposeDslWebViewCallbackIds(
     val onPageStarted: String?,
     val onPageFinished: String?,
     val onReceivedError: String?,
+    val onReceivedHttpError: String?,
+    val onReceivedSslError: String?,
+    val onDownloadStart: String?,
+    val onConsoleMessage: String?,
     val onUrlChanged: String?,
     val onProgressChanged: String?
 )
@@ -1259,6 +1267,10 @@ private fun renderWebViewNode(
                 onPageStarted = ToolPkgComposeDslParser.extractActionId(props["onPageStarted"]),
                 onPageFinished = ToolPkgComposeDslParser.extractActionId(props["onPageFinished"]),
                 onReceivedError = ToolPkgComposeDslParser.extractActionId(props["onReceivedError"]),
+                onReceivedHttpError = ToolPkgComposeDslParser.extractActionId(props["onReceivedHttpError"]),
+                onReceivedSslError = ToolPkgComposeDslParser.extractActionId(props["onReceivedSslError"]),
+                onDownloadStart = ToolPkgComposeDslParser.extractActionId(props["onDownloadStart"]),
+                onConsoleMessage = ToolPkgComposeDslParser.extractActionId(props["onConsoleMessage"]),
                 onUrlChanged = ToolPkgComposeDslParser.extractActionId(props["onUrlChanged"]),
                 onProgressChanged = ToolPkgComposeDslParser.extractActionId(props["onProgressChanged"])
             )
@@ -1389,6 +1401,46 @@ private fun renderWebViewNode(
                             )
                         }
                     }
+
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        errorResponse: WebResourceResponse?
+                    ) {
+                        super.onReceivedHttpError(view, request, errorResponse)
+                        val callbackIds = callbackIdsState.value
+                        val actionId = callbackIds.onReceivedHttpError
+                        if (!actionId.isNullOrBlank()) {
+                            onActionState.value(
+                                actionId,
+                                mapOf(
+                                    "statusCode" to errorResponse?.statusCode,
+                                    "reasonPhrase" to errorResponse?.reasonPhrase,
+                                    "url" to request?.url?.toString(),
+                                    "isMainFrame" to (request?.isForMainFrame ?: true)
+                                )
+                            )
+                        }
+                    }
+
+                    override fun onReceivedSslError(
+                        view: WebView?,
+                        handler: SslErrorHandler?,
+                        error: SslError?
+                    ) {
+                        super.onReceivedSslError(view, handler, error)
+                        val callbackIds = callbackIdsState.value
+                        val actionId = callbackIds.onReceivedSslError
+                        if (!actionId.isNullOrBlank()) {
+                            onActionState.value(
+                                actionId,
+                                mapOf(
+                                    "primaryError" to error?.primaryError,
+                                    "url" to error?.url
+                                )
+                            )
+                        }
+                    }
                 }
 
             webChromeClient =
@@ -1407,6 +1459,19 @@ private fun renderWebViewNode(
                     }
 
                     override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                        val callbackIds = callbackIdsState.value
+                        val actionId = callbackIds.onConsoleMessage
+                        if (!actionId.isNullOrBlank() && consoleMessage != null) {
+                            onActionState.value(
+                                actionId,
+                                mapOf(
+                                    "message" to consoleMessage.message(),
+                                    "sourceId" to consoleMessage.sourceId(),
+                                    "lineNumber" to consoleMessage.lineNumber(),
+                                    "level" to consoleMessage.messageLevel().name
+                                )
+                            )
+                        }
                         return super.onConsoleMessage(consoleMessage)
                     }
 
@@ -1497,6 +1562,25 @@ private fun renderWebViewNode(
                         return true
                     }
                 }
+
+            setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                val callbackIds = callbackIdsState.value
+                val actionId = callbackIds.onDownloadStart
+                if (!actionId.isNullOrBlank() && !url.isNullOrBlank()) {
+                    onActionState.value(
+                        actionId,
+                        mapOf(
+                            "url" to url,
+                            "userAgent" to userAgent,
+                            "contentDisposition" to contentDisposition,
+                            "mimeType" to mimeType,
+                            "contentLength" to contentLength,
+                            "suggestedFileName" to
+                                URLUtil.guessFileName(url, contentDisposition, mimeType)
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -1536,24 +1620,38 @@ private fun renderWebViewNode(
         webView.settings.apply {
             javaScriptEnabled = props.bool("javaScriptEnabled", true)
             domStorageEnabled = props.bool("domStorageEnabled", true)
-            databaseEnabled = true
-            javaScriptCanOpenWindowsAutomatically = true
-            setSupportMultipleWindows(true)
+            databaseEnabled = props.bool("databaseEnabled", true)
+            javaScriptCanOpenWindowsAutomatically =
+                props.bool("javaScriptCanOpenWindowsAutomatically", true)
+            setSupportMultipleWindows(props.bool("supportMultipleWindows", true))
             allowFileAccess = props.bool("allowFileAccess", true)
             allowContentAccess = props.bool("allowContentAccess", true)
-            allowFileAccessFromFileURLs = true
-            allowUniversalAccessFromFileURLs = true
+            allowFileAccessFromFileURLs = props.bool("allowFileAccessFromFileURLs", true)
+            allowUniversalAccessFromFileURLs =
+                props.bool("allowUniversalAccessFromFileURLs", true)
             val supportZoom = props.bool("supportZoom", true)
             setSupportZoom(supportZoom)
-            builtInZoomControls = supportZoom
-            displayZoomControls = false
+            builtInZoomControls = props.bool("builtInZoomControls", supportZoom)
+            displayZoomControls = props.bool("displayZoomControls", false)
             loadWithOverviewMode = props.bool("loadWithOverviewMode", true)
             useWideViewPort = props.bool("useWideViewPort", true)
-            cacheMode = WebSettings.LOAD_DEFAULT
+            mediaPlaybackRequiresUserGesture =
+                props.bool("mediaPlaybackRequiresUserGesture", false)
+            textZoom = props.int("textZoom", 100)
+            cacheMode = props.webViewCacheMode("cacheMode")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                mixedContentMode = props.webViewMixedContentMode("mixedContentMode")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                safeBrowsingEnabled = props.bool("safeBrowsingEnabled", true)
             }
             props.stringOrNull("userAgent")?.let { userAgentString = it }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(
+                webView,
+                props.bool("acceptThirdPartyCookies", true)
+            )
         }
         val url = request.url
         if (url != null) {
@@ -2053,6 +2151,23 @@ internal fun Map<String, Any?>.imageModelOrNull(): Any? {
         normalized.startsWith("/") -> File(normalized)
         Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(normalized) -> File(normalized)
         else -> normalized
+    }
+}
+
+internal fun Map<String, Any?>.webViewMixedContentMode(key: String): Int {
+    return when (normalizeToken(string(key))) {
+        "neverallow" -> WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        "compatibilitymode" -> WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        else -> WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+    }
+}
+
+internal fun Map<String, Any?>.webViewCacheMode(key: String): Int {
+    return when (normalizeToken(string(key))) {
+        "nocache" -> WebSettings.LOAD_NO_CACHE
+        "cacheelsenetwork" -> WebSettings.LOAD_CACHE_ELSE_NETWORK
+        "cacheonly" -> WebSettings.LOAD_CACHE_ONLY
+        else -> WebSettings.LOAD_DEFAULT
     }
 }
 

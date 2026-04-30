@@ -40,7 +40,6 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import com.ai.assistance.operit.util.FileUtils
-import com.ai.assistance.operit.util.SyntaxCheckUtil
 import com.ai.assistance.operit.util.PathMapper
 import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.MediaPoolManager
@@ -4321,7 +4320,6 @@ open class StandardFileSystemTools(protected val context: Context) {
                                             details = "Successfully created new file: $path"
                                         ),
                                     aiDiffInstructions = "",
-                                    syntaxCheckResult = null,
                                     diffContent = diffContent
                                 )
                         )
@@ -4557,9 +4555,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                     details = "Successfully applied AI code to file: $path"
                 )
 
-            ToolProgressBus.update(tool.name, 0.92f, "Checking syntax...")
-            val syntaxCheckResult = performSyntaxCheck(path, mergedContent)
-            ToolProgressBus.update(tool.name, 0.96f, "Generating diff...")
+            ToolProgressBus.update(tool.name, 0.92f, "Generating diff...")
             val diffContent =
                 FileBindingService(context).generateUnifiedDiff(originalContent, mergedContent)
             ToolProgressBus.update(tool.name, 1f, "Completed")
@@ -4572,7 +4568,6 @@ open class StandardFileSystemTools(protected val context: Context) {
                     FileApplyResultData(
                         operation = operationData,
                         aiDiffInstructions = aiInstructions,
-                        syntaxCheckResult = syntaxCheckResult,
                         diffContent = diffContent
                     ),
                     error = ""
@@ -5078,22 +5073,6 @@ open class StandardFileSystemTools(protected val context: Context) {
             maxResults = maxResults,
             envLabel = "android"
         )
-    }
-
-    /**
-     * 执行语法检查
-     * @param filePath 文件路径
-     * @param content 文件内容
-     * @return 语法检查结果的字符串表示，如果不支持该文件类型则返回null
-     */
-    protected fun performSyntaxCheck(filePath: String, content: String): String? {
-        return try {
-            val result = SyntaxCheckUtil.checkSyntax(filePath, content)
-            result?.toString()
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error performing syntax check", e)
-            "Syntax check failed: ${e.message}"
-        }
     }
 
     /** Share file via system share dialog */

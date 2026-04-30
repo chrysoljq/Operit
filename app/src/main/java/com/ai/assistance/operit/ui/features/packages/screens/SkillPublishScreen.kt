@@ -232,7 +232,7 @@ fun SkillPublishScreen(
                             errorMessage = null
 
                             try {
-                                val success = if (isEditMode && editingIssue != null) {
+                                val result = if (isEditMode && editingIssue != null) {
                                     viewModel.updatePublishedSkill(
                                         issueNumber = editingIssue.number,
                                         title = title,
@@ -247,14 +247,19 @@ fun SkillPublishScreen(
                                     )
                                 }
 
-                                if (success) {
-                                    if (!isEditMode) {
-                                        viewModel.clearDraft()
+                                result.fold(
+                                    onSuccess = {
+                                        if (!isEditMode) {
+                                            viewModel.clearDraft()
+                                        }
+                                        showSuccessDialog = true
+                                    },
+                                    onFailure = { error ->
+                                        errorMessage =
+                                            error.message
+                                                ?: context.getString(R.string.publish_failed_check_network_repo)
                                     }
-                                    showSuccessDialog = true
-                                } else {
-                                    errorMessage = context.getString(R.string.publish_failed_check_network_repo)
-                                }
+                                )
                             } catch (e: Exception) {
                                 errorMessage = context.getString(R.string.publish_failed_with_error, e.message ?: "")
                             } finally {

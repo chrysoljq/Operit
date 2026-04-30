@@ -366,6 +366,9 @@ interface PromptTurn {
 运行时 `ToolPkg` 对象实现了这个接口，提供以下方法：
 
 - `registerToolboxUiModule(definition)`
+- `registerUiRoute(definition)`
+- `registerNavigationEntry(definition)`
+- `registerDesktopWidget(definition)`
 - `registerAppLifecycleHook(definition)`
 - `registerMessageProcessingPlugin(definition)`
 - `registerXmlRenderPlugin(definition)`
@@ -413,6 +416,35 @@ ToolPkg.registerToolboxUiModule({
   }
 });
 ```
+
+### 注册桌面小组件
+
+```ts
+ToolPkg.registerDesktopWidget({
+  id: 'demo_widget',
+  route: 'toolpkg:com.example.demo:ui:dashboard',
+  render: 'toolpkg:com.example.demo:ui:dashboard_widget',
+  title: {
+    zh: '示例小组件',
+    en: 'Demo Widget'
+  },
+  subtitle: {
+    zh: '点击直接打开面板',
+    en: 'Tap to open dashboard'
+  },
+  description: {
+    zh: '用于桌面添加时的说明',
+    en: 'Shown in widget picker'
+  }
+});
+```
+
+说明：
+
+- `route` / `routeId` 必须指向已经注册的 UI route。
+- `render` / `renderRouteId` 用于指定小组件本体渲染所使用的 UI route；不填时默认等于 `route`。
+- 当前宿主使用一个通用桌面小组件承载多个 ToolPkg widget；用户在添加到桌面时，会先进入配置页选择具体条目。
+- 当前点击行为是打开对应 route。
 
 ### 注册应用生命周期钩子
 

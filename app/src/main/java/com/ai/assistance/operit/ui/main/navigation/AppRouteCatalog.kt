@@ -100,6 +100,24 @@ object AppRouteCatalog {
     }
 
     private fun resolveIcon(iconName: String?): ImageVector {
-        return Icons.Default.Extension
+        val rawName = iconName?.trim().orEmpty()
+        if (rawName.isEmpty()) {
+            return Icons.Default.Extension
+        }
+        val pascalCaseName =
+            rawName
+                .split(Regex("[^A-Za-z0-9]+"))
+                .filter { it.isNotBlank() }
+                .joinToString(separator = "") { segment ->
+                    segment.replaceFirstChar { char -> char.uppercaseChar() }
+                }
+                .ifBlank { rawName.replaceFirstChar { char -> char.uppercaseChar() } }
+        return try {
+            val iconKtClass = Class.forName("androidx.compose.material.icons.filled.${pascalCaseName}Kt")
+            val getterMethod = iconKtClass.getMethod("get$pascalCaseName", Icons.Default::class.java)
+            getterMethod.invoke(null, Icons.Default) as? ImageVector ?: Icons.Default.Extension
+        } catch (_error: Throwable) {
+            Icons.Default.Extension
+        }
     }
 }

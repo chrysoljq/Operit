@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,8 +48,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.ui.features.packages.market.ArtifactMarketScope
+import com.ai.assistance.operit.ui.features.packages.market.ArtifactPublishClusterContext
 import com.ai.assistance.operit.ui.features.packages.market.PublishArtifactType
 import com.ai.assistance.operit.ui.features.packages.market.PublishProgressStage
+import com.ai.assistance.operit.ui.features.packages.market.sameArtifactRuntimePackageId
 import com.ai.assistance.operit.ui.features.packages.screens.artifact.viewmodel.ArtifactMarketViewModel
 import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
 
@@ -58,10 +59,12 @@ import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
 @Composable
 fun ArtifactPublishScreen(
     onNavigateBack: () -> Unit,
-    editingIssue: GitHubIssue? = null
+    editingIssue: GitHubIssue? = null,
+    publishContext: ArtifactPublishClusterContext? = null
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val isEditMode = editingIssue != null
     val viewModel: ArtifactMarketViewModel =
         viewModel(
             key = "artifact-publish-all",
@@ -77,11 +80,37 @@ fun ArtifactPublishScreen(
     val registrationRetryAvailable by viewModel.registrationRetryAvailable.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
 
-    val isEditMode = editingIssue != null
     val initialInfo = remember(editingIssue) { editingIssue?.let { ArtifactIssueParser.parseArtifactInfo(it) } }
+    val activePublishContext = if (isEditMode) null else publishContext
+    val parentCount = activePublishContext?.parentNodeIds?.size ?: 0
+    val isContinuationMode = activePublishContext != null
+    val lockedRuntimePackageId = initialInfo?.runtimePackageId?.ifBlank { initialInfo.normalizedId }.orEmpty()
+    val lockedDisplayName = activePublishContext?.lockedDisplayName?.trim().orEmpty()
+    val isDisplayNameLocked = !isEditMode && lockedDisplayName.isNotBlank()
+
+    val filteredArtifacts =
+        remember(artifacts, activePublishContext, isEditMode, lockedRuntimePackageId) {
+            val runtimePackageId =
+                if (isEditMode) {
+                    lockedRuntimePackageId
+                } else {
+                    activePublishContext?.runtimePackageId
+                }
+            if (runtimePackageId.isNullOrBlank()) {
+                artifacts
+            } else {
+                artifacts.filter {
+                    sameArtifactRuntimePackageId(it.packageName, runtimePackageId)
+                }
+            }
+        }
 
     var selectedPackageName by rememberSaveable { mutableStateOf("") }
-    var displayName by rememberSaveable { mutableStateOf(initialInfo?.title.orEmpty()) }
+    var displayName by rememberSaveable(initialInfo?.title, lockedDisplayName) {
+        mutableStateOf(
+            initialInfo?.title.orEmpty().ifBlank { lockedDisplayName }
+        )
+    }
     var description by rememberSaveable { mutableStateOf(initialInfo?.description.orEmpty()) }
     var version by rememberSaveable { mutableStateOf(initialInfo?.version.orEmpty().ifBlank { "1.0.0" }) }
     var minSupportedAppVersion by rememberSaveable { mutableStateOf(initialInfo?.minSupportedAppVersion.orEmpty()) }
@@ -95,26 +124,41 @@ fun ArtifactPublishScreen(
         viewModel.refreshPublishableArtifacts()
     }
 
-    LaunchedEffect(artifacts, initialInfo?.normalizedId) {
+    LaunchedEffect(filteredArtifacts, activePublishContext?.runtimePackageId, initialInfo?.normalizedId) {
         if (selectedPackageName.isBlank()) {
+            val preferredRuntimePackageId =
+                if (isEditMode) {
+                    lockedRuntimePackageId.takeIf { it.isNotBlank() }
+                } else {
+                    activePublishContext?.runtimePackageId?.takeIf { it.isNotBlank() } ?: initialInfo?.normalizedId
+                }
             val matched =
-                artifacts.firstOrNull {
-                    normalizePackageMatch(it.packageName) == initialInfo?.normalizedId
-                } ?: artifacts.firstOrNull()
+                filteredArtifacts.firstOrNull {
+                    preferredRuntimePackageId != null &&
+                        sameArtifactRuntimePackageId(it.packageName, preferredRuntimePackageId)
+                } ?: filteredArtifacts.firstOrNull()
             if (matched != null) {
                 selectedPackageName = matched.packageName
-                if (!isEditMode) {
-                    displayName = matched.displayName
+                if (!isEditMode && initialInfo == null) {
+                    displayName = if (isDisplayNameLocked) lockedDisplayName else matched.displayName
                     description = matched.description
                     version = matched.inferredVersion ?: "1.0.0"
                 }
+            } else if (isEditMode && preferredRuntimePackageId != null) {
+                selectedPackageName = preferredRuntimePackageId
             }
         }
     }
 
-    val selectedArtifact = artifacts.firstOrNull { it.packageName == selectedPackageName }
-    val selectedType = selectedArtifact?.type
+    val selectedArtifact = filteredArtifacts.firstOrNull { it.packageName == selectedPackageName }
+    val selectedType = selectedArtifact?.type ?: initialInfo?.type
     val isPublishing = publishStage !in listOf(PublishProgressStage.IDLE, PublishProgressStage.COMPLETED)
+    val selectorDisplayName =
+        if (isEditMode) {
+            selectedArtifact?.displayName ?: initialInfo?.runtimePackageId.orEmpty()
+        } else {
+            selectedArtifact?.displayName.orEmpty()
+        }
 
     Column(
         modifier = Modifier
@@ -124,87 +168,253 @@ fun ArtifactPublishScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
-                    text = stringResource(if (isEditMode) R.string.edit_description else R.string.publish_description),
+                    text =
+                        when {
+                            isEditMode -> stringResource(R.string.edit_description)
+                            parentCount >= 2 -> "发布 merge 节点"
+                            isContinuationMode -> "基于节点继续发布"
+                            else -> stringResource(R.string.publish_description)
+                        },
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = stringResource(if (isEditMode) R.string.artifact_edit_info_description else R.string.artifact_publish_info_description),
+                    text =
+                        when {
+                            isEditMode -> "这里是在修改当前已发布节点的信息，不会创建新节点；已发布节点的文件和版本号不能修改。"
+                            isDisplayNameLocked -> "这次不会覆盖旧 issue，而是会基于当前节点在原项目簇下创建一个新的后续节点；名称会强制沿用来源节点。"
+                            parentCount >= 2 -> "这次不会覆盖旧 issue，而是会在原项目簇下创建一个新的 merge 节点。"
+                            isContinuationMode -> "这次不会覆盖旧 issue，而是会基于当前节点在原项目簇下创建一个新的后续节点。"
+                            else -> stringResource(R.string.artifact_publish_info_description)
+                        },
                     style = MaterialTheme.typography.bodySmall
                 )
             }
         }
 
-        if (!isLoggedIn) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                Text(stringResource(R.string.need_login_before_publish_artifact), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer)
-            }
-        }
-
-        ExposedDropdownMenuBox(
-            expanded = selectorExpanded,
-            onExpandedChange = {
-                if (artifacts.isNotEmpty()) {
-                    selectorExpanded = !selectorExpanded
-                }
-            }
-        ) {
-            OutlinedTextField(
-                value = selectedArtifact?.displayName.orEmpty(),
-                onValueChange = {},
-                label = { Text(stringResource(R.string.local_artifact_entry)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(),
-                readOnly = true,
-                enabled = artifacts.isNotEmpty(),
-                trailingIcon = {
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = selectorExpanded)
-                },
-                supportingText = {
-                    if (selectedType != null) {
-                        Text(
-                            text = if (selectedType == PublishArtifactType.PACKAGE) stringResource(R.string.publish_target_package_market) else stringResource(R.string.publish_target_script_market)
-                        )
-                    }
-                }
-            )
-            ExposedDropdownMenu(
-                expanded = selectorExpanded,
-                onDismissRequest = { selectorExpanded = false }
+        if (isEditMode && initialInfo != null) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             ) {
-                artifacts.forEach { artifact ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(artifact.displayName)
-                                Text(
-                                    text = if (artifact.type == PublishArtifactType.PACKAGE) stringResource(R.string.artifact_type_package) else stringResource(R.string.artifact_type_script),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        },
-                        onClick = {
-                            selectedPackageName = artifact.packageName
-                            selectorExpanded = false
-                            if (!isEditMode) {
-                                displayName = artifact.displayName
-                                description = artifact.description
-                                version = artifact.inferredVersion ?: "1.0.0"
-                            }
-                        }
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "当前编辑节点",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text("projectId: ${initialInfo.projectId.ifBlank { initialInfo.normalizedId }}")
+                    Text("nodeId: ${initialInfo.nodeId.ifBlank { "legacy-${editingIssue?.id ?: ""}" }}")
+                    Text("runtimePackageId: ${initialInfo.runtimePackageId.ifBlank { initialInfo.normalizedId }}")
+                    Text("当前版本: ${initialInfo.version.ifBlank { version }}")
+                    Text("已发布节点的文件和版本号已锁定。")
+                }
+            }
+        } else if (activePublishContext != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.32f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "当前发布上下文",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text("projectId: ${activePublishContext.projectId}")
+                    Text("runtimePackageId: ${activePublishContext.runtimePackageId}")
+                    if (lockedDisplayName.isNotBlank()) {
+                        Text("锁定名称: $lockedDisplayName")
+                    }
+                    Text(
+                        "parentNodeIds: ${
+                            activePublishContext.parentNodeIds.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
+                        }"
                     )
                 }
             }
         }
 
-        OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text(stringResource(R.string.display_name_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text(stringResource(R.string.description_label)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
-        OutlinedTextField(value = version, onValueChange = { version = it }, label = { Text(stringResource(R.string.version_label)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (!isLoggedIn) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                Text(
+                    stringResource(R.string.need_login_before_publish_artifact),
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+
+        if (!isEditMode && activePublishContext != null && filteredArtifacts.isEmpty()) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                Text(
+                    text = "当前是继续/merge 发布，但本地还没有找到 runtimePackageId 为 `${activePublishContext.runtimePackageId}` 的可发布插件。",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+
+        if (isEditMode) {
+            OutlinedTextField(
+                value = selectorDisplayName,
+                onValueChange = {},
+                label = { Text(stringResource(R.string.local_artifact_entry)) },
+                modifier = Modifier.fillMaxWidth(),
+                readOnly = true,
+                supportingText = {
+                    val supportText =
+                        buildString {
+                            if (selectedType != null) {
+                                append(
+                                    if (selectedType == PublishArtifactType.PACKAGE) {
+                                        stringResource(R.string.publish_target_package_market)
+                                    } else {
+                                        stringResource(R.string.publish_target_script_market)
+                                    }
+                                )
+                            }
+                            if (lockedRuntimePackageId.isNotBlank()) {
+                                if (isNotBlank()) append(" · ")
+                                append("runtimePackageId: $lockedRuntimePackageId")
+                            }
+                            initialInfo?.sourceFileName?.takeIf { it.isNotBlank() }?.let {
+                                if (isNotBlank()) append(" · ")
+                                append("文件: $it")
+                            }
+                        }
+                    if (supportText.isNotBlank()) {
+                        Text(supportText)
+                    }
+                }
+            )
+        } else {
+            ExposedDropdownMenuBox(
+                expanded = selectorExpanded,
+                onExpandedChange = {
+                    if (filteredArtifacts.isNotEmpty()) {
+                        selectorExpanded = !selectorExpanded
+                    }
+                }
+            ) {
+                OutlinedTextField(
+                    value = selectorDisplayName,
+                    onValueChange = {},
+                    label = { Text(stringResource(R.string.local_artifact_entry)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),
+                    readOnly = true,
+                    enabled = filteredArtifacts.isNotEmpty(),
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = selectorExpanded)
+                    },
+                    supportingText = {
+                        if (selectedType != null) {
+                            Text(
+                                text =
+                                    if (selectedType == PublishArtifactType.PACKAGE) {
+                                        stringResource(R.string.publish_target_package_market)
+                                    } else {
+                                        stringResource(R.string.publish_target_script_market)
+                                    }
+                            )
+                        }
+                    }
+                )
+                ExposedDropdownMenu(
+                    expanded = selectorExpanded,
+                    onDismissRequest = { selectorExpanded = false }
+                ) {
+                    filteredArtifacts.forEach { artifact ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(artifact.displayName)
+                                    Text(
+                                        text =
+                                            if (artifact.type == PublishArtifactType.PACKAGE) {
+                                                stringResource(R.string.artifact_type_package)
+                                            } else {
+                                                stringResource(R.string.artifact_type_script)
+                                            },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedPackageName = artifact.packageName
+                                selectorExpanded = false
+                                if (initialInfo == null) {
+                                    displayName = if (isDisplayNameLocked) lockedDisplayName else artifact.displayName
+                                    description = artifact.description
+                                    version = artifact.inferredVersion ?: "1.0.0"
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = {
+                if (!isDisplayNameLocked) {
+                    displayName = it
+                }
+            },
+            label = { Text(stringResource(R.string.display_name_label)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            readOnly = isDisplayNameLocked,
+            supportingText = {
+                if (isDisplayNameLocked) {
+                    Text("继续发布新节点时，名称必须和来源节点保持一致")
+                }
+            }
+        )
+        OutlinedTextField(
+            value = description,
+            onValueChange = { description = it },
+            label = { Text(stringResource(R.string.description_label)) },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 3
+        )
+        OutlinedTextField(
+            value = version,
+            onValueChange = {
+                if (!isEditMode) {
+                    version = it
+                }
+            },
+            label = { Text(stringResource(R.string.version_label)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            readOnly = isEditMode,
+            supportingText = {
+                if (isEditMode) {
+                    Text("已发布节点的版本号不可修改")
+                }
+            }
+        )
         OutlinedTextField(
             value = minSupportedAppVersion,
             onValueChange = { minSupportedAppVersion = it },
@@ -266,13 +476,36 @@ fun ArtifactPublishScreen(
         Button(
             onClick = { showConfirmationDialog = true },
             modifier = Modifier.fillMaxWidth(),
-            enabled = isLoggedIn && selectedPackageName.isNotBlank() && displayName.isNotBlank() && description.isNotBlank() && !isPublishing
+            enabled =
+                isLoggedIn &&
+                    displayName.isNotBlank() &&
+                    description.isNotBlank() &&
+                    !isPublishing &&
+                    (
+                        if (isEditMode) {
+                            initialInfo?.type != null
+                        } else {
+                            selectedPackageName.isNotBlank() &&
+                                (activePublishContext == null || filteredArtifacts.isNotEmpty())
+                        }
+                    )
         ) {
             if (isPublishing) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
-            Text(if (isEditMode) stringResource(R.string.update_to_market) else stringResource(R.string.publish_to_market))
+            Text(
+                when {
+                    isEditMode -> "更新已发布节点"
+                    parentCount >= 2 -> "发布 merge 节点"
+                    isContinuationMode -> "继续发布到项目簇"
+                    else -> stringResource(R.string.publish_to_market)
+                }
+            )
         }
 
         OutlinedButton(onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()) {
@@ -295,10 +528,19 @@ fun ArtifactPublishScreen(
         )
     }
 
-    if (showConfirmationDialog && selectedArtifact != null) {
+    if (showConfirmationDialog && (selectedArtifact != null || isEditMode)) {
         AlertDialog(
             onDismissRequest = { showConfirmationDialog = false },
-            title = { Text(stringResource(if (isEditMode) R.string.confirm_update else R.string.confirm_publish)) },
+            title = {
+                Text(
+                    when {
+                        isEditMode -> stringResource(R.string.confirm_update)
+                        parentCount >= 2 -> "确认发布 merge 节点"
+                        isContinuationMode -> "确认继续发布"
+                        else -> stringResource(R.string.confirm_publish)
+                    }
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.please_check_submitted_info))
@@ -308,7 +550,11 @@ fun ArtifactPublishScreen(
                     Text(
                         stringResource(
                             R.string.artifact_type_colon,
-                            if (selectedArtifact.type == PublishArtifactType.PACKAGE) stringResource(R.string.artifact_type_package) else stringResource(R.string.artifact_type_script)
+                            when (selectedType) {
+                                PublishArtifactType.PACKAGE -> stringResource(R.string.artifact_type_package)
+                                PublishArtifactType.SCRIPT -> stringResource(R.string.artifact_type_script)
+                                null -> "-"
+                            }
                         )
                     )
                     Text(
@@ -324,16 +570,36 @@ fun ArtifactPublishScreen(
                 TextButton(
                     onClick = {
                         showConfirmationDialog = false
-                        viewModel.requestPublish(
-                            packageName = selectedPackageName,
-                            displayName = displayName,
-                            description = description,
-                            version = version,
-                            minSupportedAppVersion = minSupportedAppVersion.ifBlank { null },
-                            maxSupportedAppVersion = maxSupportedAppVersion.ifBlank { null }
-                        )
+                        if (isEditMode && editingIssue != null) {
+                            viewModel.updatePublishedArtifact(
+                                issue = editingIssue,
+                                displayName = displayName,
+                                description = description,
+                                minSupportedAppVersion = minSupportedAppVersion.ifBlank { null },
+                                maxSupportedAppVersion = maxSupportedAppVersion.ifBlank { null }
+                            )
+                        } else {
+                            viewModel.requestPublish(
+                                packageName = selectedPackageName,
+                                displayName = displayName,
+                                description = description,
+                                version = version,
+                                minSupportedAppVersion = minSupportedAppVersion.ifBlank { null },
+                                maxSupportedAppVersion = maxSupportedAppVersion.ifBlank { null },
+                                publishContext = activePublishContext
+                            )
+                        }
                     }
-                ) { Text(stringResource(if (isEditMode) R.string.confirm_update else R.string.confirm_publish)) }
+                ) {
+                    Text(
+                        when {
+                            isEditMode -> stringResource(R.string.confirm_update)
+                            parentCount >= 2 -> "确认发布 merge 节点"
+                            isContinuationMode -> "确认继续发布"
+                            else -> stringResource(R.string.confirm_publish)
+                        }
+                    )
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showConfirmationDialog = false }) {
@@ -357,10 +623,14 @@ fun ArtifactPublishScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showSecondForgeConfirm = false
-                    viewModel.dismissForgeInitializationPrompt()
-                }) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = {
+                        showSecondForgeConfirm = false
+                        viewModel.dismissForgeInitializationPrompt()
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }
@@ -374,16 +644,24 @@ fun ArtifactPublishScreen(
             title = { Text(stringResource(R.string.confirm_create_public_forge_title)) },
             text = { Text(stringResource(R.string.confirm_create_public_forge_message)) },
             confirmButton = {
-                TextButton(onClick = {
-                    showSecondForgeConfirm = false
-                    viewModel.confirmForgeInitializationAndPublish()
-                }) { Text(stringResource(R.string.create_and_publish)) }
+                TextButton(
+                    onClick = {
+                        showSecondForgeConfirm = false
+                        viewModel.confirmForgeInitializationAndPublish()
+                    }
+                ) {
+                    Text(stringResource(R.string.create_and_publish))
+                }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showSecondForgeConfirm = false
-                    viewModel.dismissForgeInitializationPrompt()
-                }) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = {
+                        showSecondForgeConfirm = false
+                        viewModel.dismissForgeInitializationPrompt()
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         )
     }
@@ -391,18 +669,27 @@ fun ArtifactPublishScreen(
     publishSuccess?.let { message ->
         AlertDialog(
             onDismissRequest = { viewModel.clearPublishMessages() },
-            title = { Text(stringResource(if (isEditMode) R.string.update_success else R.string.publish_success)) },
+            title = {
+                Text(
+                    when {
+                        isEditMode -> "节点更新成功"
+                        parentCount >= 2 -> "merge 节点发布成功"
+                        isContinuationMode -> "继续发布成功"
+                        else -> stringResource(R.string.publish_success)
+                    }
+                )
+            },
             text = { Text(text = message) },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearPublishMessages()
-                    onNavigateBack()
-                }) { Text(stringResource(R.string.confirm)) }
+                TextButton(
+                    onClick = {
+                        viewModel.clearPublishMessages()
+                        onNavigateBack()
+                    }
+                ) {
+                    Text(stringResource(R.string.confirm))
+                }
             }
         )
     }
-}
-
-private fun normalizePackageMatch(value: String): String {
-    return value.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
 }

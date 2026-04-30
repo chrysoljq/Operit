@@ -253,6 +253,20 @@ function registerToolPkg() {
     }
   });
 
+  ToolPkg.registerDesktopWidget({
+    id: "windows_dashboard_widget",
+    route: "toolpkg:com.example.windows_bundle:ui:windows_dashboard",
+    render: "toolpkg:com.example.windows_bundle:ui:windows_dashboard_widget",
+    title: {
+      zh: "Windows 面板小组件",
+      en: "Windows Widget"
+    },
+    subtitle: {
+      zh: "点击打开面板",
+      en: "Tap to open dashboard"
+    }
+  });
+
   ToolPkg.registerAppLifecycleHook({
     id: "windows_app_create",
     event: "application_on_create",
@@ -340,6 +354,14 @@ exports.onInputMenuToggle = onInputMenuToggle;
 | `ToolPkg.registerNavigationEntry` | `title` | 否 | 导航入口标题（支持 `LocalizedText`） |
 | `ToolPkg.registerNavigationEntry` | `icon` | 否 | 图标名 |
 | `ToolPkg.registerNavigationEntry` | `order` | 否 | 同一 surface 内排序值，越小越靠前 |
+| `ToolPkg.registerDesktopWidget` | `id` | 是 | 小组件唯一标识 |
+| `ToolPkg.registerDesktopWidget` | `route` / `routeId` | 是 | 已注册路由 ID |
+| `ToolPkg.registerDesktopWidget` | `render` / `renderRouteId` | 否 | 小组件渲染所使用的 UI route；默认等于 `route` |
+| `ToolPkg.registerDesktopWidget` | `title` | 否 | 小组件标题（支持 `LocalizedText`） |
+| `ToolPkg.registerDesktopWidget` | `subtitle` | 否 | 小组件副标题（支持 `LocalizedText`） |
+| `ToolPkg.registerDesktopWidget` | `description` | 否 | 小组件配置说明（支持 `LocalizedText`） |
+| `ToolPkg.registerDesktopWidget` | `icon` | 否 | 图标名，供宿主配置页等场景使用 |
+| `ToolPkg.registerDesktopWidget` | `order` | 否 | 排序值，越小越靠前 |
 | `ToolPkg.registerAppLifecycleHook` | `id` | 是 | 生命周期钩子唯一标识 |
 | `ToolPkg.registerAppLifecycleHook` | `event` | 是 | 生命周期事件名（见下方完整列表） |
 | `ToolPkg.registerAppLifecycleHook` | `function` | 是 | 函数引用（支持箭头函数） |

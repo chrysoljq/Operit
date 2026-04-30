@@ -17,7 +17,8 @@ data class PublishArtifactRequest(
     val description: String,
     val version: String,
     val minSupportedAppVersion: String?,
-    val maxSupportedAppVersion: String?
+    val maxSupportedAppVersion: String?,
+    val publishContext: ArtifactPublishClusterContext? = null
 )
 
 sealed class PublishAttemptResult {
@@ -91,7 +92,8 @@ class GitHubForgePublishService(
                     description = request.description,
                     version = request.version,
                     minSupportedAppVersion = request.minSupportedAppVersion,
-                    maxSupportedAppVersion = request.maxSupportedAppVersion
+                    maxSupportedAppVersion = request.maxSupportedAppVersion,
+                    publishContext = request.publishContext
                 )
             val releaseDescriptor = buildPublishReleaseDescriptor(descriptor)
 
@@ -121,7 +123,13 @@ class GitHubForgePublishService(
             val payload =
                 MarketRegistrationPayload(
                     type = descriptor.type,
-                    normalizedId = descriptor.normalizedId,
+                    projectId = descriptor.projectId,
+                    projectDisplayName = descriptor.projectDisplayName,
+                    projectDescription = descriptor.projectDescription,
+                    runtimePackageId = descriptor.runtimePackageId,
+                    nodeId = descriptor.nodeId,
+                    rootNodeId = descriptor.rootNodeId,
+                    parentNodeIds = descriptor.parentNodeIds,
                     publisherLogin = currentUser.login,
                     forgeRepo = forgeRepoResult.repoName,
                     releaseTag = releaseDescriptor.tagName,
@@ -138,7 +146,7 @@ class GitHubForgePublishService(
 
             onProgress(PublishProgressStage.REGISTERING_MARKET)
             val issue =
-                registerOrUpdateMarketIssue(payload).getOrElse { error ->
+                registerMarketIssue(payload).getOrElse { error ->
                     return@withContext Result.success(
                         PublishAttemptResult.RegistrationRetryRequired(
                             payload = payload,
@@ -165,7 +173,7 @@ class GitHubForgePublishService(
     suspend fun retryMarketRegistration(
         payload: MarketRegistrationPayload
     ): Result<GitHubIssue> = withContext(Dispatchers.IO) {
-        registerOrUpdateMarketIssue(payload)
+        registerMarketIssue(payload)
     }
 
     private suspend fun ensureForgeRepository(
@@ -293,7 +301,7 @@ class GitHubForgePublishService(
         )
     }
 
-    private suspend fun registerOrUpdateMarketIssue(
+    private suspend fun registerMarketIssue(
         payload: MarketRegistrationPayload
     ): Result<GitHubIssue> {
         val marketService =
@@ -302,34 +310,10 @@ class GitHubForgePublishService(
                 definition = payload.type.marketDefinition()
             )
         val body = buildArtifactMarketIssueBody(payload)
-
-        val existingIssues =
-            marketService.getUserPublishedIssues(
-                creator = payload.publisherLogin,
-                perPage = 100
-            ).getOrElse { error ->
-                return Result.failure(error)
-            }
-
-        val existingIssue =
-            existingIssues.firstOrNull { issue ->
-                val metadata = issue.body?.let(::parseArtifactMarketMetadata)
-                metadata?.type == payload.type.wireValue &&
-                    metadata.normalizedId == payload.normalizedId
-            }
-
-        return if (existingIssue != null) {
-            marketService.updateIssueContent(
-                issueNumber = existingIssue.number,
-                title = payload.displayName,
-                body = body
-            )
-        } else {
-            marketService.createIssue(
-                title = payload.displayName,
-                body = body
-            )
-        }
+        return marketService.createIssue(
+            title = payload.displayName,
+            body = body
+        )
     }
 
     private fun validateSourceFile(file: File) {

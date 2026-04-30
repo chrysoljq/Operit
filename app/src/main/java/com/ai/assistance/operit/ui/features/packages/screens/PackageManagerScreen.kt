@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.features.packages.screens
 
-import android.os.Environment
 import com.ai.assistance.operit.util.AppLogger
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,14 +46,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.PackageTool
 import com.ai.assistance.operit.core.tools.ToolPackage
 import com.ai.assistance.operit.core.tools.EnvVar
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.mcp.MCPRepository
-import com.ai.assistance.operit.data.model.AITool
-import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.EnvPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPEnvironmentVariablesDialog
@@ -66,24 +62,12 @@ import com.ai.assistance.operit.ui.features.packages.dialogs.PackageDetailsDialo
 import com.ai.assistance.operit.ui.features.packages.dialogs.QuickPluginCreatorDialog
 import com.ai.assistance.operit.ui.features.packages.dialogs.ScriptExecutionDialog
 import com.ai.assistance.operit.ui.features.packages.lists.PackagesList
-import java.io.BufferedInputStream
+import com.ai.assistance.operit.ui.features.packages.market.PluginCreationIntent
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.ai.assistance.operit.R
-
-private const val OPERIT_EDITOR_PACKAGE_NAME = "operit_editor"
-private const val SANDBOX_PACKAGE_DEV_INSTALL_SCRIPT_URL =
-    "https://cdn.jsdelivr.net/gh/AAswordman/Operit@main/tools/sandboxpackage_dev_install_or_update.js"
-private const val SANDBOX_PACKAGE_DEV_SCRIPT_RELATIVE_PATH =
-    "Download/Operit/skills/SandboxPackage_DEV/scripts/install_or_update.js"
-private const val QUICK_PLUGIN_CREATION_PROMPT_PREFIX =
-    "请根据沙盒包开发的dev工具包以及operit editor工具包，创作一个符合以下需求的工具并导入。需求：\n"
-
 private data class ExternalPackageImportResult(
     val message: String,
     val availablePackages: Map<String, ToolPackage>,
@@ -102,13 +86,42 @@ private data class PackageManagerSnapshot(
     val packageLoadErrorInfos: List<PackageManager.PackageLoadErrorInfo>
 )
 
+private suspend fun runQuickPluginCreatorSetupAndPublishResult(
+    context: android.content.Context,
+    packageManager: PackageManager,
+    toolHandler: AIToolHandler,
+    onRunningChange: (Boolean) -> Unit,
+    onResult: (ToolResult?) -> Unit,
+    onMessage: suspend (String) -> Unit
+) {
+    onRunningChange(true)
+    onResult(null)
+    val result =
+        withContext(Dispatchers.IO) {
+            runQuickPluginCreatorSetup(
+                context = context,
+                packageManager = packageManager,
+                toolHandler = toolHandler
+            )
+        }
+    onResult(result)
+    onRunningChange(false)
+    onMessage(
+        if (result.success) {
+            result.result.toString()
+        } else {
+            result.error ?: context.getString(R.string.quick_plugin_creator_setup_failed)
+        }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PackageManagerScreen(
     onNavigateToMCPMarket: () -> Unit = {},
     onNavigateToSkillMarket: () -> Unit = {},
     onNavigateToArtifactMarket: () -> Unit = {},
-    onStartPluginCreation: (String) -> Unit = {},
+    onStartPluginCreation: (PluginCreationIntent) -> Unit = {},
     onOpenToolPkgPluginConfig: (String, String, String, Boolean) -> Unit = { _, _, _, _ -> },
     onNavigateToMCPDetail: ((com.ai.assistance.operit.data.api.GitHubIssue) -> Unit)? = null
 ) {
@@ -900,17 +913,16 @@ fun PackageManagerScreen(
                     setupResult = quickPluginSetupResult,
                     onRunSetup = {
                         scope.launch {
-                            quickPluginSetupRunning = true
-                            quickPluginSetupResult = null
-                            quickPluginSetupResult =
-                                withContext(Dispatchers.IO) {
-                                    runQuickPluginCreatorSetup(
-                                        context = context,
-                                        packageManager = packageManager,
-                                        toolHandler = toolHandler
-                                    )
+                            runQuickPluginCreatorSetupAndPublishResult(
+                                context = context,
+                                packageManager = packageManager,
+                                toolHandler = toolHandler,
+                                onRunningChange = { quickPluginSetupRunning = it },
+                                onResult = { quickPluginSetupResult = it },
+                                onMessage = { message ->
+                                    snackbarHostState.showSnackbar(message)
                                 }
-                            quickPluginSetupRunning = false
+                            )
                         }
                     },
                     onDismiss = { showQuickPluginCreatorDialog = false },
@@ -925,7 +937,7 @@ fun PackageManagerScreen(
                         } else {
                             showQuickPluginCreatorDialog = false
                             quickPluginRequirement = ""
-                            onStartPluginCreation(QUICK_PLUGIN_CREATION_PROMPT_PREFIX + requirement)
+                            onStartPluginCreation(PluginCreationIntent.Fresh(requirement))
                         }
                     }
                 )
@@ -989,93 +1001,6 @@ private fun QuickPluginCreatorEntry(
             )
         }
     }
-}
-
-private fun runQuickPluginCreatorSetup(
-    context: android.content.Context,
-    packageManager: PackageManager,
-    toolHandler: AIToolHandler
-): ToolResult {
-    return try {
-        val scriptFile = downloadSandboxPackageDevInstallScript()
-        val enableMessage = packageManager.enablePackage(OPERIT_EDITOR_PACKAGE_NAME)
-        if (enableMessage.startsWith("Package not found", ignoreCase = true)) {
-            return ToolResult(
-                toolName = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
-                success = false,
-                result = StringResultData(""),
-                error = enableMessage
-            )
-        }
-
-        val result = toolHandler.executeTool(
-            AITool(
-                name = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
-                parameters = listOf(
-                    ToolParameter(
-                        name = "source_path",
-                        value = scriptFile.absolutePath
-                    )
-                )
-            )
-        )
-
-        if (!result.success) {
-            ToolResult(
-                toolName = result.toolName,
-                success = false,
-                result = StringResultData(""),
-                error = result.error ?: context.getString(R.string.quick_plugin_creator_setup_failed)
-            )
-        } else {
-            ToolResult(
-                toolName = result.toolName,
-                success = true,
-                result = StringResultData(context.getString(R.string.quick_plugin_creator_setup_success))
-            )
-        }
-    } catch (e: Exception) {
-        AppLogger.e("PackageManagerScreen", "Failed to run quick plugin creator setup", e)
-        ToolResult(
-            toolName = "$OPERIT_EDITOR_PACKAGE_NAME:debug_run_sandbox_script",
-            success = false,
-            result = StringResultData(""),
-            error = e.message ?: e.javaClass.simpleName
-        )
-    }
-}
-
-private fun downloadSandboxPackageDevInstallScript(): File {
-    val rootDir = Environment.getExternalStorageDirectory()
-    val scriptFile = File(rootDir, SANDBOX_PACKAGE_DEV_SCRIPT_RELATIVE_PATH)
-    scriptFile.parentFile?.mkdirs()
-
-    val connection =
-        (URL(SANDBOX_PACKAGE_DEV_INSTALL_SCRIPT_URL).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 30_000
-            doInput = true
-            setRequestProperty("User-Agent", "Operit-QuickPluginCreator/1.0")
-        }
-
-    connection.connect()
-    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-        throw IllegalStateException("HTTP ${connection.responseCode}")
-    }
-
-    BufferedInputStream(connection.inputStream).use { input ->
-        FileOutputStream(scriptFile).use { output ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) {
-                val read = input.read(buffer)
-                if (read <= 0) break
-                output.write(buffer, 0, read)
-            }
-            output.flush()
-        }
-    }
-    connection.disconnect()
-    return scriptFile
 }
 
 @Composable

@@ -31,6 +31,7 @@ internal object ToolPkgMainRegistrationScriptParser {
             val uiModules = parseRegisteredUiModules(captured.toolboxUiModules)
             val uiRoutes = parseRegisteredUiRoutes(captured.uiRoutes, toolPkgId)
             val navigationEntries = parseRegisteredNavigationEntries(captured.navigationEntries)
+            val desktopWidgets = parseRegisteredDesktopWidgets(captured.desktopWidgets)
             val appLifecycleHooks = parseRegisteredAppLifecycleHooks(captured.appLifecycleHooks)
             val messageProcessingPlugins =
                 parseRegisteredFunctionHooks(
@@ -98,6 +99,7 @@ internal object ToolPkgMainRegistrationScriptParser {
                         toolboxUiModules = uiModules,
                         uiRoutes = uiRoutes,
                         navigationEntries = navigationEntries,
+                        desktopWidgets = desktopWidgets,
                         appLifecycleHooks = appLifecycleHooks,
                         messageProcessingPlugins = messageProcessingPlugins,
                         xmlRenderPlugins = xmlRenderPlugins,
@@ -280,6 +282,53 @@ internal object ToolPkgMainRegistrationScriptParser {
             )
         }
         return entries
+    }
+
+    private fun parseRegisteredDesktopWidgets(
+        registrations: List<String>
+    ): List<ToolPkgRegisteredDesktopWidget> {
+        val widgets = mutableListOf<ToolPkgRegisteredDesktopWidget>()
+        registrations.forEachIndexed { index, raw ->
+            val item =
+                try {
+                    JSONObject(raw)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException(
+                        "$TOOLPKG_REGISTRATION_DESKTOP_WIDGET payload[$index] must be a JSON object",
+                        e
+                    )
+                }
+            val id = item.optString("id").trim()
+            val routeId =
+                item.optString("route").trim().ifBlank {
+                    item.optString("routeId").trim()
+                }
+            val renderRouteId =
+                item.optString("render").trim().ifBlank {
+                    item.optString("renderRouteId").trim()
+                }.ifBlank {
+                    routeId
+                }
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].id is required")
+            }
+            if (routeId.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].route is required")
+            }
+            widgets.add(
+                ToolPkgRegisteredDesktopWidget(
+                    id = id,
+                    routeId = routeId,
+                    renderRouteId = renderRouteId,
+                    title = parseLocalizedText(item.opt("title"), fallback = id),
+                    subtitle = parseLocalizedText(item.opt("subtitle"), fallback = ""),
+                    description = parseLocalizedText(item.opt("description"), fallback = ""),
+                    icon = item.optString("icon").trim().ifBlank { null },
+                    order = item.optInt("order", 0)
+                )
+            )
+        }
+        return widgets
     }
 
     private fun parseNavigationEntryAction(

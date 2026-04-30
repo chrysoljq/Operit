@@ -25,11 +25,6 @@ abstract class BaseLanguageSupport : LanguageSupport {
     override fun getStringEscapeChar(): Char = '\\'
     
     /**
-     * 默认的语法检查（空实现）
-     */
-    override fun checkSyntax(code: String): List<LanguageSupport.SyntaxError> = emptyList()
-    
-    /**
      * 默认的内置函数集合
      */
     override fun getBuiltInFunctions(): Set<String> = emptySet()

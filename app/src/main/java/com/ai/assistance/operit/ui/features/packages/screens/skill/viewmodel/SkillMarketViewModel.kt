@@ -594,9 +594,13 @@ class SkillMarketViewModel(
         description: String,
         repositoryUrl: String,
         version: String = "v1"
-    ): Boolean {
+    ): Result<Unit> {
         return try {
-            if (!githubAuth.isLoggedIn()) return false
+            if (!githubAuth.isLoggedIn()) {
+                return Result.failure(IllegalStateException("GitHub 登录后才能发布 Skill。"))
+            }
+
+            ensureSkillTitleAvailable(title = title)
 
             val body = buildSkillPublishIssueBody(
                 description = description,
@@ -609,7 +613,9 @@ class SkillMarketViewModel(
                 body = body
             )
 
-            if (result.isSuccess) return true
+            if (result.isSuccess) {
+                return Result.success(Unit)
+            }
 
             val errMsg = result.exceptionOrNull()?.message.orEmpty()
             if (errMsg.contains("422")) {
@@ -618,13 +624,16 @@ class SkillMarketViewModel(
                     body = body,
                     includeDefaultLabel = false
                 )
-                retry.isSuccess
+                retry.fold(
+                    onSuccess = { Result.success(Unit) },
+                    onFailure = { Result.failure(it) }
+                )
             } else {
-                false
+                Result.failure(result.exceptionOrNull() ?: IllegalStateException("Skill 发布失败"))
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to publish skill", e)
-            false
+            Result.failure(e)
         }
     }
 
@@ -634,9 +643,16 @@ class SkillMarketViewModel(
         description: String,
         repositoryUrl: String,
         version: String = "v1"
-    ): Boolean {
+    ): Result<Unit> {
         return try {
-            if (!githubAuth.isLoggedIn()) return false
+            if (!githubAuth.isLoggedIn()) {
+                return Result.failure(IllegalStateException("GitHub 登录后才能更新 Skill。"))
+            }
+
+            ensureSkillTitleAvailable(
+                title = title,
+                currentIssueNumber = issueNumber
+            )
 
             val body = buildSkillPublishIssueBody(
                 description = description,
@@ -650,11 +666,44 @@ class SkillMarketViewModel(
                 body = body
             )
 
-            result.isSuccess
+            result.fold(
+                onSuccess = { Result.success(Unit) },
+                onFailure = { Result.failure(it) }
+            )
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to update skill", e)
-            false
+            Result.failure(e)
         }
+    }
+
+    private suspend fun ensureSkillTitleAvailable(
+        title: String,
+        currentIssueNumber: Int? = null
+    ) {
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isBlank()) {
+            throw IllegalArgumentException("Skill 名称不能为空。")
+        }
+
+        val issues =
+            marketService.searchOpenIssuesByExactTitle(trimmedTitle).getOrElse { error ->
+                throw IllegalStateException(
+                    "检查 Skill 名称是否重名失败：${error.message ?: "GitHub 搜索失败"}"
+                )
+            }
+        val normalizedTitle = normalizePublishTitle(trimmedTitle)
+        val conflictingIssue =
+            issues.firstOrNull { issue ->
+                issue.number != currentIssueNumber &&
+                    normalizePublishTitle(issue.title) == normalizedTitle
+            }
+        if (conflictingIssue != null) {
+            throw IllegalStateException("Skill 市场里已经有同名插件「$trimmedTitle」，请换一个名称。")
+        }
+    }
+
+    private fun normalizePublishTitle(title: String): String {
+        return title.trim().replace(Regex("\\s+"), " ").lowercase()
     }
 
     private fun buildSkillPublishIssueBody(

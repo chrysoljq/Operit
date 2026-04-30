@@ -3,9 +3,7 @@ package com.ai.assistance.operit.ui.features.packages.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -111,7 +109,6 @@ fun ArtifactManageScreen(
                     isOpen = issue.state == "open",
                     onClick = { onNavigateToDetail(issue) },
                     supportingContent = {
-                        Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             MarketManageReviewStatusChip(isApproved = isApproved)
                             ArtifactTypeBadge(info)

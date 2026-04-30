@@ -55,6 +55,25 @@ class GitHubIssueMarketService(
         )
     }
 
+    suspend fun searchOpenIssuesByExactTitle(
+        title: String,
+        page: Int = 1
+    ): Result<List<GitHubIssue>> {
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isBlank()) {
+            return Result.success(emptyList())
+        }
+
+        val escapedTitle = trimmedTitle.replace("\"", "\\\"")
+        return searchOpenIssues(
+            rawQuery = "\"$escapedTitle\" in:title",
+            page = page
+        ).map { issues ->
+            val normalizedTitle = normalizeIssueTitle(trimmedTitle)
+            issues.filter { normalizeIssueTitle(it.title) == normalizedTitle }
+        }
+    }
+
     suspend fun createIssue(
         title: String,
         body: String,
@@ -278,5 +297,9 @@ class GitHubIssueMarketService(
             owner = match.groupValues[1],
             repo = match.groupValues[2]
         )
+    }
+
+    private fun normalizeIssueTitle(title: String): String {
+        return title.trim().replace(Regex("\\s+"), " ").lowercase()
     }
 }

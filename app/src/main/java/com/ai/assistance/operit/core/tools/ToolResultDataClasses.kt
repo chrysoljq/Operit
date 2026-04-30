@@ -508,7 +508,6 @@ data class FileOperationData(
 data class FileApplyResultData(
     val operation: FileOperationData,
     val aiDiffInstructions: String,
-    val syntaxCheckResult: String? = null,
     val diffContent: String? = null
 ) : ToolResultData() {
     private fun buildRequestContent(): String {
@@ -516,11 +515,6 @@ data class FileApplyResultData(
         sections.add(operation.toString())
 
         extractDiffSummaryLine()?.let { sections.add(it) }
-
-        if (!syntaxCheckResult.isNullOrBlank()) {
-            sections.add("--- Syntax Check ---")
-            sections.add(syntaxCheckResult)
-        }
 
         return sections.joinToString("\n")
     }
@@ -558,10 +552,6 @@ data class FileApplyResultData(
         if (aiDiffInstructions.isNotEmpty() && !aiDiffInstructions.startsWith("Error")) {
             sb.appendLine("\n--- AI-Generated Diff ---")
             sb.appendLine(aiDiffInstructions)
-        }
-        if (!syntaxCheckResult.isNullOrEmpty()) {
-            sb.appendLine("\n--- Syntax Check ---")
-            sb.appendLine(syntaxCheckResult)
         }
         return sb.toString()
     }

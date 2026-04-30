@@ -65,6 +65,17 @@ internal data class ToolPkgNavigationActionHookRuntime(
     val functionSource: String? = null
 )
 
+internal data class ToolPkgDesktopWidgetRuntime(
+    val id: String,
+    val routeId: String,
+    val renderRouteId: String,
+    val title: LocalizedText,
+    val subtitle: LocalizedText,
+    val description: LocalizedText,
+    val icon: String? = null,
+    val order: Int = 0
+)
+
 internal data class ToolPkgAppLifecycleHookRuntime(
     val id: String,
     val event: String,
@@ -126,6 +137,7 @@ internal data class ToolPkgContainerRuntime(
     val uiModules: List<ToolPkgUiModuleRuntime>,
     val uiRoutes: List<ToolPkgUiRouteRuntime>,
     val navigationEntries: List<ToolPkgNavigationEntryRuntime>,
+    val desktopWidgets: List<ToolPkgDesktopWidgetRuntime>,
     val appLifecycleHooks: List<ToolPkgAppLifecycleHookRuntime>,
     val messageProcessingPlugins: List<ToolPkgFunctionHookRuntime>,
     val xmlRenderPlugins: List<ToolPkgTagFunctionHookRuntime>,
@@ -206,6 +218,17 @@ internal data class ToolPkgRegisteredNavigationEntry(
     val order: Int = 0
 )
 
+internal data class ToolPkgRegisteredDesktopWidget(
+    val id: String,
+    val routeId: String,
+    val renderRouteId: String,
+    val title: LocalizedText,
+    val subtitle: LocalizedText,
+    val description: LocalizedText,
+    val icon: String? = null,
+    val order: Int = 0
+)
+
 internal data class ToolPkgRegisteredAppLifecycleHook(
     val id: String,
     val event: String,
@@ -245,6 +268,7 @@ internal data class ToolPkgMainRegistration(
     val toolboxUiModules: List<ToolPkgRegisteredUiModule> = emptyList(),
     val uiRoutes: List<ToolPkgRegisteredUiRoute> = emptyList(),
     val navigationEntries: List<ToolPkgRegisteredNavigationEntry> = emptyList(),
+    val desktopWidgets: List<ToolPkgRegisteredDesktopWidget> = emptyList(),
     val appLifecycleHooks: List<ToolPkgRegisteredAppLifecycleHook> = emptyList(),
     val messageProcessingPlugins: List<ToolPkgRegisteredFunctionHook> = emptyList(),
     val xmlRenderPlugins: List<ToolPkgRegisteredTagFunctionHook> = emptyList(),
@@ -639,6 +663,48 @@ internal object ToolPkgArchiveParser {
             )
         }
 
+        val desktopWidgets = mutableListOf<ToolPkgDesktopWidgetRuntime>()
+        val desktopWidgetIds = linkedSetOf<String>()
+        mainRegistration.desktopWidgets.forEachIndexed { index, widget ->
+            val id = widget.id.trim()
+            val routeId = widget.routeId.trim()
+            val renderRouteId = widget.renderRouteId.trim()
+            if (id.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].id is required")
+            }
+            if (!desktopWidgetIds.add(id.lowercase())) {
+                throw IllegalArgumentException("Duplicate toolpkg desktop widget id: $id")
+            }
+            if (routeId.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].route is required")
+            }
+            if (uiRoutes.none { it.routeId.equals(routeId, ignoreCase = true) }) {
+                throw IllegalArgumentException(
+                    "$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].route not found: $routeId"
+                )
+            }
+            if (renderRouteId.isBlank()) {
+                throw IllegalArgumentException("$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].render is required")
+            }
+            if (uiRoutes.none { it.routeId.equals(renderRouteId, ignoreCase = true) }) {
+                throw IllegalArgumentException(
+                    "$TOOLPKG_REGISTRATION_DESKTOP_WIDGET[$index].render not found: $renderRouteId"
+                )
+            }
+            desktopWidgets.add(
+                ToolPkgDesktopWidgetRuntime(
+                    id = id,
+                    routeId = routeId,
+                    renderRouteId = renderRouteId,
+                    title = widget.title,
+                    subtitle = widget.subtitle,
+                    description = widget.description,
+                    icon = widget.icon,
+                    order = widget.order
+                )
+            )
+        }
+
         val appLifecycleHooks = mutableListOf<ToolPkgAppLifecycleHookRuntime>()
         val hookIds = linkedSetOf<String>()
         mainRegistration.appLifecycleHooks.forEachIndexed { index, hook ->
@@ -1019,6 +1085,7 @@ internal object ToolPkgArchiveParser {
                 uiModules = uiModules,
                 uiRoutes = uiRoutes,
                 navigationEntries = navigationEntries,
+                desktopWidgets = desktopWidgets,
                 appLifecycleHooks = appLifecycleHooks,
                 messageProcessingPlugins = messageProcessingPlugins,
                 xmlRenderPlugins = xmlRenderPlugins,

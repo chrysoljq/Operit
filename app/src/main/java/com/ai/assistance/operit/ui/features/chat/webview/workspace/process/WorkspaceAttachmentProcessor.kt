@@ -123,7 +123,7 @@ object WorkspaceAttachmentProcessor {
             val directoryStructure = getWorkspaceStructureAndDiff(context, toolHandler, workspacePath, workspaceEnv)
 
             // 获取工作区错误信息
-            val workspaceErrors = getWorkspaceErrors(context, toolHandler, workspacePath)
+            val workspaceErrors = getWorkspaceErrors(context)
 
             // 获取用户改动记录
             val userChanges = getUserChanges(context, toolHandler, workspacePath, workspaceEnv)
@@ -429,36 +429,8 @@ object WorkspaceAttachmentProcessor {
     /**
      * 获取工作区错误信息
      */
-    private suspend fun getWorkspaceErrors(
-        context: Context,
-        toolHandler: AIToolHandler,
-        workspacePath: String
-    ): String {
-        // TODO: 实现具体的错误检测逻辑
-        // 这里可以检查文件语法错误、依赖问题等
-        return try {
-            // 检查常见错误文件类型
-            val errorFiles = mutableListOf<String>()
-
-            // 检查HTML文件
-            checkHtmlErrors(toolHandler, workspacePath, errorFiles)
-
-            // 检查CSS文件
-            checkCssErrors(toolHandler, workspacePath, errorFiles)
-
-            // 检查JavaScript文件
-            checkJsErrors(toolHandler, workspacePath, errorFiles)
-
-            if (errorFiles.isEmpty()) {
-                context.getString(R.string.workspace_no_errors_found)
-            } else {
-                errorFiles.joinToString("\n")
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, context.getString(R.string.workspace_error_check_errors), e)
-            context.getString(R.string.workspace_error_get_errors, e.message ?: "")
-        }
-    }
+    private fun getWorkspaceErrors(context: Context): String =
+        context.getString(R.string.workspace_no_errors_found)
 
     /**
      * 获取用户改动记录
@@ -510,42 +482,6 @@ object WorkspaceAttachmentProcessor {
             AppLogger.e(TAG, context.getString(R.string.workspace_error_get_user_changes), e)
             context.getString(R.string.workspace_error_get_changes, e.message ?: "")
         }
-    }
-
-    /**
-     * 检查HTML文件错误
-     */
-    private suspend fun checkHtmlErrors(
-        _toolHandler: AIToolHandler,
-        _workspacePath: String,
-        _errorFiles: MutableList<String>
-    ) {
-        // TODO: 实现HTML语法检查
-        // 可以检查标签闭合、属性格式等
-    }
-
-    /**
-     * 检查CSS文件错误
-     */
-    private suspend fun checkCssErrors(
-        _toolHandler: AIToolHandler,
-        _workspacePath: String,
-        _errorFiles: MutableList<String>
-    ) {
-        // TODO: 实现CSS语法检查
-        // 可以检查选择器、属性值等
-    }
-
-    /**
-     * 检查JavaScript文件错误
-     */
-    private suspend fun checkJsErrors(
-        _toolHandler: AIToolHandler,
-        _workspacePath: String,
-        _errorFiles: MutableList<String>
-    ) {
-        // TODO: 实现JavaScript语法检查
-        // 可以检查基本语法错误
     }
 
     /**

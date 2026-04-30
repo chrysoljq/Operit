@@ -10,8 +10,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Cache
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -56,6 +56,87 @@ data class MarketRankPageResponse(
     val items: List<MarketRankIssueEntryResponse> = emptyList()
 )
 
+@Serializable
+data class ArtifactProjectRankEntryResponse(
+    val projectId: String = "",
+    val type: String = "",
+    val projectDisplayName: String = "",
+    val projectDescription: String = "",
+    val rootPublisherLogin: String = "",
+    val rootPublisherAvatarUrl: String = "",
+    val contributorCount: Int = 0,
+    val downloads: Int = 0,
+    val likes: Int = 0,
+    val latestNodeId: String = "",
+    val latestOpenNodeId: String = "",
+    val defaultNodeId: String = "",
+    val latestPublishedAt: String? = null
+)
+
+@Serializable
+data class ArtifactProjectRankPageResponse(
+    val updatedAt: String? = null,
+    val type: String = "",
+    val metric: String = "",
+    val page: Int = 1,
+    val pageSize: Int = 0,
+    val totalPages: Int = 1,
+    val totalItems: Int = 0,
+    val items: List<ArtifactProjectRankEntryResponse> = emptyList()
+)
+
+@Serializable
+data class ArtifactProjectEdgeResponse(
+    val parentNodeId: String = "",
+    val childNodeId: String = ""
+)
+
+@Serializable
+data class ArtifactProjectNodeResponse(
+    val projectId: String = "",
+    val type: String = "",
+    val projectDisplayName: String = "",
+    val projectDescription: String = "",
+    val runtimePackageId: String = "",
+    val nodeId: String = "",
+    val rootNodeId: String = "",
+    val parentNodeIds: List<String> = emptyList(),
+    val publisherLogin: String = "",
+    val releaseTag: String = "",
+    val assetName: String = "",
+    val downloadUrl: String = "",
+    val sha256: String = "",
+    val version: String = "",
+    val displayName: String = "",
+    val description: String = "",
+    val sourceFileName: String = "",
+    val minSupportedAppVersion: String? = null,
+    val maxSupportedAppVersion: String? = null,
+    val publishedAt: String? = null,
+    val state: String = "open",
+    val issue: GitHubIssue
+)
+
+@Serializable
+data class ArtifactProjectDetailResponse(
+    val projectId: String = "",
+    val type: String = "",
+    val projectDisplayName: String = "",
+    val projectDescription: String = "",
+    val rootNodeId: String = "",
+    val rootPublisherLogin: String = "",
+    val rootPublisherAvatarUrl: String = "",
+    val contributorCount: Int = 0,
+    val downloads: Int = 0,
+    val likes: Int = 0,
+    val latestNodeId: String = "",
+    val latestOpenNodeId: String = "",
+    val defaultNodeId: String = "",
+    val latestPublishedAt: String? = null,
+    val nodes: List<ArtifactProjectNodeResponse> = emptyList(),
+    val edges: List<ArtifactProjectEdgeResponse> = emptyList()
+)
+
 class MarketStatsApiService {
     private val json =
         Json {
@@ -64,37 +145,15 @@ class MarketStatsApiService {
         }
 
     private val staticClient = STATIC_CLIENT
-
     private val noRedirectTrackingClient = NO_REDIRECT_TRACKING_CLIENT
 
     suspend fun getStats(type: String): Result<MarketTypeStatsResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val url =
-                    STATIC_BASE_URL.toHttpUrl()
-                        .newBuilder()
-                        .addPathSegment("stats")
-                        .addPathSegment("$type.json")
-                        .build()
-
-                val request =
-                    Request.Builder()
-                        .url(url)
-                        .get()
-                        .addHeader("User-Agent", USER_AGENT)
-                        .build()
-
-                val startedAt = SystemClock.elapsedRealtime()
-                AppLogger.d(TAG, "HTTP GET getStats type=$type url=$url")
-                staticClient.newCall(request).execute().use { response ->
-                    AppLogger.d(
-                        TAG,
-                        "HTTP RESP getStats type=$type code=${response.code} source=${resolveResponseSource(response)} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
-                    )
-                    val body = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        error(buildHttpErrorMessage(response, body))
-                    }
+                requestStaticJson(
+                    pathSegments = listOf("stats", "$type.json"),
+                    label = "getStats type=$type"
+                ) { body ->
                     json.decodeFromString(MarketTypeStatsResponse.serializer(), body)
                 }
             }
@@ -107,32 +166,41 @@ class MarketStatsApiService {
     ): Result<MarketRankPageResponse> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val url =
-                    STATIC_BASE_URL.toHttpUrl()
-                        .newBuilder()
-                        .addPathSegment("rank")
-                        .addPathSegment("${type}-${metric}-page-${page}.json")
-                        .build()
-
-                val request =
-                    Request.Builder()
-                        .url(url)
-                        .get()
-                        .addHeader("User-Agent", USER_AGENT)
-                        .build()
-
-                val startedAt = SystemClock.elapsedRealtime()
-                AppLogger.d(TAG, "HTTP GET getRankPage type=$type metric=$metric page=$page url=$url")
-                staticClient.newCall(request).execute().use { response ->
-                    AppLogger.d(
-                        TAG,
-                        "HTTP RESP getRankPage type=$type metric=$metric page=$page code=${response.code} source=${resolveResponseSource(response)} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
-                    )
-                    val body = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) {
-                        error(buildHttpErrorMessage(response, body))
-                    }
+                requestStaticJson(
+                    pathSegments = listOf("rank", "${type}-${metric}-page-${page}.json"),
+                    label = "getRankPage type=$type metric=$metric page=$page"
+                ) { body ->
                     json.decodeFromString(MarketRankPageResponse.serializer(), body)
+                }
+            }
+        }
+
+    suspend fun getArtifactRankPage(
+        type: String,
+        metric: String,
+        page: Int
+    ): Result<ArtifactProjectRankPageResponse> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                requestStaticJson(
+                    pathSegments = listOf("artifact-rank", "${type}-${metric}-page-${page}.json"),
+                    label = "getArtifactRankPage type=$type metric=$metric page=$page"
+                ) { body ->
+                    json.decodeFromString(ArtifactProjectRankPageResponse.serializer(), body)
+                }
+            }
+        }
+
+    suspend fun getArtifactProject(
+        projectId: String
+    ): Result<ArtifactProjectDetailResponse> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                requestStaticJson(
+                    pathSegments = listOf("artifact-projects", "$projectId.json"),
+                    label = "getArtifactProject projectId=$projectId"
+                ) { body ->
+                    json.decodeFromString(ArtifactProjectDetailResponse.serializer(), body)
                 }
             }
         }
@@ -177,6 +245,37 @@ class MarketStatsApiService {
             }
         }
 
+    private inline fun <T> requestStaticJson(
+        pathSegments: List<String>,
+        label: String,
+        decode: (String) -> T
+    ): T {
+        val urlBuilder = STATIC_BASE_URL.toHttpUrl().newBuilder()
+        pathSegments.forEach(urlBuilder::addPathSegment)
+        val url = urlBuilder.build()
+
+        val request =
+            Request.Builder()
+                .url(url)
+                .get()
+                .addHeader("User-Agent", USER_AGENT)
+                .build()
+
+        val startedAt = SystemClock.elapsedRealtime()
+        AppLogger.d(TAG, "HTTP GET $label url=$url")
+        staticClient.newCall(request).execute().use { response ->
+            AppLogger.d(
+                TAG,
+                "HTTP RESP $label code=${response.code} source=${resolveResponseSource(response)} elapsed=${SystemClock.elapsedRealtime() - startedAt}ms url=$url"
+            )
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                error(buildHttpErrorMessage(response, body))
+            }
+            return decode(body)
+        }
+    }
+
     private fun buildHttpErrorMessage(
         response: Response,
         body: String
@@ -212,7 +311,7 @@ class MarketStatsApiService {
         private val STATIC_CACHE by lazy {
             Cache(
                 directory = File(OperitApplication.instance.cacheDir, "market_stats_http_cache"),
-                maxSize = STATIC_CACHE_SIZE_BYTES,
+                maxSize = STATIC_CACHE_SIZE_BYTES
             )
         }
 

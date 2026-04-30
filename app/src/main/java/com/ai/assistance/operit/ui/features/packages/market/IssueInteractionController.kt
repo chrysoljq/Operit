@@ -241,10 +241,12 @@ class IssueInteractionController(
                         AppLogger.d(logTag, "Successfully loaded reactions for issue #$issueNumber")
                     },
                     onFailure = { error ->
+                        onError(messages.reactionFailed(error.message ?: ""))
                         AppLogger.e(logTag, "Failed to load reactions for issue #$issueNumber", error)
                     }
                 )
             } catch (e: Exception) {
+                onError(messages.reactionError(e.message ?: ""))
                 AppLogger.e(logTag, "Exception while loading reactions for issue #$issueNumber", e)
             } finally {
                 _isLoadingReactions.value = _isLoadingReactions.value - issueNumber

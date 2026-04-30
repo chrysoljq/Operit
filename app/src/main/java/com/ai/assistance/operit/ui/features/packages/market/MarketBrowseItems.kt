@@ -11,8 +11,7 @@ data class SkillMarketBrowseItem(
     val title: String,
     val description: String,
     val repositoryUrl: String,
-    val ownerUsername: String,
-    val publisherAvatarUrl: String?
+    val ownerUsername: String
 )
 
 data class McpMarketBrowseItem(
@@ -22,7 +21,6 @@ data class McpMarketBrowseItem(
     val description: String,
     val repositoryUrl: String,
     val ownerUsername: String,
-    val publisherAvatarUrl: String?,
     val pluginId: String
 )
 
@@ -34,8 +32,7 @@ fun GitHubIssue.toSkillMarketBrowseItem(): SkillMarketBrowseItem {
         title = skillInfo.title.ifBlank { title },
         description = skillInfo.description,
         repositoryUrl = skillInfo.repositoryUrl,
-        ownerUsername = skillInfo.repositoryOwner,
-        publisherAvatarUrl = user.avatarUrl
+        ownerUsername = skillInfo.repositoryOwner
     )
 }
 
@@ -47,8 +44,7 @@ fun MarketRankIssueEntryResponse.toSkillMarketBrowseItem(): SkillMarketBrowseIte
         title = displayTitle.ifBlank { skillInfo.title.ifBlank { issue.title } },
         description = summaryDescription.ifBlank { skillInfo.description },
         repositoryUrl = skillInfo.repositoryUrl,
-        ownerUsername = authorLogin.ifBlank { skillInfo.repositoryOwner },
-        publisherAvatarUrl = issue.user.avatarUrl
+        ownerUsername = authorLogin.ifBlank { skillInfo.repositoryOwner }
     )
 }
 
@@ -61,7 +57,6 @@ fun GitHubIssue.toMcpMarketBrowseItem(): McpMarketBrowseItem {
         description = pluginInfo.description,
         repositoryUrl = pluginInfo.repositoryUrl,
         ownerUsername = pluginInfo.repositoryOwner,
-        publisherAvatarUrl = user.avatarUrl,
         pluginId = title.replace("[^a-zA-Z0-9_]".toRegex(), "_")
     )
 }
@@ -75,7 +70,6 @@ fun MarketRankIssueEntryResponse.toMcpMarketBrowseItem(): McpMarketBrowseItem {
         description = summaryDescription.ifBlank { pluginInfo.description },
         repositoryUrl = pluginInfo.repositoryUrl,
         ownerUsername = authorLogin.ifBlank { pluginInfo.repositoryOwner },
-        publisherAvatarUrl = issue.user.avatarUrl,
         pluginId = issue.title.replace("[^a-zA-Z0-9_]".toRegex(), "_")
     )
 }

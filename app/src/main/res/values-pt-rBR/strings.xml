@@ -2713,7 +2713,6 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="workspace_not_exists_or_not_dir">O espaço de trabalho não existe ou não é um diretório</string>
     <string name="workspace_is_empty">O espaço de trabalho está vazio</string>
     <string name="workspace_no_errors_found">Nenhum erro encontrado ainda</string>
-    <string name="workspace_error_get_errors">Ocorreu uma exceção ao obter informações de erro: %1$s</string>
     <string name="workspace_no_recent_changes">Nenhuma alteração recente</string>
     <string name="workspace_recently_modified_files">Arquivos modificados recentemente:\n%1$s</string>
     <string name="workspace_error_get_changes">Ocorreu uma exceção ao recuperar registros de alterações: %1$s</string>
@@ -2723,7 +2722,6 @@ Agora é possível usar o modo AutoGLM na interface de diálogo.</string>
     <string name="workspace_minutes_ago">%1$d minutos atrás</string>
     <string name="workspace_just_now">apenas</string>
     <string name="workspace_file_time_ago">%1$s (%2$s)</string>
-    <string name="workspace_error_check_errors">Falha ao obter erro no espaço de trabalho</string>
     <string name="workspace_error_check_suggestions">Falha ao receber sugestões de espaço de trabalho</string>
     <string name="workspace_error_generate_attachment">Falha ao criar anexo do espaço de trabalho</string>
     <string name="workspace_error_invalid_path">O caminho do espaço de trabalho não existe ou não é um diretório: %1$s</string>
