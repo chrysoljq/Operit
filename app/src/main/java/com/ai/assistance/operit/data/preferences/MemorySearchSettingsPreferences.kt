@@ -55,6 +55,16 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
             .apply()
     }
 
+    fun loadNextAutoSaveRunAtMs(): Long {
+        return searchPrefs.getLong(KEY_NEXT_AUTO_SAVE_RUN_AT_MS, 0L)
+    }
+
+    fun saveNextAutoSaveRunAtMs(timestampMs: Long) {
+        searchPrefs.edit()
+            .putLong(KEY_NEXT_AUTO_SAVE_RUN_AT_MS, timestampMs.coerceAtLeast(0L))
+            .apply()
+    }
+
     fun loadCloudEmbedding(): CloudEmbeddingConfig {
         return CloudEmbeddingConfig(
             enabled = cloudPrefs.getBoolean(KEY_CLOUD_ENABLED, false),
@@ -85,6 +95,7 @@ class MemorySearchSettingsPreferences(context: Context, profileId: String) {
         private const val KEY_VECTOR_WEIGHT = "vector_weight"
         private const val KEY_EDGE_WEIGHT = "edge_weight"
         private const val KEY_AUTO_SAVE_INTERVAL_MINUTES = "auto_save_interval_minutes"
+        private const val KEY_NEXT_AUTO_SAVE_RUN_AT_MS = "next_auto_save_run_at_ms"
 
         private const val KEY_CLOUD_ENABLED = "enabled"
         private const val KEY_CLOUD_ENDPOINT = "endpoint"

@@ -31,6 +31,7 @@ class MemoryAutoSaveScheduler(
         const val DEFAULT_POLL_INTERVAL_MS =
             MemorySearchSettingsPreferences.DEFAULT_AUTO_SAVE_INTERVAL_MINUTES * 60 * 1000L
         private const val MAX_MESSAGES_PER_CHAT = 48
+        private const val MIN_TOTAL_CANDIDATES_TO_EXTRACT = 5
 
         @Volatile
         private var instance: MemoryAutoSaveScheduler? = null
@@ -60,8 +61,7 @@ class MemoryAutoSaveScheduler(
         profileId: String,
         nowMs: Long = System.currentTimeMillis()
     ): Long {
-        val intervalMs = intervalMsForProfile(profileId)
-        val target = nextRunAtMsByProfileId[profileId]?.takeIf { it > 0L } ?: (nowMs + intervalMs)
+        val target = getOrInitNextRunAtMs(profileId, nowMs)
         val remainingMs = (target - nowMs).coerceAtLeast(0L)
         return ((remainingMs + 60_000L - 1L) / 60_000L).coerceAtLeast(0L)
     }
@@ -90,21 +90,27 @@ class MemoryAutoSaveScheduler(
 
         for (profileId in profileIds) {
             val intervalMs = intervalMsForProfile(profileId)
-            val nextRunAtMs = nextRunAtMsByProfileId[profileId] ?: (nowMs + intervalMs).also {
-                nextRunAtMsByProfileId[profileId] = it
-            }
+            val nextRunAtMs = getOrInitNextRunAtMs(profileId, nowMs)
             if (nowMs < nextRunAtMs) {
                 continue
             }
 
             val repository = MemoryAutoSaveCandidateRepository(context, profileId)
+            val allCandidates = repository.getPendingAndFailedCandidates()
+            if (allCandidates.size < MIN_TOTAL_CANDIDATES_TO_EXTRACT) {
+                AppLogger.d(
+                    TAG,
+                    "候选总条数不足，继续累计: profileId=$profileId, totalCandidates=${allCandidates.size}"
+                )
+                continue
+            }
             val groupedCandidates =
-                repository.getPendingAndFailedCandidates()
+                allCandidates
                     .groupBy { it.chatId }
                     .filterKeys { it.isNotBlank() }
 
             if (groupedCandidates.isEmpty()) {
-                nextRunAtMsByProfileId[profileId] = System.currentTimeMillis() + intervalMs
+                scheduleNextRun(profileId, System.currentTimeMillis() + intervalMs)
                 continue
             }
 
@@ -124,13 +130,31 @@ class MemoryAutoSaveScheduler(
                     memoryService = memoryService
                 )
             }
-            nextRunAtMsByProfileId[profileId] = System.currentTimeMillis() + intervalMs
+            scheduleNextRun(profileId, System.currentTimeMillis() + intervalMs)
         }
     }
 
     private fun intervalMsForProfile(profileId: String): Long {
         val minutes = MemorySearchSettingsPreferences(context, profileId).loadAutoSaveIntervalMinutes()
         return minutes * 60_000L
+    }
+
+    private fun getOrInitNextRunAtMs(
+        profileId: String,
+        nowMs: Long = System.currentTimeMillis()
+    ): Long {
+        nextRunAtMsByProfileId[profileId]?.takeIf { it > 0L }?.let { return it }
+        val preferences = MemorySearchSettingsPreferences(context, profileId)
+        val persisted = preferences.loadNextAutoSaveRunAtMs().takeIf { it > 0L }
+        val target = persisted ?: (nowMs + intervalMsForProfile(profileId))
+        scheduleNextRun(profileId, target)
+        return target
+    }
+
+    private fun scheduleNextRun(profileId: String, nextRunAtMs: Long) {
+        val normalized = nextRunAtMs.coerceAtLeast(0L)
+        nextRunAtMsByProfileId[profileId] = normalized
+        MemorySearchSettingsPreferences(context, profileId).saveNextAutoSaveRunAtMs(normalized)
     }
 
     private suspend fun processChatCandidateGroup(
@@ -172,7 +196,7 @@ class MemoryAutoSaveScheduler(
                             if (message.sender == "user") {
                                 "user"
                             } else {
-                                "assistant"
+                            "assistant"
                             }
                         role to message.content
                     }

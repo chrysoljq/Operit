@@ -2214,14 +2214,14 @@ private fun AgentExtraSettingsPopup(
     val scope = rememberCoroutineScope()
 
     val buildMemoryAutoSaveDetail: suspend () -> String = {
-        val pendingChatCount =
-            MemoryAutoSaveCandidateRepository(context, currentProfileId).countPendingAndFailedChats()
+        val pendingCandidateCount =
+            MemoryAutoSaveCandidateRepository(context, currentProfileId).countPendingAndFailedCandidates()
         val minutesUntilNextSave =
             MemoryAutoSaveScheduler.getInstance()?.getMinutesUntilNextRun(currentProfileId)
                 ?: MemorySearchSettingsPreferences(context, currentProfileId).loadAutoSaveIntervalMinutes().toLong()
         context.getString(
             R.string.memory_auto_update_runtime_status,
-            pendingChatCount,
+            pendingCandidateCount,
             minutesUntilNextSave
         )
     }

@@ -57,12 +57,28 @@ class MemoryAutoSaveCandidateRepository(
             .size
     }
 
+    fun countPendingAndFailedCandidates(): Int {
+        return getPendingAndFailedCandidates().size
+    }
+
     fun markProcessing(candidateIds: List<Long>) {
         if (candidateIds.isEmpty()) return
         val now = Date()
         val candidates = candidateIds.mapNotNull { candidateBox.get(it) }
         candidates.forEach { candidate ->
             candidate.status = MemoryAutoSaveCandidate.STATUS_PROCESSING
+            candidate.updatedAt = now
+            candidate.lastError = ""
+        }
+        candidateBox.put(candidates)
+    }
+
+    fun markPending(candidateIds: List<Long>) {
+        if (candidateIds.isEmpty()) return
+        val now = Date()
+        val candidates = candidateIds.mapNotNull { candidateBox.get(it) }
+        candidates.forEach { candidate ->
+            candidate.status = MemoryAutoSaveCandidate.STATUS_PENDING
             candidate.updatedAt = now
             candidate.lastError = ""
         }

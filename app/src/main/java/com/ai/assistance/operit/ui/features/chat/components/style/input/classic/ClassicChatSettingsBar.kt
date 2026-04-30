@@ -195,14 +195,14 @@ fun ClassicChatSettingsBar(
     val defaultInputMenuToggles = inputMenuTogglesBySlot[InputMenuToggleSlots.DEFAULT].orEmpty()
 
     val buildMemoryAutoSaveDetail: suspend () -> String = {
-        val pendingChatCount =
-            MemoryAutoSaveCandidateRepository(context, activeProfileId).countPendingAndFailedChats()
+        val pendingCandidateCount =
+            MemoryAutoSaveCandidateRepository(context, activeProfileId).countPendingAndFailedCandidates()
         val minutesUntilNextSave =
             MemoryAutoSaveScheduler.getInstance()?.getMinutesUntilNextRun(activeProfileId)
                 ?: MemorySearchSettingsPreferences(context, activeProfileId).loadAutoSaveIntervalMinutes().toLong()
         context.getString(
             R.string.memory_auto_update_runtime_status,
-            pendingChatCount,
+            pendingCandidateCount,
             minutesUntilNextSave
         )
     }
