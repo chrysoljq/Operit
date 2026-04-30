@@ -114,11 +114,6 @@ class ArtifactProjectMarketViewModel(
     private val loadingProjectIds = mutableSetOf<String>()
     private var searchJob: Job? = null
 
-    init {
-        refreshInstalledArtifacts()
-        loadMarketData()
-    }
-
     fun loadMarketData() {
         viewModelScope.launch {
             _isLoading.value = true
@@ -197,7 +192,7 @@ class ArtifactProjectMarketViewModel(
                     projectNodes = project.nodes
                 )
                 _projectDetails.value = _projectDetails.value + (item.projectId to project)
-                refreshInstalledArtifacts()
+                refreshInstalledArtifactsInternal()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Failed to install artifact"
                 AppLogger.e(TAG, "Failed to install default artifact node for ${item.projectId}", e)
@@ -245,11 +240,15 @@ class ArtifactProjectMarketViewModel(
 
     fun refreshInstalledArtifacts() {
         viewModelScope.launch {
-            _installedSnapshots.value =
-                withContext(Dispatchers.IO) {
-                    packageManager.getInstalledArtifactSnapshots()
-                }
+            refreshInstalledArtifactsInternal()
         }
+    }
+
+    private suspend fun refreshInstalledArtifactsInternal() {
+        _installedSnapshots.value =
+            withContext(Dispatchers.IO) {
+                packageManager.getInstalledArtifactSnapshots()
+            }
     }
 
     private suspend fun searchProjects(query: String) {

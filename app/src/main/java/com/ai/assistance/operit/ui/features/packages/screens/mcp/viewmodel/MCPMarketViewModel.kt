@@ -15,15 +15,15 @@ import com.ai.assistance.operit.data.api.MarketStatsApiService
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.ai.assistance.operit.util.AppLogger
 import android.content.SharedPreferences
 import android.net.Uri
@@ -117,7 +117,6 @@ class MCPMarketViewModel(
 
     // 已安装插件
     val installedPluginIds: StateFlow<Set<String>> = mcpRepository.installedPluginIds
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     // MCP市场数据
     private val _mcpItems = MutableStateFlow<List<McpMarketBrowseItem>>(emptyList())
@@ -489,13 +488,13 @@ class MCPMarketViewModel(
                                 return@launch
                             }
 
-                            _installingPlugins.value = _installingPlugins.value - pluginId
+                            mcpRepository.refreshPluginList()
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.mcp_market_config_import_success_with_count, issue.title, count),
                                 Toast.LENGTH_SHORT
                             ).show()
-                            mcpRepository.refreshPluginList()
+                            _installingPlugins.value = _installingPlugins.value - pluginId
                             return@launch
                         } else {
                             AppLogger.d(TAG, "Config contains commands that need physical installation, proceeding with normal installation flow")
@@ -528,10 +527,6 @@ class MCPMarketViewModel(
                         _installProgress.value = _installProgress.value + (pluginId to progress)
                     }
 
-                    // 清除安装状态
-                    _installingPlugins.value = _installingPlugins.value - pluginId
-                    _installProgress.value = _installProgress.value - pluginId
-
                     when (result) {
                         is com.ai.assistance.operit.data.mcp.InstallResult.Success -> {
                             Toast.makeText(
@@ -539,9 +534,13 @@ class MCPMarketViewModel(
                                 context.getString(R.string.mcp_market_install_success, issue.title),
                                 Toast.LENGTH_SHORT
                             ).show()
+                            _installProgress.value = _installProgress.value - pluginId
+                            _installingPlugins.value = _installingPlugins.value - pluginId
                             AppLogger.i(TAG, "Successfully installed MCP: ${issue.title}")
                         }
                         is com.ai.assistance.operit.data.mcp.InstallResult.Error -> {
+                            _installProgress.value = _installProgress.value - pluginId
+                            _installingPlugins.value = _installingPlugins.value - pluginId
                             _errorMessage.value = context.getString(R.string.mcp_market_install_failed_with_error, result.message)
                             AppLogger.e(TAG, "Failed to install MCP ${issue.title}: ${result.message}")
                         }
@@ -746,6 +745,18 @@ class MCPMarketViewModel(
      */
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    fun refreshInstalledPlugins() {
+        viewModelScope.launch {
+            refreshInstalledPluginsInternal()
+        }
+    }
+
+    private suspend fun refreshInstalledPluginsInternal() {
+        withContext(Dispatchers.IO) {
+            mcpRepository.refreshInstalledPlugins()
+        }
     }
 
     fun resetUserPublishedPluginsState() {

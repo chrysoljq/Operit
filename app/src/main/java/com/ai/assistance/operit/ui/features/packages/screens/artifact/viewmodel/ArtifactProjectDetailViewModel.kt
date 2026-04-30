@@ -239,15 +239,19 @@ class ArtifactProjectDetailViewModel(
 
     fun refreshInstalledArtifacts() {
         viewModelScope.launch {
-            _isRefreshingInstalledArtifacts.value = true
-            try {
-                _installedSnapshots.value =
-                    withContext(Dispatchers.IO) {
-                        packageManager.getInstalledArtifactSnapshots()
-                    }
-            } finally {
-                _isRefreshingInstalledArtifacts.value = false
-            }
+            refreshInstalledArtifactsInternal()
+        }
+    }
+
+    private suspend fun refreshInstalledArtifactsInternal() {
+        _isRefreshingInstalledArtifacts.value = true
+        try {
+            _installedSnapshots.value =
+                withContext(Dispatchers.IO) {
+                    packageManager.getInstalledArtifactSnapshots()
+                }
+        } finally {
+            _isRefreshingInstalledArtifacts.value = false
         }
     }
 
@@ -257,7 +261,7 @@ class ArtifactProjectDetailViewModel(
             _errorMessage.value = null
             try {
                 installNodeInternal(node)
-                refreshInstalledArtifacts()
+                refreshInstalledArtifactsInternal()
             } catch (e: Exception) {
                 _errorMessage.value = e.message ?: "Failed to install artifact node"
                 AppLogger.e(TAG, "Failed to install artifact node ${node.nodeId}", e)

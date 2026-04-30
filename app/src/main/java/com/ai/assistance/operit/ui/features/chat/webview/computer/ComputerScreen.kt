@@ -42,6 +42,9 @@ fun ComputerScreen() {
             }
     ) {
         // Show the terminal interface instead of the web desktop
-        TerminalScreen(env = terminalEnv)
+        TerminalScreen(
+            env = terminalEnv,
+            useLocalImeHandling = false,
+        )
     }
 } 

@@ -40,6 +40,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -55,10 +57,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
@@ -97,6 +102,28 @@ private data class MarketMineAuthState(
     val isLoggedIn: Boolean = false,
     val currentUser: GitHubUser? = null
 )
+
+@Composable
+private fun RefreshMarketPaneOnEnter(onRefresh: () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnRefresh by rememberUpdatedState(onRefresh)
+
+    LaunchedEffect(Unit) {
+        currentOnRefresh()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentOnRefresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+}
 
 @Composable
 fun UnifiedMarketScreen(
@@ -191,6 +218,11 @@ private fun ArtifactMarketPane(
         searchPlaceholderRes = ArtifactMarketBrowseConfig.searchPlaceholderRes
     )
 
+    RefreshMarketPaneOnEnter {
+        viewModel.refreshInstalledArtifacts()
+        viewModel.loadMarketData()
+    }
+
     errorMessage?.let { error ->
         LaunchedEffect(error) {
             Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -208,6 +240,7 @@ private fun ArtifactMarketPane(
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSortOptionChanged = viewModel::onSortOptionChanged,
         onRefresh = {
+            viewModel.refreshInstalledArtifacts()
             viewModel.loadMarketData()
         },
         onLoadMore = viewModel::loadMoreMarketData,
@@ -275,11 +308,9 @@ private fun SkillMarketPane(
         searchPlaceholderRes = SkillMarketBrowseConfig.searchPlaceholderRes
     )
 
-    LaunchedEffect(Unit) {
+    RefreshMarketPaneOnEnter {
         viewModel.refreshInstalledSkills()
-        if (searchQuery.isBlank() && items.isEmpty() && !isLoading) {
-            viewModel.loadSkillMarketData()
-        }
+        viewModel.loadSkillMarketData()
     }
 
     errorMessage?.let { error ->
@@ -352,10 +383,9 @@ private fun McpMarketPane(
         searchPlaceholderRes = McpMarketBrowseConfig.searchPlaceholderRes
     )
 
-    LaunchedEffect(Unit) {
-        if (searchQuery.isBlank() && items.isEmpty() && !isLoading) {
-            viewModel.loadMCPMarketData()
-        }
+    RefreshMarketPaneOnEnter {
+        viewModel.refreshInstalledPlugins()
+        viewModel.loadMCPMarketData()
     }
 
     errorMessage?.let { error ->
@@ -374,7 +404,10 @@ private fun McpMarketPane(
         sortOption = sortOption,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSortOptionChanged = viewModel::onSortOptionChanged,
-        onRefresh = viewModel::loadMCPMarketData,
+        onRefresh = {
+            viewModel.refreshInstalledPlugins()
+            viewModel.loadMCPMarketData()
+        },
         onLoadMore = viewModel::loadMoreMCPMarketData,
         config = McpMarketBrowseConfig,
         itemKey = { it.issue.id },

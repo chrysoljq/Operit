@@ -14,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.viewmodel.MCPMarketViewModel
 import com.ai.assistance.operit.data.api.GitHubIssue
 import kotlinx.coroutines.launch
@@ -24,9 +25,18 @@ import androidx.compose.material.icons.filled.Terminal
 fun MCPPublishScreen(
     onNavigateBack: () -> Unit,
     editingIssue: GitHubIssue? = null, // 如果不为null，则为编辑模式
-    viewModel: MCPMarketViewModel = viewModel()
+    providedViewModel: MCPMarketViewModel? = null
 ) {
     val context = LocalContext.current
+    val mcpRepository = remember { MCPRepository(context.applicationContext) }
+    val viewModel: MCPMarketViewModel =
+        providedViewModel
+            ?: viewModel(
+                factory = MCPMarketViewModel.Factory(
+                    context.applicationContext,
+                    mcpRepository
+                )
+            )
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     

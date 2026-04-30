@@ -106,6 +106,10 @@ class MCPRepository(private val context: Context) {
         }
     }
 
+    fun refreshInstalledPlugins() {
+        loadPluginsFromMCPLocalServer()
+    }
+
     // ==================== 插件状态管理 ====================
 
     /**

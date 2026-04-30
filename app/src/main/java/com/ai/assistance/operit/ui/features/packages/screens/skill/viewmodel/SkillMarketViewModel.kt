@@ -464,31 +464,35 @@ class SkillMarketViewModel(
 
     fun refreshInstalledSkills() {
         viewModelScope.launch {
-            val installed = withContext(Dispatchers.IO) {
-                try {
-                    skillRepository.getAvailableSkillPackages()
-                } catch (_: Exception) {
-                    emptyMap()
-                }
-            }
+            refreshInstalledSkillsInternal()
+        }
+    }
 
-            val installedNames = installed.keys.toSet()
-            val installedRepoUrls = installed.values.mapNotNull { pkg ->
-                try {
-                    val marker = pkg.directory.resolve(".operit_repo_url")
-                    if (marker.exists() && marker.isFile) {
-                        marker.readText().trim().ifBlank { null }
-                    } else {
-                        null
-                    }
-                } catch (_: Exception) {
+    private suspend fun refreshInstalledSkillsInternal() {
+        val installed = withContext(Dispatchers.IO) {
+            try {
+                skillRepository.getAvailableSkillPackages()
+            } catch (_: Exception) {
+                emptyMap()
+            }
+        }
+
+        val installedNames = installed.keys.toSet()
+        val installedRepoUrls = installed.values.mapNotNull { pkg ->
+            try {
+                val marker = pkg.directory.resolve(".operit_repo_url")
+                if (marker.exists() && marker.isFile) {
+                    marker.readText().trim().ifBlank { null }
+                } else {
                     null
                 }
-            }.toSet()
+            } catch (_: Exception) {
+                null
+            }
+        }.toSet()
 
-            _installedSkillNames.value = installedNames
-            _installedSkillRepoUrls.value = installedRepoUrls
-        }
+        _installedSkillNames.value = installedNames
+        _installedSkillRepoUrls.value = installedRepoUrls
     }
 
     fun loadUserPublishedSkills() {
@@ -818,8 +822,7 @@ class SkillMarketViewModel(
                 val result = skillRepository.importSkillFromGitHubRepo(key)
                 Toast.makeText(context, result, Toast.LENGTH_LONG).show()
                 if (isSkillInstallSuccess(result)) {
-                    _installedSkillRepoUrls.value = _installedSkillRepoUrls.value + key
-                    refreshInstalledSkills()
+                    refreshInstalledSkillsInternal()
                 }
             } catch (e: Exception) {
                 _errorMessage.value = context.getString(R.string.skillmarket_install_failed, e.message ?: "")
