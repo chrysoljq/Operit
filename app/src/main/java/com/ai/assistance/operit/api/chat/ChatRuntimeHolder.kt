@@ -286,7 +286,10 @@ class ChatRuntimeHolder private constructor(context: Context) {
                     floatingCore.activeStreamingChatIds,
                     floatingCore.currentTurnToolInvocationCountByChatId
                 ) { ma, mc, fa, fc ->
-                    countTools(ma, mc) + countTools(fa, fc)
+                    val uniqueActiveIds = ma + fa 
+                    uniqueActiveIds.sumOf { id ->
+                        mc[id] ?: fc[id] ?: 0
+                    }
                 }.collect {
                     _currentSessionToolCount.value = it
                 }
