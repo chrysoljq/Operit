@@ -35,7 +35,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.floating.FloatContext
@@ -96,8 +96,11 @@ private fun BottomInputBar(
     val hasContent = floatContext.userMessage.isNotBlank()
     var isInputFocused by remember { mutableStateOf(false) }
     
-    // 检测 AI 是否正在处理消息 - 使用 chatService 的 isLoading 状态
-    val isProcessing = floatContext.chatService?.getChatCore()?.isLoading?.collectAsState()?.value ?: false
+    val inputProcessingState = floatContext.inputProcessingState.value
+    val isProcessing =
+        inputProcessingState !is InputProcessingState.Idle &&
+            inputProcessingState !is InputProcessingState.Completed &&
+            inputProcessingState !is InputProcessingState.Error
     
     // 监听焦点状态变化，通知服务更新窗口焦点
     LaunchedEffect(isInputFocused) {
@@ -298,4 +301,3 @@ private fun AttachmentPanelOverlay(
         onDismiss = { floatContext.showAttachmentPanel = false }
     )
 }
-

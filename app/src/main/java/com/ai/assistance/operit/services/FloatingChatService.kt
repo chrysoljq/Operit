@@ -48,6 +48,7 @@ import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
@@ -79,6 +80,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     // 聊天服务核心 - 整合所有业务逻辑
     private lateinit var chatCore: ChatServiceCore
+    private lateinit var runtimeHolder: ChatRuntimeHolder
+    private var lastFloatingChatId: String? = null
+    // Best-effort flag to prevent the currentChatId collector from triggering
+    // a redundant fork during self-initiated switches. Due to Main dispatcher
+    // ordering, the StateFlow collector fires after switchChat() returns, so
+    // this flag is typically false by the time the collector reads it. The
+    // isSharingCore() check in the collector provides the actual defense.
+    @Volatile
+    private var isSelfSwitching = false
+    private var collectorJobs: List<Job> = emptyList()
+    private var enhancedServiceJob: Job? = null
+    private var removeCoreReplacedListener: (() -> Unit)? = null
 
     private var lastCrashTime = 0L
     private var crashCount = 0
@@ -222,50 +235,53 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         try {
             acquireWakeLock()
 
-            chatCore = ChatRuntimeHolder.getInstance(applicationContext).getCore(ChatRuntimeSlot.FLOATING)
-            chatCore.setUiBridge(EmptyChatServiceUiBridge)
+            runtimeHolder = ChatRuntimeHolder.getInstance(applicationContext)
+            removeCoreReplacedListener?.invoke()
+            removeCoreReplacedListener = runtimeHolder.addCoreReplacedListener { slot ->
+                if (slot == ChatRuntimeSlot.FLOATING) {
+                    refreshCoreFromRuntimeIfNeeded()
+                }
+            }
+            chatCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+
+            // 初始共享：用主页面的 chatId 做检测
+            val mainChatId = runtimeHolder.getCore(ChatRuntimeSlot.MAIN).currentChatId.value
+            if (mainChatId != null) {
+                runtimeHolder.shareSlotWithOtherIfSameChat(ChatRuntimeSlot.FLOATING, mainChatId)
+                val possiblySharedCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+                if (possiblySharedCore !== chatCore) {
+                    AppLogger.d(TAG, "初始化时与主页面共享 core")
+                    chatCore = possiblySharedCore
+                }
+            }
+
+            // 共享时不设 bridge，保留主页面 ChatViewModel 的 bridge
+            if (!runtimeHolder.isSharingCore()) {
+                chatCore.setUiBridge(EmptyChatServiceUiBridge)
+            } else {
+                AppLogger.d(TAG, "初始化时与主页面共享 core")
+            }
             AppLogger.d(TAG, "ChatServiceCore 已初始化")
+            lastFloatingChatId = chatCore.currentChatId.value ?: mainChatId
+            setupCoreCollectors()
 
-            // 订阅聊天历史更新
-            serviceScope.launch {
-                chatCore.chatHistory.collect { messages ->
-                    chatMessages.value = messages
-                    AppLogger.d(TAG, "聊天历史已更新: ${messages.size} 条消息")
-                }
-            }
-            
-            // 订阅附件列表更新
-            serviceScope.launch {
-                chatCore.attachments.collect { newAttachments ->
-                    attachments.value = newAttachments
-                    AppLogger.d(TAG, "附件列表已更新: ${newAttachments.size} 个附件")
-                }
-            }
+            // 初始共享完成，禁用后续共享。之后任何一方切会话都走分家，不再共享。
+            runtimeHolder.setSharingEnabled(false)
 
-            // 订阅输入处理状态更新
+            // 监听 core 被替换（分家场景：主页面切走时，悬浮窗的 core 会被替换）
             serviceScope.launch {
-                combine(
-                    chatCore.currentChatId,
-                    chatCore.inputProcessingStateByChatId
-                ) { chatId, stateMap ->
-                    if (chatId == null) InputProcessingState.Idle
-                    else stateMap[chatId] ?: InputProcessingState.Idle
-                }.collect { state ->
-                    inputProcessingState.value = state
-                    AppLogger.d(TAG, "输入处理状态已更新: $state")
-                }
-            }
-            
-            // 设置 EnhancedAIService 就绪回调，以便监听输入处理状态
-            chatCore.setOnEnhancedAiServiceReady { aiService ->
-                AppLogger.d(TAG, "EnhancedAIService 已就绪，开始监听输入处理状态")
-                serviceScope.launch {
-                    try {
-                        aiService.inputProcessingState.collect { _ -> }
-                    } catch (e: kotlinx.coroutines.CancellationException) {
-                        AppLogger.d(TAG, "输入处理状态监听已取消")
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "监听输入处理状态失败", e)
+                runtimeHolder.coreReplaced.collect { slot ->
+                    if (slot == ChatRuntimeSlot.FLOATING) {
+                        val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+                        if (newCore !== chatCore) {
+                            AppLogger.d(TAG, "core 被替换，重新绑定 collector")
+                            chatCore = newCore
+                            if (!runtimeHolder.isSharingCore()) {
+                                chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                            }
+                            lastFloatingChatId = newCore.currentChatId.value ?: lastFloatingChatId
+                            setupCoreCollectors()
+                        }
                     }
                 }
             }
@@ -440,7 +456,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                         val group = wakePrefs.autoNewChatGroupFlow.first().trim().ifBlank {
                             WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP
                         }
-                        chatCore.createNewChat(group = group, inheritGroupFromCurrent = false)
+                        createNewChat(group = group, inheritGroupFromCurrent = false)
                     }
                 }
             }
@@ -579,6 +595,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     override fun onDestroy() {
         try {
+            val keepCoreAlive = shouldKeepCurrentCoreAlive()
+            AppLogger.d(TAG, "onDestroy: keepCoreAlive=$keepCoreAlive")
+
+            // 先取消 serviceScope，停止所有 collector，再恢复共享开关
+            serviceScope.cancel()
+            AppLogger.d(TAG, "onDestroy: serviceScope cancelled")
+
+            // 恢复共享开关，下次开启悬浮窗时可以重新共享
+            if (::runtimeHolder.isInitialized) {
+                runtimeHolder.setSharingEnabled(true)
+            }
+
             AIForegroundService.setWakeListeningSuspendedForFloatingFullscreen(
                 applicationContext,
                 false
@@ -590,14 +618,22 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                 binder.clearCallbacks()
             } catch (_: Exception) {
             }
-
             try {
-                chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                removeCoreReplacedListener?.invoke()
+                removeCoreReplacedListener = null
             } catch (_: Exception) {
             }
 
             try {
-                chatCore.cancelCurrentMessage()
+                // 当前仍共享 core 时，关闭悬浮窗不能中断主页面正在使用的 core。
+                // 已经分家的独立 core 属于悬浮窗，销毁时应正常清理。
+                if (!keepCoreAlive) {
+                    AppLogger.d(TAG, "onDestroy: 独立 core，清理 bridge 和取消消息")
+                    chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                    chatCore.cancelCurrentMessage()
+                } else {
+                    AppLogger.d(TAG, "onDestroy: 当前仍共享 core，跳过清理")
+                }
             } catch (_: Exception) {
             }
 
@@ -617,8 +653,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                 }
             } catch (_: Exception) {
             }
-            
-            serviceScope.cancel()
+
             saveState()
             super.onDestroy()
             AppLogger.d(TAG, "onDestroy")
@@ -643,13 +678,19 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     }
 
     override fun onClose() {
-        AppLogger.d(TAG, "Close request from window manager")
+        val keepCoreAlive = shouldKeepCurrentCoreAlive()
+        AppLogger.d(TAG, "Close request from window manager, keepCoreAlive=$keepCoreAlive")
         try {
             AIForegroundService.setWakeListeningSuspendedForFloatingFullscreen(
                 applicationContext,
                 false
             )
-            chatCore.cancelCurrentMessage()
+            if (!keepCoreAlive) {
+                AppLogger.d(TAG, "onClose: 独立 core，取消当前消息")
+                chatCore.cancelCurrentMessage()
+            } else {
+                AppLogger.d(TAG, "onClose: 当前仍共享 core，跳过取消消息")
+            }
         } catch (_: Exception) {
         }
         try {
@@ -812,5 +853,161 @@ class FloatingChatService : Service(), FloatingWindowCallback {
      * @return ChatServiceCore 聊天服务核心实例
      */
     fun getChatCore(): ChatServiceCore = chatCore
+
+    fun isSharingCore(): Boolean = runtimeHolder.isSharingCore()
+
+    suspend fun handoffCurrentCoreToMain() {
+        chatCore.syncCurrentChatIdToGlobal()
+        if (runtimeHolder.adoptFloatingCoreAsMain()) {
+            AppLogger.d(TAG, "Home: 主页面接管悬浮窗 core")
+        } else {
+            AppLogger.d(TAG, "Home: 已共享 core，仅同步 currentChatId")
+        }
+    }
+
+    fun switchChat(chatId: String) {
+        try {
+            isSelfSwitching = true
+            runtimeHolder.switchChat(ChatRuntimeSlot.FLOATING, chatId)
+            // switchChat 可能替换了 core（分家），更新引用
+            val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+            if (newCore !== chatCore) {
+                chatCore = newCore
+                if (!runtimeHolder.isSharingCore()) {
+                    chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                }
+                setupCoreCollectors()
+            }
+            lastFloatingChatId = chatId
+            isSelfSwitching = false
+            AppLogger.d(TAG, "悬浮窗切换聊天完成: $chatId")
+        } catch (e: Exception) {
+            isSelfSwitching = false
+            AppLogger.e(TAG, "悬浮窗切换聊天失败", e)
+        }
+    }
+
+    fun createNewChat(group: String? = null, inheritGroupFromCurrent: Boolean = true) {
+        try {
+            detachFloatingCoreIfShared()
+            chatCore.createNewChat(
+                group = group,
+                inheritGroupFromCurrent = inheritGroupFromCurrent
+            )
+            AppLogger.d(TAG, "悬浮窗新建聊天")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "悬浮窗新建聊天失败", e)
+        }
+    }
+
+    fun refreshCoreFromRuntimeIfNeeded() {
+        if (!::runtimeHolder.isInitialized) return
+        val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+        if (newCore !== chatCore) {
+            AppLogger.d(TAG, "同步刷新悬浮窗 core 引用")
+            chatCore = newCore
+            if (!runtimeHolder.isSharingCore()) {
+                chatCore.setUiBridge(EmptyChatServiceUiBridge)
+            }
+            lastFloatingChatId = newCore.currentChatId.value ?: lastFloatingChatId
+            setupCoreCollectors()
+        }
+    }
+
+    private fun refreshInputProcessingStateSnapshot() {
+        val chatId = chatCore.currentChatId.value
+        inputProcessingState.value =
+            if (chatId == null) {
+                InputProcessingState.Idle
+            } else {
+                chatCore.inputProcessingStateByChatId.value[chatId] ?: InputProcessingState.Idle
+            }
+    }
+
+    private fun shouldKeepCurrentCoreAlive(): Boolean {
+        return ::runtimeHolder.isInitialized &&
+            runtimeHolder.isSharingCore() &&
+            runtimeHolder.getCore(ChatRuntimeSlot.FLOATING) === chatCore
+    }
+
+    private fun detachFloatingCoreIfShared() {
+        if (!::runtimeHolder.isInitialized) return
+        val currentChatId = chatCore.currentChatId.value
+        if (runtimeHolder.detachSlotIfShared(ChatRuntimeSlot.FLOATING, currentChatId)) {
+            val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+            chatCore = newCore
+            chatCore.setUiBridge(EmptyChatServiceUiBridge)
+            lastFloatingChatId = currentChatId
+            setupCoreCollectors()
+        }
+    }
+
+    private fun setupCoreCollectors() {
+        // Cancel previously launched collectors to avoid leaking old core subscriptions
+        collectorJobs.forEach { it.cancel() }
+        collectorJobs = emptyList()
+        enhancedServiceJob?.cancel()
+        enhancedServiceJob = null
+        refreshInputProcessingStateSnapshot()
+
+        // 订阅聊天历史
+        collectorJobs += serviceScope.launch {
+            chatCore.chatHistory.collect { messages ->
+                chatMessages.value = messages
+            }
+        }
+        // 订阅附件
+        collectorJobs += serviceScope.launch {
+            chatCore.attachments.collect { newAttachments ->
+                attachments.value = newAttachments
+            }
+        }
+        // 订阅输入处理状态
+        collectorJobs += serviceScope.launch {
+            combine(
+                chatCore.currentChatId,
+                chatCore.inputProcessingStateByChatId
+            ) { chatId, stateMap ->
+                if (chatId == null) InputProcessingState.Idle
+                else stateMap[chatId] ?: InputProcessingState.Idle
+            }.collect { state ->
+                inputProcessingState.value = state
+            }
+        }
+        // 监听 chatId 变化：如果共享 core 时主页面切走了，需要分家
+        collectorJobs += serviceScope.launch {
+            chatCore.currentChatId.collect { newChatId ->
+                AppLogger.d(TAG, "currentChatId collector: newChatId=$newChatId, lastFloatingChatId=$lastFloatingChatId, isSelfSwitching=$isSelfSwitching, isSharingCore=${runtimeHolder.isSharingCore()}")
+                if (isSelfSwitching) return@collect
+                val oldChatId = lastFloatingChatId
+                if (oldChatId != null && newChatId != oldChatId
+                    && runtimeHolder.isSharingCore()
+                ) {
+                    AppLogger.d(TAG, "主页面切走，悬浮窗分家: $oldChatId → $newChatId")
+                    runtimeHolder.switchChat(ChatRuntimeSlot.FLOATING, oldChatId)
+                    val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
+                    chatCore = newCore
+                    if (!runtimeHolder.isSharingCore()) {
+                        chatCore.setUiBridge(EmptyChatServiceUiBridge)
+                    }
+                    setupCoreCollectors()
+                    return@collect
+                }
+                lastFloatingChatId = newChatId
+            }
+        }
+        // 设置 EnhancedAIService 就绪回调
+        chatCore.setOnEnhancedAiServiceReady { aiService ->
+            enhancedServiceJob?.cancel()
+            enhancedServiceJob = serviceScope.launch {
+                try {
+                    aiService.inputProcessingState.collect { _ -> }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "监听输入处理状态失败", e)
+                }
+            }
+        }
+    }
 
 }

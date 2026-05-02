@@ -33,7 +33,9 @@ import kotlinx.coroutines.flow.StateFlow
 class ChatServiceCore(
     private val context: Context,
     private val coroutineScope: CoroutineScope,
-    private val selectionMode: ChatSelectionMode = ChatSelectionMode.FOLLOW_GLOBAL
+    private val selectionMode: ChatSelectionMode = ChatSelectionMode.FOLLOW_GLOBAL,
+    private val initialLocalChatId: String? = null,
+    private val beforeCurrentChatMutation: ((String?) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "ChatServiceCore"
@@ -101,6 +103,8 @@ class ChatServiceCore(
             context = context,
             coroutineScope = coroutineScope,
             selectionMode = selectionMode,
+            initialLocalChatId = initialLocalChatId,
+            beforeCurrentChatMutation = beforeCurrentChatMutation,
             onTokenStatisticsLoaded = { chatId, inputTokens, outputTokens, windowSize ->
                 tokenStatisticsDelegate.setActiveChatId(chatId)
                 tokenStatisticsDelegate.setTokenCounts(chatId, inputTokens, outputTokens, windowSize)
@@ -241,7 +245,7 @@ class ChatServiceCore(
     fun cancelCurrentMessage() {
         // 先取消总结（如果正在进行）
         messageCoordinationDelegate.cancelSummary()
-        // 然后取消“当前聊天”的消息处理
+        // 然后取消"当前聊天"的消息处理
         val chatId = chatHistoryDelegate.currentChatId.value
         if (chatId != null) {
             messageProcessingDelegate.cancelMessage(chatId)
@@ -294,12 +298,17 @@ class ChatServiceCore(
         chatHistoryDelegate.switchChat(chatId, syncToGlobal = false)
     }
 
+    fun stopFollowingGlobalCurrentChat() {
+        chatHistoryDelegate.stopFollowingGlobalCurrentChat()
+    }
+
     /**
-     * 将当前本地 chatId 写回全局 currentChatId，用于“返回主应用”时同步。
+     * 将当前本地 chatId 写回全局 currentChatId，用于"返回主应用"时同步。
+     * 仅写 DataStore，不触发完整切换流程，不中断流式对话。
      */
-    fun syncCurrentChatIdToGlobal() {
+    suspend fun syncCurrentChatIdToGlobal() {
         val chatId = chatHistoryDelegate.currentChatId.value ?: return
-        chatHistoryDelegate.switchChat(chatId, syncToGlobal = true)
+        chatHistoryDelegate.syncChatIdToGlobalOnly(chatId)
     }
 
     /** 删除聊天历史 */
@@ -487,4 +496,3 @@ class ChatServiceCore(
         chatHistoryDelegate.reloadChatMessagesSmart(chatId)
     }
 }
-

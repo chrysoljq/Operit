@@ -41,13 +41,16 @@ import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -95,6 +98,7 @@ enum class ChatHistoryDisplayMode {
     CURRENT_CHARACTER_ONLY
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(private val context: Context) : ViewModel() {
 
     companion object {
@@ -124,6 +128,24 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     private val activePromptManager = ActivePromptManager.getInstance(context)
     private val characterCardManager = CharacterCardManager.getInstance(context)
 
+    // 工具处理器
+    private val toolHandler = AIToolHandler.getInstance(context)
+    private val chatRuntimeHolder = ChatRuntimeHolder.getInstance(context)
+    private val _mainChatCoreFlow =
+        MutableStateFlow(chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN))
+
+    private fun <T> mainCoreStateFlow(
+        initialValue: (ChatServiceCore) -> T,
+        flowProvider: (ChatServiceCore) -> StateFlow<T>
+    ): StateFlow<T> =
+        _mainChatCoreFlow
+            .flatMapLatest { core -> flowProvider(core) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = initialValue(_mainChatCoreFlow.value)
+            )
+
     // 添加语音播放状态
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -133,7 +155,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val isSpeechPaused: StateFlow<Boolean> = _isSpeechPaused.asStateFlow()
 
     // 添加自动朗读状态 - Now managed by ApiConfigDelegate
-    val isAutoReadEnabled: StateFlow<Boolean> by lazy { apiConfigDelegate.enableAutoRead }
+    val isAutoReadEnabled: StateFlow<Boolean> =
+        mainCoreStateFlow(
+            initialValue = { it.getApiConfigDelegate().enableAutoRead.value },
+            flowProvider = { it.getApiConfigDelegate().enableAutoRead }
+        )
 
     // 添加回复相关状态
     private val _replyToMessage = MutableStateFlow<ChatMessage?>(null)
@@ -141,10 +167,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // API服务
     private var enhancedAiService: EnhancedAIService? = null
-
-    // 工具处理器
-    private val toolHandler = AIToolHandler.getInstance(context)
-    private val chatRuntimeHolder = ChatRuntimeHolder.getInstance(context)
 
     // 工具权限系统
     private val toolPermissionSystem = ToolPermissionSystem.getInstance(context)
@@ -176,12 +198,18 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // Use lazy initialization for exposed properties to avoid circular reference issues
     // API配置相关
-    val apiKey: StateFlow<String> by lazy { apiConfigDelegate.apiKey }
-    val apiEndpoint: StateFlow<String> by lazy { apiConfigDelegate.apiEndpoint }
-    val modelName: StateFlow<String> by lazy { apiConfigDelegate.modelName }
-    val apiProviderType: StateFlow<ApiProviderType> by lazy { apiConfigDelegate.apiProviderType }
-    val isConfigured: StateFlow<Boolean> by lazy { apiConfigDelegate.isConfigured }
-    val isApiConfigInitialized: StateFlow<Boolean> by lazy { apiConfigDelegate.isInitialized }
+    val apiKey: StateFlow<String> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().apiKey.value }) { it.getApiConfigDelegate().apiKey }
+    val apiEndpoint: StateFlow<String> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().apiEndpoint.value }) { it.getApiConfigDelegate().apiEndpoint }
+    val modelName: StateFlow<String> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().modelName.value }) { it.getApiConfigDelegate().modelName }
+    val apiProviderType: StateFlow<ApiProviderType> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().apiProviderType.value }) { it.getApiConfigDelegate().apiProviderType }
+    val isConfigured: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().isConfigured.value }) { it.getApiConfigDelegate().isConfigured }
+    val isApiConfigInitialized: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().isInitialized.value }) { it.getApiConfigDelegate().isInitialized }
 
     private val _shouldShowConfigDialog = MutableStateFlow(false)
     val shouldShowConfigDialog: StateFlow<Boolean> = _shouldShowConfigDialog.asStateFlow()
@@ -194,87 +222,125 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         _shouldShowConfigDialog.value = true
     }
 
-    val featureToggles: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.featureToggles }
-    val keepScreenOn: StateFlow<Boolean> by lazy { apiConfigDelegate.keepScreenOn }
+    val featureToggles: StateFlow<Map<String, Boolean>> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().featureToggles.value }) { it.getApiConfigDelegate().featureToggles }
+    val keepScreenOn: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().keepScreenOn.value }) { it.getApiConfigDelegate().keepScreenOn }
 
     // 思考模式状态现在由ApiConfigDelegate管理
-    val enableThinkingMode: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingMode }
-    val thinkingQualityLevel: StateFlow<Int> by lazy { apiConfigDelegate.thinkingQualityLevel }
-    val enableMemoryAutoUpdate: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryAutoUpdate }
-    val enableTools: StateFlow<Boolean> by lazy { apiConfigDelegate.enableTools }
-    val toolPromptVisibility: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.toolPromptVisibility }
-    val disableStreamOutput: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStreamOutput }
-    val disableUserPreferenceDescription: StateFlow<Boolean> by lazy {
-        apiConfigDelegate.disableUserPreferenceDescription
-    }
-    val summaryTokenThreshold: StateFlow<Float> by lazy { apiConfigDelegate.summaryTokenThreshold }
-    val enableSummary: StateFlow<Boolean> by lazy { apiConfigDelegate.enableSummary }
-    val enableSummaryByMessageCount: StateFlow<Boolean> by lazy { apiConfigDelegate.enableSummaryByMessageCount }
-    val summaryMessageCountThreshold: StateFlow<Int> by lazy { apiConfigDelegate.summaryMessageCountThreshold }
+    val enableThinkingMode: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableThinkingMode.value }) { it.getApiConfigDelegate().enableThinkingMode }
+    val thinkingQualityLevel: StateFlow<Int> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().thinkingQualityLevel.value }) { it.getApiConfigDelegate().thinkingQualityLevel }
+    val enableMemoryAutoUpdate: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableMemoryAutoUpdate.value }) { it.getApiConfigDelegate().enableMemoryAutoUpdate }
+    val enableTools: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableTools.value }) { it.getApiConfigDelegate().enableTools }
+    val toolPromptVisibility: StateFlow<Map<String, Boolean>> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().toolPromptVisibility.value }) { it.getApiConfigDelegate().toolPromptVisibility }
+    val disableStreamOutput: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().disableStreamOutput.value }) { it.getApiConfigDelegate().disableStreamOutput }
+    val disableUserPreferenceDescription: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().disableUserPreferenceDescription.value }) {
+            it.getApiConfigDelegate().disableUserPreferenceDescription
+        }
+    val summaryTokenThreshold: StateFlow<Float> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().summaryTokenThreshold.value }) { it.getApiConfigDelegate().summaryTokenThreshold }
+    val enableSummary: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableSummary.value }) { it.getApiConfigDelegate().enableSummary }
+    val enableSummaryByMessageCount: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableSummaryByMessageCount.value }) {
+            it.getApiConfigDelegate().enableSummaryByMessageCount
+        }
+    val summaryMessageCountThreshold: StateFlow<Int> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().summaryMessageCountThreshold.value }) {
+            it.getApiConfigDelegate().summaryMessageCountThreshold
+        }
 
     // 上下文长度
-    val maxWindowSizeInK: StateFlow<Float> by lazy { apiConfigDelegate.contextLength }
-    val baseContextLengthInK: StateFlow<Float> by lazy { apiConfigDelegate.baseContextLength }
-    val maxContextLengthInK: StateFlow<Float> by lazy { apiConfigDelegate.maxContextLengthSetting }
-    val enableMaxContextMode: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMaxContextMode }
+    val maxWindowSizeInK: StateFlow<Float> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().contextLength.value }) { it.getApiConfigDelegate().contextLength }
+    val baseContextLengthInK: StateFlow<Float> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().baseContextLength.value }) { it.getApiConfigDelegate().baseContextLength }
+    val maxContextLengthInK: StateFlow<Float> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().maxContextLengthSetting.value }) {
+            it.getApiConfigDelegate().maxContextLengthSetting
+        }
+    val enableMaxContextMode: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getApiConfigDelegate().enableMaxContextMode.value }) {
+            it.getApiConfigDelegate().enableMaxContextMode
+        }
 
     // 聊天历史相关
-    val chatHistory: StateFlow<List<ChatMessage>> by lazy { chatHistoryDelegate.chatHistory }
-    val showChatHistorySelector: StateFlow<Boolean> by lazy {
-        chatHistoryDelegate.showChatHistorySelector
-    }
-    val chatHistories: StateFlow<List<ChatHistory>> by lazy { chatHistoryDelegate.chatHistories }
-    val currentChatId: StateFlow<String?> by lazy { chatHistoryDelegate.currentChatId }
+    val chatHistory: StateFlow<List<ChatMessage>> =
+        mainCoreStateFlow({ it.chatHistory.value }) { it.chatHistory }
+    val showChatHistorySelector: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.showChatHistorySelector.value }) { it.showChatHistorySelector }
+    val chatHistories: StateFlow<List<ChatHistory>> =
+        mainCoreStateFlow({ it.chatHistories.value }) { it.chatHistories }
+    val currentChatId: StateFlow<String?> =
+        mainCoreStateFlow({ it.currentChatId.value }) { it.currentChatId }
 
     // 消息处理相关
-    val userMessage: StateFlow<TextFieldValue> by lazy { messageProcessingDelegate.userMessage }
-    val isLoading: StateFlow<Boolean> by lazy { messageProcessingDelegate.isLoading }
+    val userMessage: StateFlow<TextFieldValue> =
+        mainCoreStateFlow({ it.getMessageProcessingDelegate().userMessage.value }) {
+            it.getMessageProcessingDelegate().userMessage
+        }
+    val isLoading: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getMessageProcessingDelegate().isLoading.value }) {
+            it.getMessageProcessingDelegate().isLoading
+        }
 
     // 会话隔离：仅当“当前聊天ID == 正在流式的聊天ID”时，才显示处理中/停止按钮
-    val activeStreamingChatIds: StateFlow<Set<String>> by lazy { messageProcessingDelegate.activeStreamingChatIds }
-    val currentChatIsLoading: StateFlow<Boolean> by lazy {
-        kotlinx.coroutines.flow.combine(
-            chatHistoryDelegate.currentChatId,
-            messageProcessingDelegate.activeStreamingChatIds
-        ) { currentId, activeIds ->
+    val activeStreamingChatIds: StateFlow<Set<String>> =
+        mainCoreStateFlow({ it.activeStreamingChatIds.value }) { it.activeStreamingChatIds }
+    val currentChatIsLoading: StateFlow<Boolean> =
+        combine(currentChatId, activeStreamingChatIds) { currentId, activeIds ->
             currentId != null && activeIds.contains(currentId)
         }.stateIn(
             scope = viewModelScope,
-            started = kotlinx.coroutines.flow.SharingStarted.Eagerly,
+            started = SharingStarted.Eagerly,
             initialValue = false
         )
-    }
-    val currentChatInputProcessingState: StateFlow<InputProcessingState> by lazy {
-        kotlinx.coroutines.flow.combine(
-            chatHistoryDelegate.currentChatId,
-            messageProcessingDelegate.inputProcessingStateByChatId
+    val currentChatInputProcessingState: StateFlow<InputProcessingState> =
+        combine(
+            currentChatId,
+            mainCoreStateFlow({ it.inputProcessingStateByChatId.value }) { it.inputProcessingStateByChatId }
         ) { currentId, stateMap ->
             if (currentId == null) return@combine InputProcessingState.Idle
             stateMap[currentId] ?: InputProcessingState.Idle
         }.stateIn(
             scope = viewModelScope,
-            started = kotlinx.coroutines.flow.SharingStarted.Eagerly,
+            started = SharingStarted.Eagerly,
             initialValue = InputProcessingState.Idle
         )
-    }
 
-    val scrollToBottomEvent: SharedFlow<Unit> by lazy {
-        messageProcessingDelegate.scrollToBottomEvent
-    }
+    val scrollToBottomEvent: SharedFlow<Unit> =
+        _mainChatCoreFlow
+            .flatMapLatest { it.scrollToBottomEvent }
+            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 0)
 
     // UI状态相关
-    val errorMessage: StateFlow<String?> by lazy { uiStateDelegate.errorMessage }
-    val popupMessage: StateFlow<String?> by lazy { uiStateDelegate.popupMessage }
-    val toastEvent: StateFlow<String?> by lazy { uiStateDelegate.toastEvent }
-    val masterPermissionLevel: StateFlow<PermissionLevel> by lazy {
-        uiStateDelegate.masterPermissionLevel
-    }
+    val errorMessage: StateFlow<String?> =
+        mainCoreStateFlow({ it.getUiStateDelegate().errorMessage.value }) { it.getUiStateDelegate().errorMessage }
+    val popupMessage: StateFlow<String?> =
+        mainCoreStateFlow({ it.getUiStateDelegate().popupMessage.value }) { it.getUiStateDelegate().popupMessage }
+    val toastEvent: StateFlow<String?> =
+        mainCoreStateFlow({ it.getUiStateDelegate().toastEvent.value }) { it.getUiStateDelegate().toastEvent }
+    val masterPermissionLevel: StateFlow<PermissionLevel> =
+        mainCoreStateFlow({ it.getUiStateDelegate().masterPermissionLevel.value }) {
+            it.getUiStateDelegate().masterPermissionLevel
+        }
 
     // 聊天统计相关
-    val currentWindowSize: StateFlow<Int> by lazy { tokenStatsDelegate.currentWindowSizeFlow }
-    val inputTokenCount: StateFlow<Int> by lazy { tokenStatsDelegate.cumulativeInputTokensFlow }
-    val outputTokenCount: StateFlow<Int> by lazy { tokenStatsDelegate.cumulativeOutputTokensFlow }
-    val perRequestTokenCount: StateFlow<Pair<Int, Int>?> by lazy { tokenStatsDelegate.perRequestTokenCountFlow }
+    val currentWindowSize: StateFlow<Int> =
+        mainCoreStateFlow({ it.currentWindowSizeFlow.value }) { it.currentWindowSizeFlow }
+    val inputTokenCount: StateFlow<Int> =
+        mainCoreStateFlow({ it.cumulativeInputTokensFlow.value }) { it.cumulativeInputTokensFlow }
+    val outputTokenCount: StateFlow<Int> =
+        mainCoreStateFlow({ it.cumulativeOutputTokensFlow.value }) { it.cumulativeOutputTokensFlow }
+    val perRequestTokenCount: StateFlow<Pair<Int, Int>?> =
+        mainCoreStateFlow({ it.perRequestTokenCountFlow.value }) { it.perRequestTokenCountFlow }
 
 
 
@@ -283,7 +349,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val moveTaskToBackEvents: SharedFlow<Unit> by lazy { floatingWindowDelegate.moveTaskToBackEvents }
 
     // 附件相关
-    val attachments: StateFlow<List<AttachmentInfo>> by lazy { attachmentDelegate.attachments }
+    val attachments: StateFlow<List<AttachmentInfo>> =
+        mainCoreStateFlow({ it.attachments.value }) { it.attachments }
 
     // 聊天历史搜索状态
     private val _chatHistorySearchQuery = MutableStateFlow("")
@@ -321,20 +388,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         _autoSwitchChatOnCharacterSelect.asStateFlow()
     
     // 总结状态
-    val isSummarizing: StateFlow<Boolean> by lazy {
-        if (::messageCoordinationDelegate.isInitialized) {
-            messageCoordinationDelegate.isSummarizing
-        } else {
-            MutableStateFlow(false)
+    val isSummarizing: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.isSummarizing.value }) { it.isSummarizing }
+    val isSendTriggeredSummarizing: StateFlow<Boolean> =
+        mainCoreStateFlow({ it.getMessageCoordinationDelegate().isSendTriggeredSummarizing.value }) {
+            it.getMessageCoordinationDelegate().isSendTriggeredSummarizing
         }
-    }
-    val isSendTriggeredSummarizing: StateFlow<Boolean> by lazy {
-        if (::messageCoordinationDelegate.isInitialized) {
-            messageCoordinationDelegate.isSendTriggeredSummarizing
-        } else {
-            MutableStateFlow(false)
-        }
-    }
 
     fun handleSharedLinks(urls: List<String>, targetChatId: String? = null) {
         AppLogger.d(TAG, "handleSharedLinks called with ${urls.size} link(s)")
@@ -443,6 +502,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     init {
         // Initialize delegates in correct order to avoid circular references
         initializeDelegates()
+        viewModelScope.launch {
+            chatRuntimeHolder.coreReplaced.collect { slot ->
+                if (slot == ChatRuntimeSlot.MAIN) {
+                    refreshMainCoreFromRuntimeIfNeeded()
+                }
+            }
+        }
 
         // Setup additional components
         setupPermissionSystemCollection()
@@ -473,6 +539,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     private fun initializeDelegates() {
         mainChatCore = chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN)
+        if (_mainChatCoreFlow.value !== mainChatCore) {
+            _mainChatCoreFlow.value = mainChatCore
+        }
         uiStateDelegate = mainChatCore.getUiStateDelegate()
         tokenStatsDelegate = mainChatCore.getTokenStatisticsDelegate()
         apiConfigDelegate = mainChatCore.getApiConfigDelegate()
@@ -513,6 +582,15 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 )
     }
 
+    private fun refreshMainCoreFromRuntimeIfNeeded() {
+        val runtimeCore = chatRuntimeHolder.getCore(ChatRuntimeSlot.MAIN)
+        if (::mainChatCore.isInitialized && mainChatCore === runtimeCore) {
+            return
+        }
+        AppLogger.d(TAG, "MAIN core 已替换，刷新 ChatViewModel delegate 引用")
+        initializeDelegates()
+    }
+
     private fun setupPermissionSystemCollection() {
         viewModelScope.launch {
             toolPermissionSystem.masterSwitchFlow.collect { level ->
@@ -523,7 +601,21 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     private fun setupAttachmentDelegateToastCollection() {
         viewModelScope.launch {
-            attachmentDelegate.toastEvent.collect { message -> uiStateDelegate.showToast(message) }
+            _mainChatCoreFlow
+                .flatMapLatest { it.attachmentToastEvent }
+                .collect { message -> uiStateDelegate.showToast(message) }
+        }
+    }
+
+    private fun detachMainCoreBeforeMainMutation() {
+        if (!::chatHistoryDelegate.isInitialized) return
+        val currentMainChatId = chatHistoryDelegate.currentChatId.value
+        val detached = chatRuntimeHolder.detachSlotIfShared(
+            ChatRuntimeSlot.MAIN,
+            currentMainChatId
+        )
+        if (detached) {
+            refreshMainCoreFromRuntimeIfNeeded()
         }
     }
 
@@ -531,6 +623,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             // 检查历史记录加载后是否需要创建新聊天
             if (chatHistoryDelegate.checkIfShouldCreateNewChat() && isConfigured.value) {
+                detachMainCoreBeforeMainMutation()
                 chatHistoryDelegate.createNewChat()
             }
         }
@@ -670,12 +763,20 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     // 聊天历史相关方法
     fun createNewChat(characterCardName: String? = null, characterGroupId: String? = null) {
+        detachMainCoreBeforeMainMutation()
         chatHistoryDelegate.createNewChat(characterCardName = characterCardName, characterGroupId = characterGroupId)
     }
 
     fun switchChat(chatId: String) {
-        chatHistoryDelegate.switchChat(chatId)
-        chatRuntimeHolder.syncMainChatSelectionToFloating(chatId)
+        if (chatRuntimeHolder.shareSlotWithOtherCurrentChat(ChatRuntimeSlot.MAIN, chatId)) {
+            refreshMainCoreFromRuntimeIfNeeded()
+            viewModelScope.launch {
+                mainChatCore.syncCurrentChatIdToGlobal()
+            }
+        } else {
+            detachMainCoreBeforeMainMutation()
+            chatHistoryDelegate.switchChat(chatId)
+        }
 
         // 如果当前WebView正在显示，则更新工作区并触发刷新
         if (_showWebView.value) {
@@ -759,6 +860,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     if (latestChat != null) {
                         switchChat(latestChat.id)
                     } else {
+                        detachMainCoreBeforeMainMutation()
                         chatHistoryDelegate.createNewChat(characterCardId = target.id)
                     }
                 }
@@ -774,6 +876,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     if (latestChat != null) {
                         switchChat(latestChat.id)
                     } else {
+                        detachMainCoreBeforeMainMutation()
                         chatHistoryDelegate.createNewChat(characterGroupId = targetGroupId)
                     }
                 }

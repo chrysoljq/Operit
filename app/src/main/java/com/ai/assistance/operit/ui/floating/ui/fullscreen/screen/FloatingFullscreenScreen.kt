@@ -414,7 +414,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                     val group = autoNewChatGroup.trim().ifBlank {
                         WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP
                     }
-                    floatContext.chatService?.getChatCore()?.createNewChat(
+                    floatContext.chatService?.createNewChat(
                         group = group,
                         inheritGroupFromCurrent = false
                     )
