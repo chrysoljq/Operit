@@ -30,8 +30,10 @@ import kotlinx.coroutines.flow.combine
  * 共享时 core 的 selectionMode 取决于创建者。
  * 分家时只有切换方获得新 core，另一边保持不变。
  *
- * 共享策略：悬浮窗开启时尝试与主页面共享，之后禁用再共享。
- * 即使双方切到同一会话也不再共享。
+ * 共享策略：
+ * - 悬浮窗开启时允许一次自动初始共享。
+ * - 之后禁用自动初始共享，避免全局 currentChatId 变化把两边意外粘回一起。
+ * - 用户在任一侧明确切到另一侧当前会话时，会重新共享同一个 core。
  */
 class ChatRuntimeHolder private constructor(context: Context) {
     private val appContext = context.applicationContext
@@ -43,7 +45,7 @@ class ChatRuntimeHolder private constructor(context: Context) {
     val coreReplaced: SharedFlow<ChatRuntimeSlot> = _coreReplaced.asSharedFlow()
     private val coreReplacedListeners = CopyOnWriteArrayList<(ChatRuntimeSlot) -> Unit>()
 
-    // 共享开关：悬浮窗开启时允许共享一次，之后禁用
+    // 自动初始共享开关：悬浮窗开启时允许一次，之后禁用；显式切回同一会话不受此开关限制。
     @Volatile
     private var sharingEnabled = true
 
@@ -107,6 +109,10 @@ class ChatRuntimeHolder private constructor(context: Context) {
         }
     }
 
+    /**
+     * 用户显式切回另一侧当前会话时使用：不受 sharingEnabled 限制，直接重新共享
+     * 另一侧 core，保留该会话的流式状态和运行时状态。
+     */
     fun shareSlotWithOtherCurrentChat(slot: ChatRuntimeSlot, chatId: String): Boolean {
         var replacedSlot: ChatRuntimeSlot? = null
         val shared =
@@ -231,14 +237,14 @@ class ChatRuntimeHolder private constructor(context: Context) {
     }
 
     /**
-     * 设置是否允许共享 core
+     * 设置是否允许自动初始共享。
      *
-     * 悬浮窗开启时调用 enable 完成初始共享，之后立即 disable。
-     * 悬浮窗销毁时调用 enable 为下次开启做准备。
+     * 悬浮窗开启时调用 enable，完成初始共享后立即 disable；悬浮窗销毁时
+     * 再次 enable，为下次开启做准备。用户显式切回同一会话的重新共享不受此开关限制。
      */
     fun setSharingEnabled(enabled: Boolean) {
         sharingEnabled = enabled
-        AppLogger.d(TAG, "共享 core ${if (enabled) "启用" else "禁用"}")
+        AppLogger.d(TAG, "自动初始共享 core ${if (enabled) "启用" else "禁用"}")
     }
 
     fun isSharingCore(): Boolean = cores[MAIN] === cores[FLOATING]

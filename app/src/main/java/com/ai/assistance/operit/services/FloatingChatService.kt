@@ -265,10 +265,10 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             lastFloatingChatId = chatCore.currentChatId.value ?: mainChatId
             setupCoreCollectors()
 
-            // 初始共享完成，禁用后续共享。之后任何一方切会话都走分家，不再共享。
+            // 初始共享完成，禁用后续自动初始共享；用户显式切回同一会话仍会重新共享。
             runtimeHolder.setSharingEnabled(false)
 
-            // 监听 core 被替换（分家场景：主页面切走时，悬浮窗的 core 会被替换）
+            // 监听 core 被替换（悬浮窗分家或显式切回同一会话重新共享）
             serviceScope.launch {
                 runtimeHolder.coreReplaced.collect { slot ->
                     if (slot == ChatRuntimeSlot.FLOATING) {
@@ -602,7 +602,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             serviceScope.cancel()
             AppLogger.d(TAG, "onDestroy: serviceScope cancelled")
 
-            // 恢复共享开关，下次开启悬浮窗时可以重新共享
+            // 恢复自动初始共享开关，下次开启悬浮窗时可再次尝试初始共享。
             if (::runtimeHolder.isInitialized) {
                 runtimeHolder.setSharingEnabled(true)
             }
@@ -869,7 +869,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         try {
             isSelfSwitching = true
             runtimeHolder.switchChat(ChatRuntimeSlot.FLOATING, chatId)
-            // switchChat 可能替换了 core（分家），更新引用
+            // switchChat 可能替换 core（分家或显式切回同一会话重新共享），更新引用。
             val newCore = runtimeHolder.getCore(ChatRuntimeSlot.FLOATING)
             if (newCore !== chatCore) {
                 chatCore = newCore
@@ -974,7 +974,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                 inputProcessingState.value = state
             }
         }
-        // 监听 chatId 变化：如果共享 core 时主页面切走了，需要分家
+        // 监听 chatId 变化：共享 core 被全局 currentChatId 推动切走时，悬浮窗保留原会话并分家。
         collectorJobs += serviceScope.launch {
             chatCore.currentChatId.collect { newChatId ->
                 AppLogger.d(TAG, "currentChatId collector: newChatId=$newChatId, lastFloatingChatId=$lastFloatingChatId, isSelfSwitching=$isSelfSwitching, isSharingCore=${runtimeHolder.isSharingCore()}")
