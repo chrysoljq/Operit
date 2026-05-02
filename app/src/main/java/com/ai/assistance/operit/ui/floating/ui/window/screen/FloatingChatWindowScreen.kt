@@ -82,7 +82,6 @@ import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 
 /** 渲染悬浮窗的窗口模式界面 - 简化版 */
 @Composable
@@ -463,25 +462,29 @@ private fun TitleBar(
                             try {
                                 val service = floatContext.chatService
                                 if (service != null) {
-                                    runBlocking {
+                                    floatContext.coroutineScope.launch {
                                         try {
                                             service.handoffCurrentCoreToMain()
-                                        } catch (_: Exception) {
+                                            val intent = Intent(
+                                                service,
+                                                com.ai.assistance.operit.ui.main.MainActivity::class.java
+                                            ).apply {
+                                                flags =
+                                                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                                            }
+                                            service.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            AppLogger.e("FloatingChatWindow", "启动 MainActivity 失败", e)
                                         }
+                                        floatContext.onClose()
                                     }
-                                    val intent = Intent(
-                                        service,
-                                        com.ai.assistance.operit.ui.main.MainActivity::class.java
-                                    ).apply {
-                                        flags =
-                                            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                                    }
-                                    service.startActivity(intent)
+                                } else {
+                                    floatContext.onClose()
                                 }
                             } catch (e: Exception) {
                                 AppLogger.e("FloatingChatWindow", "启动 MainActivity 失败", e)
+                                floatContext.onClose()
                             }
-                            floatContext.onClose()
                         }
                     )
                     // 关闭按钮

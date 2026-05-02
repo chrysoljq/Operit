@@ -464,8 +464,9 @@ class ChatHistoryDelegate(
                     null  // 群组模式下不使用角色卡名称
                 }
 
+            val wasFollowingGlobalCurrentChat = followGlobalCurrentChat.get()
             val shouldSyncCurrentChatToGlobal =
-                followGlobalCurrentChat.get() && setAsCurrentChat
+                wasFollowingGlobalCurrentChat && setAsCurrentChat
             if (shouldSyncCurrentChatToGlobal) {
                 beforeCurrentChatMutation?.invoke(currentChatId)
             }
@@ -502,7 +503,7 @@ class ChatHistoryDelegate(
             }
             
             if (setAsCurrentChat) {
-                if (followGlobalCurrentChat.get()) {
+                if (wasFollowingGlobalCurrentChat) {
                     // FOLLOW_GLOBAL 由 currentChatId 的 collector 负责驱动切换与加载。
                     chatHistoryManager.setCurrentChatId(newChat.id)
                 } else {
@@ -527,10 +528,11 @@ class ChatHistoryDelegate(
                 saveCurrentChat(inputTokens, outputTokens, windowSize) // 切换前使用正确的窗口大小保存
 
                 if (syncToGlobal) {
-                    if (followGlobalCurrentChat.get()) {
+                    val wasFollowingGlobalCurrentChat = followGlobalCurrentChat.get()
+                    if (wasFollowingGlobalCurrentChat) {
                         beforeCurrentChatMutation?.invoke(_currentChatId.value)
                     }
-                    if (followGlobalCurrentChat.get()) {
+                    if (wasFollowingGlobalCurrentChat) {
                         chatHistoryManager.setCurrentChatId(chatId)
                         // _currentChatId.value will be updated by the collector, no need to set it here.
                         // loadChatMessages(chatId) is also called by the collector.
