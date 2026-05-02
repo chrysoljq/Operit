@@ -10,9 +10,12 @@ import com.ai.assistance.operit.data.model.ToolInvocation
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.util.stream.StreamCollector
+import com.ai.assistance.operit.data.model.CharacterCardMemoryProfileBindingMode
 import com.ai.assistance.operit.data.preferences.CharacterCardToolAccessResolver
+import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -27,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 
 /** Utility class for managing tool executions */
@@ -36,6 +40,12 @@ object ToolExecutionManager {
     private const val PACKAGE_CALLER_NAME_PARAM = "__operit_package_caller_name"
     private const val PACKAGE_CHAT_ID_PARAM = "__operit_package_chat_id"
     private const val PACKAGE_CALLER_CARD_ID_PARAM = "__operit_package_caller_card_id"
+    private val toolRuntimeContextThreadLocal = ThreadLocal<ToolRuntimeContext?>()
+
+    data class ToolRuntimeContext(
+        val callerCardId: String? = null,
+        val memoryProfileId: String? = null
+    )
 
     private data class ResolvedToolTarget(
         val tool: AITool,
@@ -78,6 +88,9 @@ object ToolExecutionManager {
             packageName != null &&
             jsPackageNames.contains(packageName)
     }
+
+    internal fun currentToolRuntimeContext(): ToolRuntimeContext? =
+        toolRuntimeContextThreadLocal.get()
 
     private fun addPackageContextParamIfMissing(
         params: MutableList<ToolParameter>,
@@ -172,6 +185,28 @@ object ToolExecutionManager {
             result = StringResultData(""),
             error = context.getString(R.string.character_card_tool_access_denied_runtime)
         )
+    }
+
+    private suspend fun resolveRoleCardMemoryProfileId(
+        context: Context,
+        callerCardId: String?
+    ): String? {
+        val resolvedCardId = callerCardId?.takeIf { it.isNotBlank() } ?: return null
+        val characterCard =
+            CharacterCardManager.getInstance(context).getCharacterCardFlow(resolvedCardId).first()
+        val bindingMode =
+            CharacterCardMemoryProfileBindingMode.normalize(
+                characterCard.memoryProfileBindingMode
+            )
+        val boundProfileId = characterCard.memoryProfileId?.takeIf { it.isNotBlank() }
+        return if (
+            bindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE &&
+            boundProfileId != null
+        ) {
+            boundProfileId
+        } else {
+            null
+        }
     }
 
     private fun resolveProxyParameters(tool: AITool): List<ToolParameter> {
@@ -407,6 +442,11 @@ object ToolExecutionManager {
                 AppLogger.e(TAG, "角色卡工具权限解析失败: callerCardId=$callerCardId", error)
             }.getOrNull()
         }
+        val toolRuntimeContext =
+            ToolRuntimeContext(
+                callerCardId = callerCardId,
+                memoryProfileId = resolveRoleCardMemoryProfileId(context, callerCardId)
+            )
 
         // 1. 角色卡工具权限拦截（优先于权限弹窗与包自动激活）
         val roleCardPermittedInvocations = mutableListOf<ToolInvocation>()
@@ -483,14 +523,28 @@ object ToolExecutionManager {
         // 启动并行工具
         val parallelJobs = parallelInvocations.map { invocation ->
             async {
-                val result = executeAndEmitTool(invocation, toolHandler, packageManager, collector)
+                val result =
+                    executeAndEmitTool(
+                        invocation = invocation,
+                        toolHandler = toolHandler,
+                        packageManager = packageManager,
+                        collector = collector,
+                        runtimeContext = toolRuntimeContext
+                    )
                 executionResults[invocation] = result
             }
         }
 
         // 顺序执行串行工具
         for (invocation in serialInvocations) {
-            val result = executeAndEmitTool(invocation, toolHandler, packageManager, collector)
+            val result =
+                executeAndEmitTool(
+                    invocation = invocation,
+                    toolHandler = toolHandler,
+                    packageManager = packageManager,
+                    collector = collector,
+                    runtimeContext = toolRuntimeContext
+                )
             executionResults[invocation] = result
         }
 
@@ -511,71 +565,74 @@ object ToolExecutionManager {
         invocation: ToolInvocation,
         toolHandler: AIToolHandler,
         packageManager: PackageManager,
-        collector: StreamCollector<String>
+        collector: StreamCollector<String>,
+        runtimeContext: ToolRuntimeContext
     ): ToolResult {
         val toolName = invocation.tool.name
         val displayToolName = resolveDisplayToolName(invocation.tool)
 
-        return try {
-            val executor = toolHandler.getToolExecutorOrActivate(toolName)
-            if (executor == null) {
-                // 如果仍然为 null，则构建错误消息
-                val errorMessage =
-                    buildToolNotAvailableErrorMessage(toolName, packageManager, toolHandler)
-                val notAvailableContent =
-                    ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
-                collector.emit(ensureEndsWithNewline(notAvailableContent))
-                val notAvailableResult =
+        return withContext(toolRuntimeContextThreadLocal.asContextElement(runtimeContext)) {
+            try {
+                val executor = toolHandler.getToolExecutorOrActivate(toolName)
+                if (executor == null) {
+                    // 如果仍然为 null，则构建错误消息
+                    val errorMessage =
+                        buildToolNotAvailableErrorMessage(toolName, packageManager, toolHandler)
+                    val notAvailableContent =
+                        ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
+                    collector.emit(ensureEndsWithNewline(notAvailableContent))
+                    val notAvailableResult =
+                        ToolResult(
+                            toolName = displayToolName,
+                            success = false,
+                            result = StringResultData(""),
+                            error = errorMessage
+                        )
+                    toolHandler.notifyToolExecutionResult(invocation.tool, notAvailableResult)
+                    return@withContext notAvailableResult
+                }
+
+                toolHandler.notifyToolExecutionStarted(invocation.tool)
+
+                val collectedResults = mutableListOf<ToolResult>()
+                executeToolSafely(invocation, executor, toolHandler).collect { result ->
+                    collectedResults.add(result)
+                    // 实时输出每个结果
+                    val toolResultStatusContent =
+                        ConversationMarkupManager.formatToolResultForMessage(result)
+                    collector.emit(ensureEndsWithNewline(toolResultStatusContent))
+                }
+
+                // 为此调用聚合最终结果
+                if (collectedResults.isEmpty()) {
+                    val emptyResult =
+                        ToolResult(
+                            toolName = displayToolName,
+                            success = false,
+                            result = StringResultData(""),
+                            error = "The tool execution returned no results."
+                        )
+                    toolHandler.notifyToolExecutionResult(invocation.tool, emptyResult)
+                    return@withContext emptyResult
+                }
+
+                val lastResult = collectedResults.last()
+                val combinedResultString = collectedResults.joinToString("\n") { res ->
+                    (if (res.success) res.result.toString() else "Step error: ${res.error ?: "Unknown error"}").trim()
+                }.trim()
+
+                val finalResult =
                     ToolResult(
                         toolName = displayToolName,
-                        success = false,
-                        result = StringResultData(""),
-                        error = errorMessage
+                        success = lastResult.success,
+                        result = StringResultData(combinedResultString),
+                        error = lastResult.error
                     )
-                toolHandler.notifyToolExecutionResult(invocation.tool, notAvailableResult)
-                return notAvailableResult
+                toolHandler.notifyToolExecutionResult(invocation.tool, finalResult)
+                return@withContext finalResult
+            } finally {
+                toolHandler.notifyToolExecutionFinished(invocation.tool)
             }
-
-            toolHandler.notifyToolExecutionStarted(invocation.tool)
-
-            val collectedResults = mutableListOf<ToolResult>()
-            executeToolSafely(invocation, executor, toolHandler).collect { result ->
-                collectedResults.add(result)
-                // 实时输出每个结果
-                val toolResultStatusContent =
-                    ConversationMarkupManager.formatToolResultForMessage(result)
-                collector.emit(ensureEndsWithNewline(toolResultStatusContent))
-            }
-
-            // 为此调用聚合最终结果
-            if (collectedResults.isEmpty()) {
-                val emptyResult =
-                    ToolResult(
-                        toolName = displayToolName,
-                        success = false,
-                        result = StringResultData(""),
-                        error = "The tool execution returned no results."
-                    )
-                toolHandler.notifyToolExecutionResult(invocation.tool, emptyResult)
-                return emptyResult
-            }
-
-            val lastResult = collectedResults.last()
-            val combinedResultString = collectedResults.joinToString("\n") { res ->
-                (if (res.success) res.result.toString() else "Step error: ${res.error ?: "Unknown error"}").trim()
-            }.trim()
-
-            val finalResult =
-                ToolResult(
-                    toolName = displayToolName,
-                    success = lastResult.success,
-                    result = StringResultData(combinedResultString),
-                    error = lastResult.error
-                )
-            toolHandler.notifyToolExecutionResult(invocation.tool, finalResult)
-            return finalResult
-        } finally {
-            toolHandler.notifyToolExecutionFinished(invocation.tool)
         }
     }
 

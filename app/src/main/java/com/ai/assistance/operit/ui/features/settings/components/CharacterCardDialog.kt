@@ -35,8 +35,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.CharacterCardMemoryProfileBindingMode
 import com.ai.assistance.operit.data.model.CharacterCardToolAccessConfig
 import com.ai.assistance.operit.data.model.ModelConfigSummary
+import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.getModelByIndex
 import com.ai.assistance.operit.data.model.getModelList
@@ -49,6 +51,7 @@ import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.skill.SkillRepository
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.util.LocaleUtils
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 // 角色卡名片对话框
@@ -81,11 +84,18 @@ fun CharacterCardDialog(
     var fixedChatModelIndex by remember(characterCard.id) {
         mutableStateOf(characterCard.chatModelIndex.coerceAtLeast(0))
     }
+    var memoryProfileBindingMode by remember(characterCard.id) {
+        mutableStateOf(CharacterCardMemoryProfileBindingMode.normalize(characterCard.memoryProfileBindingMode))
+    }
+    var fixedMemoryProfileId by remember(characterCard.id) {
+        mutableStateOf(characterCard.memoryProfileId ?: "")
+    }
     var toolAccessConfig by remember(characterCard.id) {
         mutableStateOf(characterCard.toolAccessConfig.normalized())
     }
     var showFixedConfigPickerDialog by remember(characterCard.id) { mutableStateOf(false) }
     var popupExpandedFixedConfigId by remember(characterCard.id) { mutableStateOf<String?>(null) }
+    var showFixedMemoryProfilePickerDialog by remember(characterCard.id) { mutableStateOf(false) }
     var showToolAccessDialog by remember(characterCard.id) { mutableStateOf(false) }
     var showAdvanced by remember { mutableStateOf(false) }
     
@@ -108,6 +118,7 @@ fun CharacterCardDialog(
     val skillRepository = remember { SkillRepository.getInstance(context) }
     val modelConfigManager = remember { ModelConfigManager(context) }
     var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
+    var preferenceProfiles by remember { mutableStateOf<List<PreferenceProfile>>(emptyList()) }
     var builtinToolOptions by remember(characterCard.id) {
         mutableStateOf<List<CharacterCardToolAccessOption>>(emptyList())
     }
@@ -126,6 +137,9 @@ fun CharacterCardDialog(
     LaunchedEffect(Unit) {
         modelConfigManager.initializeIfNeeded()
         configSummaries = modelConfigManager.getAllConfigSummaries()
+        val profileIds = userPreferencesManager.profileListFlow.first()
+        preferenceProfiles =
+            profileIds.map { profileId -> userPreferencesManager.getUserPreferencesFlow(profileId).first() }
     }
 
     LaunchedEffect(chatModelBindingMode, configSummaries) {
@@ -147,6 +161,19 @@ fun CharacterCardDialog(
         if (chatModelBindingMode != CharacterCardChatModelBindingMode.FIXED_CONFIG) {
             showFixedConfigPickerDialog = false
             popupExpandedFixedConfigId = null
+        }
+    }
+
+    LaunchedEffect(memoryProfileBindingMode, preferenceProfiles) {
+        if (memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE) {
+            if (
+                preferenceProfiles.isNotEmpty() &&
+                (fixedMemoryProfileId.isBlank() || preferenceProfiles.none { it.id == fixedMemoryProfileId })
+            ) {
+                fixedMemoryProfileId = preferenceProfiles.first().id
+            }
+        } else {
+            showFixedMemoryProfilePickerDialog = false
         }
     }
 
@@ -483,6 +510,7 @@ fun CharacterCardDialog(
                         } else {
                             0
                         }
+                        val selectedFixedMemoryProfile = preferenceProfiles.find { it.id == fixedMemoryProfileId }
                         val chatModelBindingSummary = if (
                             chatModelBindingMode == CharacterCardChatModelBindingMode.FOLLOW_GLOBAL
                         ) {
@@ -498,6 +526,16 @@ fun CharacterCardDialog(
                                 context.getString(R.string.character_card_chat_model_fixed_config),
                                 selectedFixedConfig?.name,
                                 selectedModelName
+                            ).filter { !it.isNullOrBlank() }.joinToString(" · ")
+                        }
+                        val memoryProfileBindingSummary = if (
+                            memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL
+                        ) {
+                            context.getString(R.string.character_card_memory_profile_follow_global)
+                        } else {
+                            listOf(
+                                context.getString(R.string.character_card_memory_profile_fixed_profile),
+                                selectedFixedMemoryProfile?.name
                             ).filter { !it.isNullOrBlank() }.joinToString(" · ")
                         }
 
@@ -626,6 +664,116 @@ fun CharacterCardDialog(
                                     showFixedConfigPickerDialog = false
                                     popupExpandedFixedConfigId = null
                                 }
+                            )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.character_card_memory_profile_binding),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    memoryProfileBindingMode =
+                                        if (memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE) {
+                                            CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL
+                                        } else {
+                                            CharacterCardMemoryProfileBindingMode.FIXED_PROFILE
+                                        }
+                                },
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                width = 0.8.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.character_card_memory_profile_specify_fixed_profile),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = memoryProfileBindingSummary,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Switch(
+                                    checked = memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE,
+                                    onCheckedChange = null
+                                )
+                            }
+                        }
+
+                        if (memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = preferenceProfiles.isNotEmpty()) {
+                                        showFixedMemoryProfilePickerDialog = true
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = 0.8.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedFixedMemoryProfile?.name
+                                                ?: stringResource(R.string.character_card_memory_profile_select),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+
+                                        Text(
+                                            text = selectedFixedMemoryProfile?.id ?: stringResource(R.string.not_selected),
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+                                        )
+                                    }
+
+                                    if (preferenceProfiles.isNotEmpty()) {
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            CharacterCardFixedMemoryProfilePickerDialog(
+                                visible = showFixedMemoryProfilePickerDialog,
+                                preferenceProfiles = preferenceProfiles,
+                                selectedProfileId = fixedMemoryProfileId,
+                                onSelect = { profileId ->
+                                    fixedMemoryProfileId = profileId
+                                    showFixedMemoryProfilePickerDialog = false
+                                },
+                                onDismiss = { showFixedMemoryProfilePickerDialog = false }
                             )
                         }
 
@@ -814,6 +962,15 @@ fun CharacterCardDialog(
                                         normalizedFixedModelIndex
                                     } else {
                                         0
+                                    },
+                                    memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(memoryProfileBindingMode),
+                                    memoryProfileId = if (
+                                        memoryProfileBindingMode == CharacterCardMemoryProfileBindingMode.FIXED_PROFILE &&
+                                        fixedMemoryProfileId.isNotBlank()
+                                    ) {
+                                        fixedMemoryProfileId
+                                    } else {
+                                        null
                                     },
                                     toolAccessConfig = finalToolAccessConfig
                                 )
@@ -1288,6 +1445,129 @@ private fun CharacterCardFixedModelPickerDialog(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CharacterCardFixedMemoryProfilePickerDialog(
+    visible: Boolean,
+    preferenceProfiles: List<PreferenceProfile>,
+    selectedProfileId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!visible) return
+
+    val scrollState = rememberScrollState()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.character_card_memory_profile_select),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(scrollState)
+                ) {
+                    preferenceProfiles.forEach { profile ->
+                        val isSelected = profile.id == selectedProfileId
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 2.dp)
+                                .clickable { onSelect(profile.id) },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                            border = BorderStroke(
+                                width = if (isSelected) 0.dp else 0.5.dp,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                }
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = profile.name,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = profile.id,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }

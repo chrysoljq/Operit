@@ -46,6 +46,7 @@ fun AiMessageComposable(
     textColor: Color,
     onLinkClick: ((String) -> Unit)? = null,
     initialThinkingExpanded: Boolean = false,
+    allowExpandedThinkingFullHeight: Boolean = false,
     expandThinkToolsGroups: Boolean = false,
     forceShowThinkingProcess: Boolean = false,
     overrideStream: Stream<String>? = null,
@@ -73,11 +74,18 @@ fun AiMessageComposable(
     val rendererState = remember(message.timestamp) { StreamMarkdownRendererState() }
 
     // 创建自定义XML渲染器
-    val xmlRenderer = remember(effectiveShowThinkingProcess, showStatusTags, initialThinkingExpanded, enableDialogs) {
+    val xmlRenderer = remember(
+        effectiveShowThinkingProcess,
+        showStatusTags,
+        initialThinkingExpanded,
+        allowExpandedThinkingFullHeight,
+        enableDialogs
+    ) {
         CustomXmlRenderer(
             showThinkingProcess = effectiveShowThinkingProcess,
             showStatusTags = showStatusTags,
             initialThinkingExpanded = initialThinkingExpanded,
+            allowExpandedThinkingFullHeight = allowExpandedThinkingFullHeight,
             enableDialogs = enableDialogs  // 传递弹窗启用状态
         )
     }

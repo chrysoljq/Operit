@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.ai.assistance.operit.data.backup.OperitBackupDirs
 import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.CharacterCardMemoryProfileBindingMode
 import com.ai.assistance.operit.data.model.CharacterCardToolAccessConfig
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.TagType
@@ -152,6 +153,8 @@ class CharacterCardManager private constructor(private val context: Context) {
         val chatModelBindingModeKey = stringPreferencesKey("character_card_${id}_chat_model_binding_mode")
         val chatModelConfigIdKey = stringPreferencesKey("character_card_${id}_chat_model_config_id")
         val chatModelIndexKey = intPreferencesKey("character_card_${id}_chat_model_index")
+        val memoryProfileBindingModeKey = stringPreferencesKey("character_card_${id}_memory_profile_binding_mode")
+        val memoryProfileIdKey = stringPreferencesKey("character_card_${id}_memory_profile_id")
         val toolAccessConfigKey = toolAccessConfigKey(id)
         val isDefaultKey = booleanPreferencesKey("character_card_${id}_is_default")
         val createdAtKey = longPreferencesKey("character_card_${id}_created_at")
@@ -171,6 +174,8 @@ class CharacterCardManager private constructor(private val context: Context) {
             chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(preferences[chatModelBindingModeKey]),
             chatModelConfigId = preferences[chatModelConfigIdKey],
             chatModelIndex = (preferences[chatModelIndexKey] ?: 0).coerceAtLeast(0),
+            memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(preferences[memoryProfileBindingModeKey]),
+            memoryProfileId = preferences[memoryProfileIdKey],
             toolAccessConfig = parseToolAccessConfig(preferences[toolAccessConfigKey]),
             isDefault = (id == DEFAULT_CHARACTER_CARD_ID) || (preferences[isDefaultKey] ?: false),
             createdAt = preferences[createdAtKey] ?: System.currentTimeMillis(),
@@ -256,6 +261,14 @@ class CharacterCardManager private constructor(private val context: Context) {
                 preferences[chatModelConfigIdKey] = newCard.chatModelConfigId
             }
             preferences[intPreferencesKey("character_card_${id}_chat_model_index")] = newCard.chatModelIndex.coerceAtLeast(0)
+            preferences[stringPreferencesKey("character_card_${id}_memory_profile_binding_mode")] =
+                CharacterCardMemoryProfileBindingMode.normalize(newCard.memoryProfileBindingMode)
+            val memoryProfileIdKey = stringPreferencesKey("character_card_${id}_memory_profile_id")
+            if (newCard.memoryProfileId.isNullOrBlank()) {
+                preferences.remove(memoryProfileIdKey)
+            } else {
+                preferences[memoryProfileIdKey] = newCard.memoryProfileId
+            }
             writeToolAccessConfig(preferences, id, newCard.toolAccessConfig)
             preferences[booleanPreferencesKey("character_card_${id}_is_default")] = newCard.isDefault
             preferences[longPreferencesKey("character_card_${id}_created_at")] = newCard.createdAt
@@ -296,6 +309,14 @@ class CharacterCardManager private constructor(private val context: Context) {
                 preferences[chatModelConfigIdKey] = card.chatModelConfigId
             }
             preferences[intPreferencesKey("character_card_${card.id}_chat_model_index")] = card.chatModelIndex.coerceAtLeast(0)
+            preferences[stringPreferencesKey("character_card_${card.id}_memory_profile_binding_mode")] =
+                CharacterCardMemoryProfileBindingMode.normalize(card.memoryProfileBindingMode)
+            val memoryProfileIdKey = stringPreferencesKey("character_card_${card.id}_memory_profile_id")
+            if (card.memoryProfileId.isNullOrBlank()) {
+                preferences.remove(memoryProfileIdKey)
+            } else {
+                preferences[memoryProfileIdKey] = card.memoryProfileId
+            }
             writeToolAccessConfig(preferences, card.id, card.toolAccessConfig)
             
             // 更新修改时间
@@ -328,6 +349,8 @@ class CharacterCardManager private constructor(private val context: Context) {
                 "character_card_${id}_chat_model_binding_mode",
                 "character_card_${id}_chat_model_config_id",
                 "character_card_${id}_chat_model_index",
+                "character_card_${id}_memory_profile_binding_mode",
+                "character_card_${id}_memory_profile_id",
                 "character_card_${id}_tool_access_config_json",
                 "character_card_${id}_is_default",
                 "character_card_${id}_created_at",
@@ -484,6 +507,8 @@ class CharacterCardManager private constructor(private val context: Context) {
         val chatModelBindingModeKey = stringPreferencesKey("character_card_${id}_chat_model_binding_mode")
         val chatModelConfigIdKey = stringPreferencesKey("character_card_${id}_chat_model_config_id")
         val chatModelIndexKey = intPreferencesKey("character_card_${id}_chat_model_index")
+        val memoryProfileBindingModeKey = stringPreferencesKey("character_card_${id}_memory_profile_binding_mode")
+        val memoryProfileIdKey = stringPreferencesKey("character_card_${id}_memory_profile_id")
         val toolAccessConfigKey = toolAccessConfigKey(id)
         val isDefaultKey = booleanPreferencesKey("character_card_${id}_is_default")
         val createdAtKey = longPreferencesKey("character_card_${id}_created_at")
@@ -501,6 +526,8 @@ class CharacterCardManager private constructor(private val context: Context) {
         preferences[chatModelBindingModeKey] = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL
         preferences.remove(chatModelConfigIdKey)
         preferences[chatModelIndexKey] = 0
+        preferences[memoryProfileBindingModeKey] = CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL
+        preferences.remove(memoryProfileIdKey)
         preferences.remove(toolAccessConfigKey)
         preferences[isDefaultKey] = true
         preferences[createdAtKey] = System.currentTimeMillis()
@@ -541,6 +568,8 @@ class CharacterCardManager private constructor(private val context: Context) {
         val chatModelBindingMode: String = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL,
         val chatModelConfigId: String? = null,
         val chatModelIndex: Int = 0,
+        val memoryProfileBindingMode: String = CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL,
+        val memoryProfileId: String? = null,
         val toolAccessConfig: CharacterCardToolAccessConfig? = null,
         val isDefault: Boolean = false,
         val createdAt: Long = System.currentTimeMillis(),
@@ -561,6 +590,8 @@ class CharacterCardManager private constructor(private val context: Context) {
                 chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(chatModelBindingMode),
                 chatModelConfigId = chatModelConfigId?.takeIf { it.isNotBlank() },
                 chatModelIndex = chatModelIndex.coerceAtLeast(0),
+                memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(memoryProfileBindingMode),
+                memoryProfileId = memoryProfileId?.takeIf { it.isNotBlank() },
                 toolAccessConfig = toolAccessConfig?.normalized() ?: CharacterCardToolAccessConfig(),
                 isDefault = isDefault,
                 createdAt = createdAt,
@@ -661,7 +692,9 @@ class CharacterCardManager private constructor(private val context: Context) {
                     attachedTagIds = remapAttachedTagIds(card.attachedTagIds, importedTagIdMap),
                     chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(card.chatModelBindingMode),
                     chatModelConfigId = card.chatModelConfigId?.takeIf { it.isNotBlank() },
-                    chatModelIndex = card.chatModelIndex.coerceAtLeast(0)
+                    chatModelIndex = card.chatModelIndex.coerceAtLeast(0),
+                    memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(card.memoryProfileBindingMode),
+                    memoryProfileId = card.memoryProfileId?.takeIf { it.isNotBlank() }
                 )
             } else {
                 card.copy(
@@ -669,7 +702,9 @@ class CharacterCardManager private constructor(private val context: Context) {
                     attachedTagIds = remapAttachedTagIds(card.attachedTagIds, importedTagIdMap),
                     chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(card.chatModelBindingMode),
                     chatModelConfigId = card.chatModelConfigId?.takeIf { it.isNotBlank() },
-                    chatModelIndex = card.chatModelIndex.coerceAtLeast(0)
+                    chatModelIndex = card.chatModelIndex.coerceAtLeast(0),
+                    memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(card.memoryProfileBindingMode),
+                    memoryProfileId = card.memoryProfileId?.takeIf { it.isNotBlank() }
                 )
             }
 
@@ -712,6 +747,14 @@ class CharacterCardManager private constructor(private val context: Context) {
                 preferences[chatModelConfigIdKey] = card.chatModelConfigId
             }
             preferences[intPreferencesKey("character_card_${id}_chat_model_index")] = card.chatModelIndex.coerceAtLeast(0)
+            preferences[stringPreferencesKey("character_card_${id}_memory_profile_binding_mode")] =
+                CharacterCardMemoryProfileBindingMode.normalize(card.memoryProfileBindingMode)
+            val memoryProfileIdKey = stringPreferencesKey("character_card_${id}_memory_profile_id")
+            if (card.memoryProfileId.isNullOrBlank()) {
+                preferences.remove(memoryProfileIdKey)
+            } else {
+                preferences[memoryProfileIdKey] = card.memoryProfileId
+            }
             writeToolAccessConfig(preferences, id, card.toolAccessConfig)
             preferences[booleanPreferencesKey("character_card_${id}_is_default")] = card.isDefault
             preferences[longPreferencesKey("character_card_${id}_created_at")] = card.createdAt
@@ -817,6 +860,8 @@ class CharacterCardManager private constructor(private val context: Context) {
                     chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(operitPayload.chatModelBindingMode),
                     chatModelConfigId = operitPayload.chatModelConfigId?.takeIf { it.isNotBlank() },
                     chatModelIndex = operitPayload.chatModelIndex.coerceAtLeast(0),
+                    memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(operitPayload.memoryProfileBindingMode),
+                    memoryProfileId = operitPayload.memoryProfileId?.takeIf { it.isNotBlank() },
                     toolAccessConfig = operitPayload.toolAccessConfig?.normalized() ?: CharacterCardToolAccessConfig(),
                     isDefault = false,
                     createdAt = System.currentTimeMillis(),
@@ -883,6 +928,8 @@ class CharacterCardManager private constructor(private val context: Context) {
                     chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(card.chatModelBindingMode),
                     chatModelConfigId = card.chatModelConfigId?.takeIf { it.isNotBlank() },
                     chatModelIndex = card.chatModelIndex.coerceAtLeast(0),
+                    memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.normalize(card.memoryProfileBindingMode),
+                    memoryProfileId = card.memoryProfileId?.takeIf { it.isNotBlank() },
                     toolAccessConfig = card.toolAccessConfig.normalized()
                 )
             )

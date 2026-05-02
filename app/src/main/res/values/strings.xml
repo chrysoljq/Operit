@@ -4029,6 +4029,11 @@
     <string name="character_card_chat_model_follow_global">跟随全局</string>
     <string name="character_card_chat_model_fixed_config">固定配置</string>
     <string name="character_card_chat_model_specify_fixed_config">指定固定配置</string>
+    <string name="character_card_memory_profile_binding">记忆配置绑定</string>
+    <string name="character_card_memory_profile_follow_global">跟随全局</string>
+    <string name="character_card_memory_profile_fixed_profile">固定配置</string>
+    <string name="character_card_memory_profile_specify_fixed_profile">指定固定记忆配置</string>
+    <string name="character_card_memory_profile_select">选择记忆配置</string>
     <string name="character_card_tool_access_title">自定义允许使用的工具</string>
     <string name="character_card_tool_access_enable">启用角色卡级工具白名单</string>
     <string name="character_card_tool_access_follow_global">当前跟随全局配置</string>
@@ -6156,6 +6161,9 @@
     <string name="character_card_model_switch_confirm_title">修改角色卡绑定模型</string>
     <string name="character_card_model_switch_confirm_message">当前角色卡已绑定对话模型。继续后将修改该角色卡的模型绑定，不会修改全局对话模型配置。</string>
     <string name="character_card_model_switch_confirm_action">确认修改</string>
+    <string name="character_card_memory_switch_confirm_title">修改角色卡绑定记忆配置</string>
+    <string name="character_card_memory_switch_confirm_message">当前角色卡已绑定记忆配置。继续后将修改该角色卡的记忆配置绑定，不会修改全局记忆配置。</string>
+    <string name="character_card_memory_switch_confirm_action">确认修改</string>
     <string name="import_key_suffix">导入密钥 %1$s</string>
     <string name="custom_parameters">自定义参数</string>
     <string name="filediff_tool_result">工具执行结果</string>

@@ -16,6 +16,7 @@ import com.ai.assistance.operit.ui.main.navigation.AppRouteDiscoveryGateway
 import com.ai.assistance.operit.ui.main.navigation.AppRouterGateway
 import com.ai.assistance.operit.ui.main.navigation.RouteEntrySource
 import com.ai.assistance.operit.ui.main.navigation.RouteRuntime
+import com.ai.assistance.operit.ui.common.composedsl.ComposeDslWebViewHostRegistry
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.LocaleUtils
@@ -1044,6 +1045,56 @@ class JsEngine(private val context: Context) {
         return true
     }
 
+    internal fun exposeNativeInterfaceBridgeObject(): String {
+        val handle = UUID.randomUUID().toString()
+        return runCatching {
+            javaObjectRegistry[handle] = toolCallInterface
+            JSONObject()
+                .put("success", true)
+                .put(
+                    "data",
+                    JSONObject()
+                        .put("__javaHandle", handle)
+                        .put("__javaClass", toolCallInterface.javaClass.name)
+                )
+                .toString()
+        }.getOrElse { error ->
+            AppLogger.e(TAG, "Failed to expose NativeInterface bridge object: ${error.message}", error)
+            JSONObject()
+                .put("success", false)
+                .put("error", error.message ?: "failed to expose NativeInterface bridge object")
+                .toString()
+        }
+    }
+
+    internal fun callExposedBridgeObject(
+        instanceHandle: String,
+        methodName: String,
+        argsJson: String
+    ): String {
+        return JsJavaBridgeDelegates.callInstance(
+            instanceHandle = instanceHandle,
+            methodName = methodName,
+            argsJson = argsJson,
+            objectRegistry = javaObjectRegistry,
+            jsCallbackInvoker = { jsObjectId, callbackMethodName, callbackArgsJson ->
+                invokeJavaBridgeJsObjectCallbackSync(
+                    jsObjectId = jsObjectId,
+                    methodName = callbackMethodName,
+                    argsJson = callbackArgsJson
+                )
+            },
+            bridgeClassLoader = getJavaBridgeClassLoader()
+        )
+    }
+
+    internal fun releaseExposedBridgeObject(instanceHandle: String): String {
+        return JsJavaBridgeDelegates.releaseInstance(
+            instanceHandle = instanceHandle,
+            objectRegistry = javaObjectRegistry
+        )
+    }
+
     fun cancelCurrentExecution(reason: String = "Execution canceled: requested by caller") {
         AppLogger.d(TAG, "Cancel current JS execution: $reason")
         resetState(cancellationMessage = reason)
@@ -1288,6 +1339,38 @@ class JsEngine(private val context: Context) {
             return buildRoutesJson(includeOnlyNative = true)
         }
 
+        @JavascriptInterface
+        fun composeWebViewControllerCommand(payloadJson: String): String {
+            return ComposeDslWebViewHostRegistry.handleControllerCommand(payloadJson)
+        }
+
+        @JavascriptInterface
+        fun composeWebViewControllerCommandSuspend(payloadJson: String, callbackId: String) {
+            val normalizedCallback = callbackId.trim()
+            if (normalizedCallback.isEmpty()) {
+                return
+            }
+            Thread {
+                try {
+                    val result = ComposeDslWebViewHostRegistry.handleControllerCommand(payloadJson)
+                    sendToolResult(normalizedCallback, result, false)
+                } catch (error: Throwable) {
+                    AppLogger.e(
+                        TAG,
+                        "compose webview controller suspend command failed: ${error.message}",
+                        error
+                    )
+                    sendToolResult(
+                        normalizedCallback,
+                        error.message?.trim().orEmpty().ifBlank {
+                            "compose webview controller command failed"
+                        },
+                        true
+                    )
+                }
+            }.start()
+        }
+
         private fun buildRoutesJson(includeOnlyNative: Boolean): String {
             val routes = AppRouteDiscoveryGateway.listRoutes()
             val result = JSONArray()
@@ -1398,43 +1481,8 @@ class JsEngine(private val context: Context) {
         private fun bridgeClassLoader(): ClassLoader = getJavaBridgeClassLoader()
 
         private fun parseJsonObjectToMap(raw: String): Map<String, Any?> {
-            return try {
-                val token = JSONTokener(raw.trim().ifBlank { "{}" }).nextValue()
-                if (token is JSONObject) {
-                    jsonObjectToMap(token)
-                } else {
-                    emptyMap()
-                }
-            } catch (_: Exception) {
-                emptyMap()
-            }
+            return JsJavaBridgeDelegates.parsePlainJsonObjectToMap(raw)
         }
-
-        private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
-            val map = linkedMapOf<String, Any?>()
-            val iterator = jsonObject.keys()
-            while (iterator.hasNext()) {
-                val key = iterator.next()
-                map[key] = jsonValueToAny(jsonObject.opt(key))
-            }
-            return map
-        }
-
-        private fun jsonArrayToList(jsonArray: JSONArray): List<Any?> {
-            return buildList {
-                for (index in 0 until jsonArray.length()) {
-                    add(jsonValueToAny(jsonArray.opt(index)))
-                }
-            }
-        }
-
-        private fun jsonValueToAny(value: Any?): Any? =
-            when (value) {
-                JSONObject.NULL -> null
-                is JSONObject -> jsonObjectToMap(value)
-                is JSONArray -> jsonArrayToList(value)
-                else -> value
-            }
 
         private fun exposeJavaObject(target: Any, failureLabel: String): String {
             return try {

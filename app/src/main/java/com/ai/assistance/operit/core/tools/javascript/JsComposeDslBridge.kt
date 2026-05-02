@@ -135,6 +135,47 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                 return result;
             }
 
+            function parseJsonValue(rawValue) {
+                if (rawValue === undefined || rawValue === null) {
+                    return undefined;
+                }
+                if (typeof rawValue !== 'string') {
+                    return rawValue;
+                }
+                var trimmed = rawValue.trim();
+                if (!trimmed) {
+                    return undefined;
+                }
+                try {
+                    return JSON.parse(trimmed);
+                } catch (e) {
+                    return rawValue;
+                }
+            }
+
+            function unwrapNativeResult(rawValue, label) {
+                var parsed = parseJsonValue(rawValue);
+                if (
+                    parsed &&
+                    typeof parsed === 'object' &&
+                    parsed.success === false
+                ) {
+                    var message =
+                        typeof parsed.error === 'string' && parsed.error
+                            ? parsed.error
+                            : (label || 'native bridge call failed');
+                    throw new Error(message);
+                }
+                if (
+                    parsed &&
+                    typeof parsed === 'object' &&
+                    Object.prototype.hasOwnProperty.call(parsed, 'data')
+                ) {
+                    return parsed.data;
+                }
+                return parsed;
+            }
+
             function createContext(runtimeOptions) {
                 var options = runtimeOptions && typeof runtimeOptions === 'object' ? runtimeOptions : {};
                 var runtime = {
@@ -147,6 +188,10 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                     packageName: String(options.packageName || options.__operit_ui_package_name || ''),
                     toolPkgId: String(options.toolPkgId || options.__operit_ui_toolpkg_id || ''),
                     uiModuleId: String(options.uiModuleId || options.__operit_ui_module_id || ''),
+                    routeInstanceId: String(options.routeInstanceId || options.__operit_route_instance_id || ''),
+                    executionContextKey: String(
+                        options.executionContextKey || options.__operit_compose_execution_context_key || ''
+                    ),
                     callRuntime:
                         options.__operit_call_runtime && typeof options.__operit_call_runtime === 'object'
                             ? options.__operit_call_runtime
@@ -354,6 +399,184 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                     };
                 }
 
+                function createWebViewController(key) {
+                    var controllerKey = String(key || '').trim();
+                    if (!controllerKey) {
+                        throw new Error('webview controller key is required');
+                    }
+                    var descriptor = {
+                        __composeWebViewController: true,
+                        key: controllerKey,
+                        routeInstanceId: runtime.routeInstanceId || '',
+                        executionContextKey: runtime.executionContextKey || ''
+                    };
+                    function invokeControllerCommand(command, payload) {
+                        return unwrapNativeResult(
+                            invokeNative('composeWebViewControllerCommand', [
+                                JSON.stringify({
+                                    command: String(command || ''),
+                                    key: controllerKey,
+                                    routeInstanceId: runtime.routeInstanceId || '',
+                                    executionContextKey: runtime.executionContextKey || '',
+                                    payload: normalizePropValue(
+                                        payload && typeof payload === 'object'
+                                            ? payload
+                                            : {}
+                                    )
+                                })
+                            ]),
+                            'compose webview controller command failed'
+                        );
+                    }
+                    function nextWebViewControllerCallbackId() {
+                        return '__operit_compose_webview_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+                    }
+                    function invokeControllerCommandSuspend(command, payload) {
+                        if (typeof Promise !== 'function') {
+                            throw new Error('Promise is required for suspend webview controller command');
+                        }
+                        return new Promise(function(resolve, reject) {
+                            if (
+                                typeof NativeInterface === 'undefined' ||
+                                !NativeInterface ||
+                                typeof NativeInterface.composeWebViewControllerCommandSuspend !== 'function'
+                            ) {
+                                reject(new Error('NativeInterface.composeWebViewControllerCommandSuspend is unavailable'));
+                                return;
+                            }
+                            var root = typeof globalThis !== 'undefined'
+                                ? globalThis
+                                : (typeof window !== 'undefined' ? window : this);
+                            var callbackTarget = typeof window !== 'undefined' ? window : root;
+                            var callbackId = nextWebViewControllerCallbackId();
+                            callbackTarget[callbackId] = function(result, isError) {
+                                delete callbackTarget[callbackId];
+                                try {
+                                    if (isError) {
+                                        var errorMessage =
+                                            result &&
+                                            typeof result === 'object' &&
+                                            typeof result.error === 'string' &&
+                                            result.error
+                                                ? result.error
+                                                : String(
+                                                    result == null
+                                                        ? 'compose webview controller command failed'
+                                                        : result
+                                                );
+                                        reject(new Error(errorMessage));
+                                        return;
+                                    }
+                                    resolve(
+                                        unwrapNativeResult(
+                                            result,
+                                            'compose webview controller command failed'
+                                        )
+                                    );
+                                } catch (callbackError) {
+                                    reject(callbackError);
+                                }
+                            };
+                            try {
+                                NativeInterface.composeWebViewControllerCommandSuspend(
+                                    JSON.stringify({
+                                        command: String(command || ''),
+                                        key: controllerKey,
+                                        routeInstanceId: runtime.routeInstanceId || '',
+                                        executionContextKey: runtime.executionContextKey || '',
+                                        payload: normalizePropValue(
+                                            payload && typeof payload === 'object'
+                                                ? payload
+                                            : {}
+                                        )
+                                    }),
+                                    callbackId
+                                );
+                            } catch (invokeError) {
+                                delete callbackTarget[callbackId];
+                                reject(invokeError);
+                            }
+                        });
+                    }
+                    function defineMethod(target, name, handler) {
+                        Object.defineProperty(target, name, {
+                            configurable: false,
+                            enumerable: false,
+                            writable: false,
+                            value: handler
+                        });
+                    }
+
+                    var controller = cloneObject(descriptor);
+                    defineMethod(controller, 'toJSON', function() {
+                        return cloneObject(descriptor);
+                    });
+                    defineMethod(controller, 'loadUrl', function(url, headers) {
+                        var finalUrl = String(url || '').trim();
+                        if (!finalUrl) {
+                            throw new Error('webview controller loadUrl requires a non-empty url');
+                        }
+                        invokeControllerCommand('loadUrl', {
+                            url: finalUrl,
+                            headers: headers && typeof headers === 'object' ? headers : {}
+                        });
+                    });
+                    defineMethod(controller, 'loadHtml', function(html, options) {
+                        invokeControllerCommand('loadHtml', {
+                            html: html == null ? '' : String(html),
+                            options: options && typeof options === 'object' ? options : {}
+                        });
+                    });
+                    defineMethod(controller, 'reload', function() {
+                        invokeControllerCommand('reload', {});
+                    });
+                    defineMethod(controller, 'stopLoading', function() {
+                        invokeControllerCommand('stopLoading', {});
+                    });
+                    defineMethod(controller, 'goBack', function() {
+                        invokeControllerCommand('goBack', {});
+                    });
+                    defineMethod(controller, 'goForward', function() {
+                        invokeControllerCommand('goForward', {});
+                    });
+                    defineMethod(controller, 'clearHistory', function() {
+                        invokeControllerCommand('clearHistory', {});
+                    });
+                    defineMethod(controller, 'evaluateJavascript', function(script) {
+                        return Promise.resolve(
+                            invokeControllerCommandSuspend('evaluateJavascript', {
+                                script: script == null ? '' : String(script)
+                            })
+                        );
+                    });
+                    defineMethod(controller, 'getState', function() {
+                        return invokeControllerCommand('getState', {});
+                    });
+                    defineMethod(controller, 'addJavascriptInterface', function(name, object) {
+                        var interfaceName = String(name || '').trim();
+                        if (!interfaceName) {
+                            throw new Error('webview controller addJavascriptInterface requires a non-empty name');
+                        }
+                        if (!object || typeof object !== 'object' || Array.isArray(object)) {
+                            throw new Error('webview controller addJavascriptInterface requires an object');
+                        }
+                        invokeControllerCommand('addJavascriptInterface', {
+                            name: interfaceName,
+                            object: object
+                        });
+                    });
+                    defineMethod(controller, 'removeJavascriptInterface', function(name) {
+                        var interfaceName = String(name || '').trim();
+                        if (!interfaceName) {
+                            throw new Error('webview controller removeJavascriptInterface requires a non-empty name');
+                        }
+                        invokeControllerCommand('removeJavascriptInterface', {
+                            name: interfaceName
+                        });
+                    });
+                    return controller;
+                }
+
                 function createModifierProxy(ops) {
                     var chain = Array.isArray(ops) ? ops.slice() : [];
                     var target = {
@@ -493,6 +716,9 @@ internal fun buildComposeDslContextBridgeDefinition(): String {
                     reportError: function(error) {
                         console.error('compose_dsl reportError:', error);
                         return Promise.resolve();
+                    },
+                    createWebViewController: function(key) {
+                        return createWebViewController(key);
                     },
                     measureText: function(options) {
                         var payload = options && typeof options === 'object' ? options : {};

@@ -507,6 +507,7 @@ class MessageProcessingDelegate(
             enableSummary: Boolean = true,
             chatModelConfigIdOverride: String? = null,
             chatModelIndexOverride: Int? = null,
+            preferenceProfileIdOverride: String? = null,
             suppressUserMessageInHistory: Boolean = false,
             isGroupOrchestrationTurn: Boolean = false,
             groupParticipantNamesText: String? = null,
@@ -771,6 +772,7 @@ class MessageProcessingDelegate(
                             groupParticipantNamesText = groupParticipantNamesText,
                             chatModelConfigIdOverride = chatModelConfigIdOverride,
                             chatModelIndexOverride = chatModelIndexOverride,
+                            preferenceProfileIdOverride = preferenceProfileIdOverride,
                             publishEstimate = false
                         )
                     }.onFailure {
@@ -861,6 +863,7 @@ class MessageProcessingDelegate(
                     notifyReplyOverride = turnOptions.notifyReply,
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,
+                    preferenceProfileIdOverride = preferenceProfileIdOverride,
                     disableWarning = turnOptions.disableWarning
                 )
                 logMessageTiming(
@@ -1270,6 +1273,7 @@ class MessageProcessingDelegate(
         tokenUsageThreshold: Double,
         chatModelConfigIdOverride: String?,
         chatModelIndexOverride: Int?,
+        preferenceProfileIdOverride: String?,
         onVariantPreviewStarted: suspend (ChatMessage) -> Unit,
         onVariantReady: suspend (ChatMessage) -> Unit,
     ) {
@@ -1353,6 +1357,7 @@ class MessageProcessingDelegate(
                     onToolInvocation = { incrementCurrentTurnToolInvocationCount(chatId) },
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,
+                    preferenceProfileIdOverride = preferenceProfileIdOverride,
                 )
 
             val sharedResponseStream =

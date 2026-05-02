@@ -2,6 +2,7 @@ package com.ai.assistance.operit.plugins.toolpkg
 
 import com.ai.assistance.operit.core.application.OperitApplication
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.javascript.JsJavaBridgeDelegates
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,29 +92,13 @@ internal fun decodeToolPkgHookResult(raw: Any?): Any? {
 }
 
 internal fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
-    val result = linkedMapOf<String, Any?>()
-    val keys = jsonObject.keys()
-    while (keys.hasNext()) {
-        val key = keys.next()
-        result[key] = jsonValueToKotlin(jsonObject.opt(key))
-    }
-    return result
+    return JsJavaBridgeDelegates.decodePlainJsonValue(jsonObject) as? Map<String, Any?> ?: emptyMap()
 }
 
 internal fun jsonArrayToList(jsonArray: JSONArray): List<Any?> {
-    val result = mutableListOf<Any?>()
-    for (index in 0 until jsonArray.length()) {
-        result.add(jsonValueToKotlin(jsonArray.opt(index)))
-    }
-    return result
+    return JsJavaBridgeDelegates.decodePlainJsonValue(jsonArray) as? List<Any?> ?: emptyList()
 }
 
 internal fun jsonValueToKotlin(value: Any?): Any? {
-    return when (value) {
-        null,
-        JSONObject.NULL -> null
-        is JSONObject -> jsonObjectToMap(value)
-        is JSONArray -> jsonArrayToList(value)
-        else -> value
-    }
+    return JsJavaBridgeDelegates.decodePlainJsonValue(value)
 }

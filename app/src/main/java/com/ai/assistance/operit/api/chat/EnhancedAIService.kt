@@ -343,6 +343,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         var notifyReplyOverride: Boolean? = null,
         var chatModelConfigIdOverride: String? = null,
         var chatModelIndexOverride: Int? = null,
+        var preferenceProfileIdOverride: String? = null,
         var stream: Boolean = true,
         var disableWarning: Boolean = false
     )
@@ -670,6 +671,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         isSubTask: Boolean = false,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null,
+        preferenceProfileIdOverride: String? = null,
         stream: Boolean = true,
         publishEstimate: Boolean = true
     ): Int {
@@ -690,6 +692,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 functionType = functionType,
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride,
+                preferenceProfileIdOverride = preferenceProfileIdOverride,
                 dispatchHistoryHooks = PromptHookRegistry::dispatchPromptEstimateHistoryHooks,
                 dispatchSystemPromptComposeHooks = ::bypassPromptHooks,
                 dispatchToolPromptComposeHooks = ::bypassPromptHooks
@@ -800,6 +803,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         val notifyReplyOverride = options.notifyReplyOverride
         val chatModelConfigIdOverride = options.chatModelConfigIdOverride
         val chatModelIndexOverride = options.chatModelIndexOverride
+        val preferenceProfileIdOverride = options.preferenceProfileIdOverride
         val stream = options.stream
         val disableWarning = options.disableWarning
         val onNonFatalError: suspend (error: String) -> Unit = { error ->
@@ -877,7 +881,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     isSubTask,
                                     functionType,
                                     chatModelConfigIdOverride,
-                                    chatModelIndexOverride
+                                    chatModelIndexOverride,
+                                    preferenceProfileIdOverride
                             )
                     val tAfterPrepareHistory = messageTimingNow()
                     AppLogger.d(TAG, "sendMessage本地耗时: prepareConversationHistory=${tAfterPrepareHistory - startTime}ms")
@@ -1166,6 +1171,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                                 notifyReplyOverride,
                                 chatModelConfigIdOverride,
                                 chatModelIndexOverride,
+                                preferenceProfileIdOverride,
                                 stream,
                                 enableGroupOrchestrationHint,
                                 disableWarning
@@ -1586,6 +1592,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             notifyReplyOverride: Boolean? = null,
             chatModelConfigIdOverride: String? = null,
             chatModelIndexOverride: Int? = null,
+            preferenceProfileIdOverride: String? = null,
             stream: Boolean = true,
             enableGroupOrchestrationHint: Boolean = false,
             disableWarning: Boolean = false
@@ -1611,7 +1618,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                     onNonFatalError = onNonFatalError,
                     isSubTask = isSubTask,
                     chatId = chatId,
-                    notifyReplyOverride = notifyReplyOverride
+                    notifyReplyOverride = notifyReplyOverride,
+                    preferenceProfileIdOverride = preferenceProfileIdOverride
                 )
                 return
             }
@@ -1635,7 +1643,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                         chatId = chatId,
                         characterName = characterName,
                         avatarUri = avatarUri,
-                        notifyReplyOverride = notifyReplyOverride
+                        notifyReplyOverride = notifyReplyOverride,
+                        preferenceProfileIdOverride = preferenceProfileIdOverride
                     )
                     return
                 }
@@ -1676,6 +1685,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         notifyReplyOverride = notifyReplyOverride,
                         chatModelConfigIdOverride = chatModelConfigIdOverride,
                         chatModelIndexOverride = chatModelIndexOverride,
+                        preferenceProfileIdOverride = preferenceProfileIdOverride,
                         stream = stream,
                         enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                         toolResultOverrideMessage = pureThinkingWarning,
@@ -1749,7 +1759,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                         chatId = chatId,
                         characterName = characterName,
                         avatarUri = avatarUri,
-                        notifyReplyOverride = notifyReplyOverride
+                        notifyReplyOverride = notifyReplyOverride,
+                        preferenceProfileIdOverride = preferenceProfileIdOverride
                     )
                     return
                 }
@@ -1786,6 +1797,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         notifyReplyOverride = notifyReplyOverride,
                         chatModelConfigIdOverride = chatModelConfigIdOverride,
                         chatModelIndexOverride = chatModelIndexOverride,
+                        preferenceProfileIdOverride = preferenceProfileIdOverride,
                         stream = stream,
                         enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                         toolResultOverrideMessage = warningStatus,
@@ -1821,6 +1833,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         notifyReplyOverride,
                         chatModelConfigIdOverride,
                         chatModelIndexOverride,
+                        preferenceProfileIdOverride,
                         stream = stream,
                         enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                         disableWarning = disableWarning
@@ -1837,7 +1850,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                 chatId = chatId,
                 characterName = characterName,
                 avatarUri = avatarUri,
-                notifyReplyOverride = notifyReplyOverride
+                notifyReplyOverride = notifyReplyOverride,
+                preferenceProfileIdOverride = preferenceProfileIdOverride
             )
             logMessageTiming(
                 stage = "enhanced.processStreamCompletion.complete",
@@ -1862,7 +1876,8 @@ class EnhancedAIService private constructor(private val context: Context) {
         chatId: String? = null,
         characterName: String? = null,
         avatarUri: String? = null,
-        notifyReplyOverride: Boolean? = null
+        notifyReplyOverride: Boolean? = null,
+        preferenceProfileIdOverride: String? = null
     ) {
         // Mark conversation as complete
         context.isConversationActive.set(false)
@@ -1883,7 +1898,9 @@ class EnhancedAIService private constructor(private val context: Context) {
         if (enableMemoryAutoUpdate && !isSubTask && content.isNotBlank()) {
             runCatching {
                 val currentChatId = chatId?.takeIf { it.isNotBlank() }
-                val profileId = preferencesManager.activeProfileIdFlow.first()
+                val profileId =
+                    preferenceProfileIdOverride?.takeIf { it.isNotBlank() }
+                        ?: preferencesManager.activeProfileIdFlow.first()
                 if (currentChatId.isNullOrBlank()) {
                     AppLogger.w(TAG, "自动保存长期记忆入队跳过：chatId为空")
                 } else {
@@ -1931,6 +1948,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         notifyReplyOverride: Boolean? = null,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null,
+        preferenceProfileIdOverride: String? = null,
         stream: Boolean = true,
         enableGroupOrchestrationHint: Boolean = false,
         toolResultOverrideMessage: String? = null,
@@ -1967,7 +1985,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     allToolResults, context, functionType, collector, enableThinking,
                     enableMemoryAutoUpdate, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
                     characterName, avatarUri, roleCardId, chatId, onToolInvocation, notifyReplyOverride,
-                    chatModelConfigIdOverride, chatModelIndexOverride, stream, enableGroupOrchestrationHint,
+                    chatModelConfigIdOverride, chatModelIndexOverride, preferenceProfileIdOverride, stream, enableGroupOrchestrationHint,
                     disableWarning = disableWarning
                 )
             } else if (!toolResultOverrideMessage.isNullOrEmpty()) {
@@ -1992,6 +2010,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     notifyReplyOverride = notifyReplyOverride,
                     chatModelConfigIdOverride = chatModelConfigIdOverride,
                     chatModelIndexOverride = chatModelIndexOverride,
+                    preferenceProfileIdOverride = preferenceProfileIdOverride,
                     stream = stream,
                     enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                     toolResultMessageOverride = toolResultOverrideMessage,
@@ -2038,6 +2057,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             notifyReplyOverride: Boolean? = null,
             chatModelConfigIdOverride: String? = null,
             chatModelIndexOverride: Int? = null,
+            preferenceProfileIdOverride: String? = null,
             stream: Boolean = true,
             enableGroupOrchestrationHint: Boolean = false,
             toolResultMessageOverride: String? = null,
@@ -2318,6 +2338,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     notifyReplyOverride,
                     chatModelConfigIdOverride,
                     chatModelIndexOverride,
+                    preferenceProfileIdOverride,
                     stream,
                     enableGroupOrchestrationHint,
                     disableWarning
@@ -2482,6 +2503,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             functionType: FunctionType = FunctionType.CHAT,
             chatModelConfigIdOverride: String? = null,
             chatModelIndexOverride: Int? = null,
+            preferenceProfileIdOverride: String? = null,
             dispatchHistoryHooks: (PromptHookContext) -> PromptHookContext =
                 PromptHookRegistry::dispatchPromptHistoryHooks,
             dispatchSystemPromptComposeHooks: (PromptHookContext) -> PromptHookContext =
@@ -2526,6 +2548,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 chatModelHasDirectVideo,
                 useToolCallApi,
                 chatModelHasDirectImage,
+                preferenceProfileIdOverride,
                 dispatchHistoryHooks,
                 dispatchSystemPromptComposeHooks,
                 dispatchToolPromptComposeHooks
@@ -2900,6 +2923,7 @@ class EnhancedAIService private constructor(private val context: Context) {
     fun saveConversationToMemoryAsync(
         conversationHistory: List<Pair<String, String>>,
         lastContent: String,
+        preferenceProfileIdOverride: String? = null,
         onSuccess: (suspend () -> Unit)? = null,
         onError: (suspend (Exception) -> Unit)? = null
     ) {
@@ -2913,6 +2937,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                     conversationHistory = conversationHistory,
                     content = lastContent,
                     aiService = memoryService,
+                    profileIdOverride = preferenceProfileIdOverride,
                     onSuccess = {
                         AppLogger.d(TAG, "手动记忆更新成功")
                         onSuccess?.invoke()

@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.api.chat.enhance.ToolExecutionManager
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.core.tools.MemoryLinkResultData
 import com.ai.assistance.operit.core.tools.MemoryLinkQueryResultData
@@ -14,7 +15,6 @@ import com.ai.assistance.operit.data.model.ToolValidationResult
 import com.ai.assistance.operit.data.preferences.MemorySearchSettingsPreferences
 import com.ai.assistance.operit.data.repository.MemoryRepository
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.*
@@ -47,8 +47,15 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
     private val memoryRepositories = ConcurrentHashMap<String, MemoryRepository>()
     private val settingsRepositories = ConcurrentHashMap<String, MemorySearchSettingsPreferences>()
 
+    private fun resolveGlobalActiveProfileId(): String {
+        return kotlinx.coroutines.runBlocking { preferencesManager.activeProfileIdFlow.first() }
+    }
+
     private fun resolveActiveProfileId(): String {
-        return runBlocking { preferencesManager.activeProfileIdFlow.first() }
+        return ToolExecutionManager.currentToolRuntimeContext()
+            ?.memoryProfileId
+            ?.takeIf { it.isNotBlank() }
+            ?: resolveGlobalActiveProfileId()
     }
 
     private val memoryRepository: MemoryRepository
@@ -151,25 +158,27 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         return null
     }
 
-    override fun invoke(tool: AITool): ToolResult = runBlocking {
-        return@runBlocking when (tool.name) {
-            "query_memory" -> executeQueryMemory(tool)
-            "get_memory_by_title" -> executeGetMemoryByTitle(tool)
-            "create_memory" -> executeCreateMemory(tool)
-            "update_memory" -> executeUpdateMemory(tool)
-            "delete_memory" -> executeDeleteMemory(tool)
-            "move_memory" -> executeMoveMemory(tool)
-            "update_user_preferences" -> executeUpdateUserPreferences(tool)
-            "link_memories" -> executeLinkMemories(tool)
-            "query_memory_links" -> executeQueryMemoryLinks(tool)
-            "update_memory_link" -> executeUpdateMemoryLink(tool)
-            "delete_memory_link" -> executeDeleteMemoryLink(tool)
-            else -> ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = StringResultData(""),
-                error = "Unknown tool: ${tool.name}"
-            )
+    override fun invoke(tool: AITool): ToolResult {
+        return kotlinx.coroutines.runBlocking {
+            return@runBlocking when (tool.name) {
+                "query_memory" -> executeQueryMemory(tool)
+                "get_memory_by_title" -> executeGetMemoryByTitle(tool)
+                "create_memory" -> executeCreateMemory(tool)
+                "update_memory" -> executeUpdateMemory(tool)
+                "delete_memory" -> executeDeleteMemory(tool)
+                "move_memory" -> executeMoveMemory(tool)
+                "update_user_preferences" -> executeUpdateUserPreferences(tool)
+                "link_memories" -> executeLinkMemories(tool)
+                "query_memory_links" -> executeQueryMemoryLinks(tool)
+                "update_memory_link" -> executeUpdateMemoryLink(tool)
+                "delete_memory_link" -> executeDeleteMemoryLink(tool)
+                else -> ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Unknown tool: ${tool.name}"
+                )
+            }
         }
     }
 
@@ -680,6 +689,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             // 更新用户偏好
             withContext(Dispatchers.IO) {
                 preferencesManager.updateProfileCategory(
+                    profileId = resolveActiveProfileId(),
                     birthDate = birthDate,
                     gender = gender,
                     personality = personality,

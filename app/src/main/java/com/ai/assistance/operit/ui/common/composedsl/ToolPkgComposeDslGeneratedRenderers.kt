@@ -69,9 +69,9 @@ internal fun RowScope.rowComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
-    val weight = props.floatOrNull("weight")
-    if (weight != null) {
-        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    val weightSpec = props.modifierWeightSpecOrNull()
+    if (weightSpec != null) {
+        modifier = modifier.weight(weightSpec.weight, weightSpec.fill)
     }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
@@ -86,9 +86,9 @@ internal fun ColumnScope.columnComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
-    val weight = props.floatOrNull("weight")
-    if (weight != null) {
-        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    val weightSpec = props.modifierWeightSpecOrNull()
+    if (weightSpec != null) {
+        modifier = modifier.weight(weightSpec.weight, weightSpec.fill)
     }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
@@ -103,6 +103,9 @@ internal fun BoxScope.boxComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
+    if (props.hasModifierOp("matchparentsize")) {
+        modifier = modifier.matchParentSize()
+    }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
         modifier = modifier.align(boxAlignmentFromToken(alignToken))
@@ -667,6 +670,26 @@ internal fun renderButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val containerColor = props.colorOrNull("containerColor")
+    val contentColor = props.colorOrNull("contentColor")
+    val disabledContainerColor = props.colorOrNull("disabledContainerColor")
+    val disabledContentColor = props.colorOrNull("disabledContentColor")
+    val buttonColors =
+        if (
+            containerColor != null ||
+                contentColor != null ||
+                disabledContainerColor != null ||
+                disabledContentColor != null
+        ) {
+            androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = containerColor ?: Color.Unspecified,
+                contentColor = contentColor ?: Color.Unspecified,
+                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,
+                disabledContentColor = disabledContentColor ?: Color.Unspecified
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.buttonColors()
+        }
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.Button(
         onClick = {
@@ -677,6 +700,7 @@ internal fun renderButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.shape,
+        colors = buttonColors,
         contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
         content = {
             val slotNodes = node.slotChildren("content", fallbackToChildren = true)
@@ -815,8 +839,10 @@ internal fun renderSurfaceNode(
 ) {
     val props = node.props
     val onClick = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+    val contentPadding = props.commonPaddingSpecOrNull()
+    val modifierProps = if (contentPadding != null) props.withoutCommonPaddingProps() else props
     val resolvedModifier =
-        applyScopedCommonModifier(Modifier, props, modifierResolver).let { modifier ->
+        applyScopedCommonModifier(Modifier, modifierProps, modifierResolver).let { modifier ->
             if (!onClick.isNullOrBlank()) {
                 modifier.clickable { onAction(onClick, null) }
             } else {
@@ -831,14 +857,16 @@ internal fun renderSurfaceNode(
         tonalElevation = props.dp("tonalElevation"),
         shadowElevation = props.dp("shadowElevation"),
         content = {
-            renderSlotChildren(
-                node = node,
-                slotName = "content",
-                onAction = onAction,
-                nodePath = nodePath,
-                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
-                fallbackToChildren = true
-            )
+            Box(modifier = contentPadding?.applyTo(Modifier) ?: Modifier) {
+                renderSlotChildren(
+                    node = node,
+                    slotName = "content",
+                    onAction = onAction,
+                    nodePath = nodePath,
+                    modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                    fallbackToChildren = true
+                )
+            }
         }
     )
 }
@@ -1189,6 +1217,26 @@ internal fun renderElevatedButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val containerColor = props.colorOrNull("containerColor")
+    val contentColor = props.colorOrNull("contentColor")
+    val disabledContainerColor = props.colorOrNull("disabledContainerColor")
+    val disabledContentColor = props.colorOrNull("disabledContentColor")
+    val buttonColors =
+        if (
+            containerColor != null ||
+                contentColor != null ||
+                disabledContainerColor != null ||
+                disabledContentColor != null
+        ) {
+            androidx.compose.material3.ButtonDefaults.elevatedButtonColors(
+                containerColor = containerColor ?: Color.Unspecified,
+                contentColor = contentColor ?: Color.Unspecified,
+                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,
+                disabledContentColor = disabledContentColor ?: Color.Unspecified
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.elevatedButtonColors()
+        }
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.ElevatedButton(
         onClick = {
@@ -1199,6 +1247,7 @@ internal fun renderElevatedButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.elevatedShape,
+        colors = buttonColors,
         contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
         content = {
             val slotNodes = node.slotChildren("content", fallbackToChildren = true)
@@ -1443,6 +1492,26 @@ internal fun renderFilledTonalButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val containerColor = props.colorOrNull("containerColor")
+    val contentColor = props.colorOrNull("contentColor")
+    val disabledContainerColor = props.colorOrNull("disabledContainerColor")
+    val disabledContentColor = props.colorOrNull("disabledContentColor")
+    val buttonColors =
+        if (
+            containerColor != null ||
+                contentColor != null ||
+                disabledContainerColor != null ||
+                disabledContentColor != null
+        ) {
+            androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                containerColor = containerColor ?: Color.Unspecified,
+                contentColor = contentColor ?: Color.Unspecified,
+                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,
+                disabledContentColor = disabledContentColor ?: Color.Unspecified
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.filledTonalButtonColors()
+        }
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.FilledTonalButton(
         onClick = {
@@ -1453,6 +1522,7 @@ internal fun renderFilledTonalButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.filledTonalShape,
+        colors = buttonColors,
         contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
         content = {
             val slotNodes = node.slotChildren("content", fallbackToChildren = true)
@@ -2139,6 +2209,26 @@ internal fun renderOutlinedButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val containerColor = props.colorOrNull("containerColor")
+    val contentColor = props.colorOrNull("contentColor")
+    val disabledContainerColor = props.colorOrNull("disabledContainerColor")
+    val disabledContentColor = props.colorOrNull("disabledContentColor")
+    val buttonColors =
+        if (
+            containerColor != null ||
+                contentColor != null ||
+                disabledContainerColor != null ||
+                disabledContentColor != null
+        ) {
+            androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                containerColor = containerColor ?: Color.Unspecified,
+                contentColor = contentColor ?: Color.Unspecified,
+                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,
+                disabledContentColor = disabledContentColor ?: Color.Unspecified
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.outlinedButtonColors()
+        }
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.OutlinedButton(
         onClick = {
@@ -2149,6 +2239,7 @@ internal fun renderOutlinedButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.outlinedShape,
+        colors = buttonColors,
         contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
         content = {
             val slotNodes = node.slotChildren("content", fallbackToChildren = true)
@@ -2889,6 +2980,26 @@ internal fun renderTextButtonNode(
     modifierResolver: ComposeDslModifierResolver
 ) {
     val props = node.props
+    val containerColor = props.colorOrNull("containerColor")
+    val contentColor = props.colorOrNull("contentColor")
+    val disabledContainerColor = props.colorOrNull("disabledContainerColor")
+    val disabledContentColor = props.colorOrNull("disabledContentColor")
+    val buttonColors =
+        if (
+            containerColor != null ||
+                contentColor != null ||
+                disabledContainerColor != null ||
+                disabledContentColor != null
+        ) {
+            androidx.compose.material3.ButtonDefaults.textButtonColors(
+                containerColor = containerColor ?: Color.Unspecified,
+                contentColor = contentColor ?: Color.Unspecified,
+                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,
+                disabledContentColor = disabledContentColor ?: Color.Unspecified
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.textButtonColors()
+        }
     val onClickActionId = ToolPkgComposeDslParser.extractActionId(props["onClick"])
     androidx.compose.material3.TextButton(
         onClick = {
@@ -2899,6 +3010,7 @@ internal fun renderTextButtonNode(
         modifier = applyScopedCommonModifier(Modifier, props, modifierResolver),
         enabled = props.bool("enabled", true),
         shape = props.shapeOrNull() ?: androidx.compose.material3.ButtonDefaults.textShape,
+        colors = buttonColors,
         contentPadding = props.paddingValuesOrNull("contentPadding") ?: androidx.compose.material3.ButtonDefaults.ContentPadding,
         content = {
             val slotNodes = node.slotChildren("content", fallbackToChildren = true)

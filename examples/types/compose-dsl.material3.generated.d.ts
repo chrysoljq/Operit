@@ -118,8 +118,12 @@ export interface ComposeGeneratedCheckboxProps extends ComposeCommonProps {
 }
 
 export interface ComposeGeneratedButtonProps extends ComposeCommonProps {
+  containerColor?: ComposeColor;
   content?: ComposeChildren;
+  contentColor?: ComposeColor;
   contentPadding?: ComposePadding;
+  disabledContainerColor?: ComposeColor;
+  disabledContentColor?: ComposeColor;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -247,7 +251,12 @@ export interface ComposeGeneratedElevatedAssistChipProps extends ComposeCommonPr
 }
 
 export interface ComposeGeneratedElevatedButtonProps extends ComposeCommonProps {
+  containerColor?: ComposeColor;
   content?: ComposeChildren;
+  contentColor?: ComposeColor;
+  contentPadding?: ComposePadding;
+  disabledContainerColor?: ComposeColor;
+  disabledContentColor?: ComposeColor;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -309,8 +318,12 @@ export interface ComposeGeneratedFilledIconToggleButtonProps extends ComposeComm
 }
 
 export interface ComposeGeneratedFilledTonalButtonProps extends ComposeCommonProps {
+  containerColor?: ComposeColor;
   content?: ComposeChildren;
+  contentColor?: ComposeColor;
   contentPadding?: ComposePadding;
+  disabledContainerColor?: ComposeColor;
+  disabledContentColor?: ComposeColor;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -464,8 +477,12 @@ export interface ComposeGeneratedNavigationRailItemProps extends ComposeCommonPr
 }
 
 export interface ComposeGeneratedOutlinedButtonProps extends ComposeCommonProps {
+  containerColor?: ComposeColor;
   content?: ComposeChildren;
+  contentColor?: ComposeColor;
   contentPadding?: ComposePadding;
+  disabledContainerColor?: ComposeColor;
+  disabledContentColor?: ComposeColor;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;
@@ -633,7 +650,12 @@ export interface ComposeGeneratedTabProps extends ComposeCommonProps {
 }
 
 export interface ComposeGeneratedTextButtonProps extends ComposeCommonProps {
+  containerColor?: ComposeColor;
   content?: ComposeChildren;
+  contentColor?: ComposeColor;
+  contentPadding?: ComposePadding;
+  disabledContainerColor?: ComposeColor;
+  disabledContentColor?: ComposeColor;
   enabled?: boolean;
   onClick: () => void | Promise<void>;
   shape?: ComposeShape;

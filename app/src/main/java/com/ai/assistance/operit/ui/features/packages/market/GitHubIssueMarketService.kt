@@ -20,14 +20,20 @@ class GitHubIssueMarketService(
     private val githubApiService: GitHubApiService,
     private val definition: GitHubIssueMarketDefinition
 ) {
-    fun buildQualifiedSearchQuery(rawQuery: String): String {
+    fun buildQualifiedSearchQuery(
+        rawQuery: String,
+        openOnly: Boolean = true
+    ): String {
         return buildString {
             append(rawQuery)
             append(" repo:")
             append(definition.owner)
             append("/")
             append(definition.repo)
-            append(" is:issue is:open")
+            append(" is:issue")
+            if (openOnly) {
+                append(" is:open")
+            }
             if (definition.label.isNotBlank()) {
                 append(" label:")
                 append(definition.label)
@@ -46,8 +52,20 @@ class GitHubIssueMarketService(
         rawQuery: String,
         page: Int = 1
     ): Result<List<GitHubIssue>> {
+        return searchIssues(
+            rawQuery = rawQuery,
+            page = page,
+            openOnly = true
+        )
+    }
+
+    suspend fun searchIssues(
+        rawQuery: String,
+        page: Int = 1,
+        openOnly: Boolean = true
+    ): Result<List<GitHubIssue>> {
         return githubApiService.searchIssues(
-            query = buildQualifiedSearchQuery(rawQuery),
+            query = buildQualifiedSearchQuery(rawQuery, openOnly = openOnly),
             sort = "updated",
             order = "desc",
             page = page,
@@ -59,15 +77,28 @@ class GitHubIssueMarketService(
         title: String,
         page: Int = 1
     ): Result<List<GitHubIssue>> {
+        return searchIssuesByExactTitle(
+            title = title,
+            page = page,
+            openOnly = true
+        )
+    }
+
+    suspend fun searchIssuesByExactTitle(
+        title: String,
+        page: Int = 1,
+        openOnly: Boolean = true
+    ): Result<List<GitHubIssue>> {
         val trimmedTitle = title.trim()
         if (trimmedTitle.isBlank()) {
             return Result.success(emptyList())
         }
 
         val escapedTitle = trimmedTitle.replace("\"", "\\\"")
-        return searchOpenIssues(
+        return searchIssues(
             rawQuery = "\"$escapedTitle\" in:title",
-            page = page
+            page = page,
+            openOnly = openOnly
         ).map { issues ->
             val normalizedTitle = normalizeIssueTitle(trimmedTitle)
             issues.filter { normalizeIssueTitle(it.title) == normalizedTitle }

@@ -69,9 +69,9 @@ internal fun RowScope.rowComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
-    val weight = props.floatOrNull("weight")
-    if (weight != null) {
-        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    val weightSpec = props.modifierWeightSpecOrNull()
+    if (weightSpec != null) {
+        modifier = modifier.weight(weightSpec.weight, weightSpec.fill)
     }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
@@ -86,9 +86,9 @@ internal fun ColumnScope.columnComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
-    val weight = props.floatOrNull("weight")
-    if (weight != null) {
-        modifier = modifier.weight(weight, props.bool("weightFill", true))
+    val weightSpec = props.modifierWeightSpecOrNull()
+    if (weightSpec != null) {
+        modifier = modifier.weight(weightSpec.weight, weightSpec.fill)
     }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
@@ -103,6 +103,9 @@ internal fun BoxScope.boxComposeDslModifierResolver(
     props: Map<String, Any?>
 ): Modifier {
     var modifier = applyCommonModifier(base, props)
+    if (props.hasModifierOp("matchparentsize")) {
+        modifier = modifier.matchParentSize()
+    }
     val alignToken = props.scopeAlignToken()
     if (alignToken != null) {
         modifier = modifier.align(boxAlignmentFromToken(alignToken))

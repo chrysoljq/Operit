@@ -94,6 +94,122 @@ internal object JsJavaBridgeDelegates {
         IdentityHashMap<JsInterfaceCallbackInvoker, MutableMap<String, Int>>()
     private val jsInterfaceLifecycleWorkerStarted = AtomicBoolean(false)
 
+    internal fun parseJsonObject(raw: Any?): JSONObject? {
+        return when (raw) {
+            is JSONObject -> raw
+            is Map<*, *> -> toPlainJsonValue(raw) as? JSONObject
+            is String -> {
+                val trimmed = raw.trim()
+                if (trimmed.isBlank() || trimmed.equals("null", ignoreCase = true)) {
+                    null
+                } else {
+                    runCatching {
+                        when (val token = JSONTokener(trimmed).nextValue()) {
+                            is JSONObject -> token
+                            is String -> JSONObject(token)
+                            else -> null
+                        }
+                    }.getOrNull()
+                }
+            }
+
+            else -> raw?.toString()?.let(::parseJsonObject)
+        }
+    }
+
+    internal fun parsePlainJsonObjectToMap(raw: String): Map<String, Any?> {
+        val parsed = parseJsonObject(raw) ?: return emptyMap()
+        return decodePlainJsonValue(parsed) as? Map<String, Any?> ?: emptyMap()
+    }
+
+    internal fun parsePlainJsonValueOrRawString(raw: String?): Any? {
+        val trimmed = raw?.trim().orEmpty()
+        if (trimmed.isBlank() || trimmed.equals("null", ignoreCase = true)) {
+            return null
+        }
+        return runCatching {
+            decodePlainJsonValue(JSONTokener(trimmed).nextValue())
+        }.getOrElse {
+            raw
+        }
+    }
+
+    internal fun parsePlainJsonArray(raw: String): List<Any?>? {
+        val normalized = raw.trim().ifBlank { "[]" }
+        val token = runCatching { JSONTokener(normalized).nextValue() }.getOrNull() ?: return null
+        return when (token) {
+            is JSONArray -> decodePlainJsonValue(token) as? List<Any?>
+            is List<*> -> token.map { item -> decodePlainJsonValue(item) }
+            else -> null
+        }
+    }
+
+    internal fun decodePlainJsonValue(raw: Any?): Any? {
+        return decodeJsonValue(
+            raw = raw,
+            objectRegistry = ConcurrentHashMap(),
+            interpretBridgeMarkers = false
+        )
+    }
+
+    internal fun toPlainJsonValue(value: Any?): Any {
+        return toJsonCompatibleValue(
+            value = value,
+            objectRegistry = ConcurrentHashMap(),
+            bridgeAware = false
+        )
+    }
+
+    internal fun toPlainJsonText(value: Any?): String {
+        return when (val jsonValue = toPlainJsonValue(value)) {
+            JSONObject.NULL -> "null"
+            is JSONObject -> jsonValue.toString()
+            is JSONArray -> jsonValue.toString()
+            is String -> JSONObject.quote(jsonValue)
+            is Number, is Boolean -> jsonValue.toString()
+            else -> throw IllegalArgumentException(
+                "value is not JSON-serializable: ${jsonValue.javaClass.name}"
+            )
+        }
+    }
+
+    internal fun containsBridgeMarkers(raw: Any?): Boolean {
+        return when (raw) {
+            null, JSONObject.NULL -> false
+            is JSONObject -> {
+                if (
+                    (raw.has(HANDLE_KEY) && raw.has(CLASS_KEY)) ||
+                        (
+                            (raw.optBoolean(JS_INTERFACE_KEY, false) || raw.has(JS_OBJECT_ID_KEY)) &&
+                                raw.optString(JS_OBJECT_ID_KEY).trim().isNotEmpty()
+                            )
+                ) {
+                    true
+                } else {
+                    raw.keys().asSequence().any { key ->
+                        containsBridgeMarkers(raw.opt(key))
+                    }
+                }
+            }
+
+            is JSONArray -> {
+                (0 until raw.length()).any { index ->
+                    containsBridgeMarkers(raw.opt(index))
+                }
+            }
+
+            is Map<*, *> -> {
+                raw.values.any(::containsBridgeMarkers)
+            }
+
+            is Iterable<*> -> {
+                raw.any(::containsBridgeMarkers)
+            }
+
+            else -> false
+        }
+    }
+
     fun registerJsInterfaceReleaseInvoker(
         callbackInvoker: JsInterfaceCallbackInvoker,
         releaseInvoker: JsInterfaceReleaseInvoker
@@ -818,7 +934,13 @@ internal object JsJavaBridgeDelegates {
 
         val args = ArrayList<Any?>(raw.length())
         for (index in 0 until raw.length()) {
-            args.add(decodeJsonValue(raw.get(index), objectRegistry))
+            args.add(
+                decodeJsonValue(
+                    raw = raw.get(index),
+                    objectRegistry = objectRegistry,
+                    interpretBridgeMarkers = true
+                )
+            )
         }
         return args
     }
@@ -832,15 +954,23 @@ internal object JsJavaBridgeDelegates {
             return null
         }
         val raw = JSONTokener(normalized).nextValue()
-        return decodeJsonValue(raw, objectRegistry)
+        return decodeJsonValue(
+            raw = raw,
+            objectRegistry = objectRegistry,
+            interpretBridgeMarkers = true
+        )
     }
 
-    private fun decodeJsonValue(raw: Any?, objectRegistry: ConcurrentHashMap<String, Any>): Any? {
+    private fun decodeJsonValue(
+        raw: Any?,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        interpretBridgeMarkers: Boolean
+    ): Any? {
         return when (raw) {
             null,
             JSONObject.NULL -> null
             is JSONObject -> {
-                if (raw.has(HANDLE_KEY) && raw.has(CLASS_KEY)) {
+                if (interpretBridgeMarkers && raw.has(HANDLE_KEY) && raw.has(CLASS_KEY)) {
                     val handle = raw.optString(HANDLE_KEY).trim()
                     if (handle.isEmpty()) {
                         null
@@ -849,7 +979,8 @@ internal object JsJavaBridgeDelegates {
                             ?: throw IllegalArgumentException("instance handle not found or expired: $handle")
                     }
                 } else if (
-                    (raw.optBoolean(JS_INTERFACE_KEY, false) || raw.has(JS_OBJECT_ID_KEY)) &&
+                    interpretBridgeMarkers &&
+                        (raw.optBoolean(JS_INTERFACE_KEY, false) || raw.has(JS_OBJECT_ID_KEY)) &&
                         raw.optString(JS_OBJECT_ID_KEY).trim().isNotEmpty()
                 ) {
                     val interfaceNames = mutableListOf<String>()
@@ -877,7 +1008,12 @@ internal object JsJavaBridgeDelegates {
                 } else {
                     val map = LinkedHashMap<String, Any?>()
                     raw.keys().forEach { key ->
-                        map[key] = decodeJsonValue(raw.opt(key), objectRegistry)
+                        map[key] =
+                            decodeJsonValue(
+                                raw = raw.opt(key),
+                                objectRegistry = objectRegistry,
+                                interpretBridgeMarkers = interpretBridgeMarkers
+                            )
                     }
                     map
                 }
@@ -885,7 +1021,13 @@ internal object JsJavaBridgeDelegates {
             is JSONArray -> {
                 val list = ArrayList<Any?>(raw.length())
                 for (index in 0 until raw.length()) {
-                    list.add(decodeJsonValue(raw.get(index), objectRegistry))
+                    list.add(
+                        decodeJsonValue(
+                            raw = raw.get(index),
+                            objectRegistry = objectRegistry,
+                            interpretBridgeMarkers = interpretBridgeMarkers
+                        )
+                    )
                 }
                 list
             }
@@ -895,7 +1037,8 @@ internal object JsJavaBridgeDelegates {
 
     private fun toJsonCompatibleValue(
         value: Any?,
-        objectRegistry: ConcurrentHashMap<String, Any>
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        bridgeAware: Boolean = true
     ): Any {
         if (value == null) {
             return JSONObject.NULL
@@ -919,14 +1062,27 @@ internal object JsJavaBridgeDelegates {
                 val obj = JSONObject()
                 value.entries.forEach { entry ->
                     val key = entry.key?.toString() ?: return@forEach
-                    obj.put(key, toJsonCompatibleValue(entry.value, objectRegistry))
+                    obj.put(
+                        key,
+                        toJsonCompatibleValue(
+                            value = entry.value,
+                            objectRegistry = objectRegistry,
+                            bridgeAware = bridgeAware
+                        )
+                    )
                 }
                 obj
             }
             is Iterable<*> -> {
                 val arr = JSONArray()
                 value.forEach { item ->
-                    arr.put(toJsonCompatibleValue(item, objectRegistry))
+                    arr.put(
+                        toJsonCompatibleValue(
+                            value = item,
+                            objectRegistry = objectRegistry,
+                            bridgeAware = bridgeAware
+                        )
+                    )
                 }
                 arr
             }
@@ -935,12 +1091,23 @@ internal object JsJavaBridgeDelegates {
                     val arr = JSONArray()
                     val len = ReflectArray.getLength(value)
                     for (index in 0 until len) {
-                        arr.put(toJsonCompatibleValue(ReflectArray.get(value, index), objectRegistry))
+                        arr.put(
+                            toJsonCompatibleValue(
+                                value = ReflectArray.get(value, index),
+                                objectRegistry = objectRegistry,
+                                bridgeAware = bridgeAware
+                            )
+                        )
                     }
                     arr
                 } else if (value === Unit) {
                     JSONObject.NULL
                 } else {
+                    if (!bridgeAware) {
+                        throw IllegalArgumentException(
+                            "value is not JSON-serializable: ${value.javaClass.name}"
+                        )
+                    }
                     val handle = UUID.randomUUID().toString()
                     objectRegistry[handle] = value
                     JSONObject()
@@ -1653,7 +1820,11 @@ internal object JsJavaBridgeDelegates {
             return null
         }
 
-        val decoded = decodeJsonValue(response.dataRaw, objectRegistry)
+        val decoded = decodeJsonValue(
+            raw = response.dataRaw,
+            objectRegistry = objectRegistry,
+            interpretBridgeMarkers = true
+        )
         return adaptReturnValue(
             value = decoded,
             targetType = method.returnType,

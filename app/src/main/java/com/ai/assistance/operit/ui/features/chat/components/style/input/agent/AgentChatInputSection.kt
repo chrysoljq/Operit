@@ -113,6 +113,7 @@ import com.ai.assistance.operit.core.tools.ToolProgressBus
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.CharacterCardMemoryProfileBindingMode
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ModelConfigSummary
@@ -134,6 +135,7 @@ import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
 import com.ai.assistance.operit.ui.features.chat.components.FullscreenInputDialog
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardMemoryBindingSwitchConfirmDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardModelBindingSwitchConfirmDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleDefinition
@@ -215,6 +217,7 @@ fun AgentChatInputSection(
     onNavigateToModelConfig: () -> Unit = {},
     characterCardBoundChatModelConfigId: String? = null,
     characterCardBoundChatModelIndex: Int = 0,
+    characterCardBoundMemoryProfileId: String? = null,
     pendingQueueMessages: List<PendingQueueMessageItem> = emptyList(),
     isPendingQueueExpanded: Boolean = true,
     onPendingQueueExpandedChange: (Boolean) -> Unit = {},
@@ -228,6 +231,8 @@ fun AgentChatInputSection(
     val showExtraSettingsPopup = remember { mutableStateOf(false) }
     var showCharacterCardBindingSwitchConfirm by remember { mutableStateOf(false) }
     var pendingCharacterCardModelSelection by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var showCharacterCardMemoryBindingSwitchConfirm by remember { mutableStateOf(false) }
+    var pendingCharacterCardMemorySelection by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val characterCardManager = remember(context) { CharacterCardManager.getInstance(context) }
@@ -305,6 +310,39 @@ fun AgentChatInputSection(
         },
     )
 
+    CharacterCardMemoryBindingSwitchConfirmDialog(
+        visible = showCharacterCardMemoryBindingSwitchConfirm,
+        onConfirm = {
+            val profileId = pendingCharacterCardMemorySelection
+            if (profileId.isNullOrBlank()) {
+                showCharacterCardMemoryBindingSwitchConfirm = false
+                return@CharacterCardMemoryBindingSwitchConfirmDialog
+            }
+            scope.launch {
+                val activePrompt = activePromptManager.getActivePrompt()
+                val activeCard = when (activePrompt) {
+                    is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCard(activePrompt.id)
+                    is ActivePrompt.CharacterGroup -> null
+                }
+                if (activeCard != null) {
+                    characterCardManager.updateCharacterCard(
+                        activeCard.copy(
+                            memoryProfileBindingMode = CharacterCardMemoryProfileBindingMode.FIXED_PROFILE,
+                            memoryProfileId = profileId,
+                        ),
+                    )
+                    EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+                }
+                showCharacterCardMemoryBindingSwitchConfirm = false
+                pendingCharacterCardMemorySelection = null
+            }
+        },
+        onDismiss = {
+            showCharacterCardMemoryBindingSwitchConfirm = false
+            pendingCharacterCardMemorySelection = null
+        },
+    )
+
     val inputTextStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
     val colorScheme = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
@@ -320,6 +358,7 @@ fun AgentChatInputSection(
         configMappingWithIndex[FunctionType.CHAT]
             ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
     val isModelSelectionLockedByCharacterCard = !characterCardBoundChatModelConfigId.isNullOrBlank()
+    val isMemorySelectionLockedByCharacterCard = !characterCardBoundMemoryProfileId.isNullOrBlank()
     val effectiveConfigMapping =
         if (isModelSelectionLockedByCharacterCard) {
             FunctionConfigMapping(
@@ -328,6 +367,12 @@ fun AgentChatInputSection(
             )
         } else {
             currentConfigMapping
+        }
+    val effectiveProfileId =
+        if (isMemorySelectionLockedByCharacterCard) {
+            characterCardBoundMemoryProfileId ?: activeProfileId
+        } else {
+            activeProfileId
         }
 
     LaunchedEffect(Unit) {
@@ -522,10 +567,18 @@ fun AgentChatInputSection(
     }
 
     val onSelectMemory: (String) -> Unit = { selectedId ->
-        scope.launch {
-            userPreferencesManager.setActiveProfile(selectedId)
-            EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
-            showExtraSettingsPopup.value = false
+        if (isMemorySelectionLockedByCharacterCard) {
+            val isSameSelection = selectedId == effectiveProfileId
+            if (!isSameSelection) {
+                pendingCharacterCardMemorySelection = selectedId
+                showCharacterCardMemoryBindingSwitchConfirm = true
+            }
+        } else {
+            scope.launch {
+                userPreferencesManager.setActiveProfile(selectedId)
+                EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+                showExtraSettingsPopup.value = false
+            }
         }
     }
 
@@ -1354,7 +1407,7 @@ fun AgentChatInputSection(
                 visible = showExtraSettingsPopup.value,
                 popupContainerColor = popupContainerColor,
                 preferenceProfiles = preferenceProfiles,
-                currentProfileId = activeProfileId,
+                currentProfileId = effectiveProfileId,
                 onSelectMemory = onSelectMemory,
                 onManageMemory = {
                     showExtraSettingsPopup.value = false

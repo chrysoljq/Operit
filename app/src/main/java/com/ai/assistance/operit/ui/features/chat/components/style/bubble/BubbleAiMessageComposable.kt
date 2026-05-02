@@ -84,6 +84,7 @@ fun BubbleAiMessageComposable(
     bubbleContentPaddingLeft: Float = 12f,
     bubbleContentPaddingRight: Float = 12f,
     initialThinkingExpanded: Boolean = false,
+    allowExpandedThinkingFullHeight: Boolean = false,
     expandThinkToolsGroups: Boolean = false,
     forceShowThinkingProcess: Boolean = false,
     onLinkClick: ((String) -> Unit)? = null,
@@ -172,11 +173,18 @@ fun BubbleAiMessageComposable(
     // 创建并保存StreamMarkdownRenderer的状态，使用message.timestamp作为key确保同一条消息共享状态
     val rendererState = remember(message.timestamp) { StreamMarkdownRendererState() }
 
-    val xmlRenderer = remember(effectiveShowThinkingProcess, showStatusTags, initialThinkingExpanded, enableDialogs) {
+    val xmlRenderer = remember(
+        effectiveShowThinkingProcess,
+        showStatusTags,
+        initialThinkingExpanded,
+        allowExpandedThinkingFullHeight,
+        enableDialogs
+    ) {
         CustomXmlRenderer(
             showThinkingProcess = effectiveShowThinkingProcess,
             showStatusTags = showStatusTags,
             initialThinkingExpanded = initialThinkingExpanded,
+            allowExpandedThinkingFullHeight = allowExpandedThinkingFullHeight,
             enableDialogs = enableDialogs
         )
     }

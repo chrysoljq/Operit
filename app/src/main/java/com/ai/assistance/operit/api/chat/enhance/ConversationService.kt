@@ -277,6 +277,7 @@ class ConversationService(
             chatModelHasDirectVideo: Boolean = false,
             useToolCallApi: Boolean = false,
             chatModelHasDirectImage: Boolean = false,
+            preferenceProfileIdOverride: String? = null,
             dispatchHistoryHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchPromptHistoryHooks,
             dispatchSystemPromptComposeHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchSystemPromptComposeHooks,
             dispatchToolPromptComposeHooks: (PromptHookContext) -> PromptHookContext = PromptHookRegistry::dispatchToolPromptComposeHooks
@@ -317,8 +318,11 @@ class ConversationService(
                 val safeProxySenderName = proxySenderName?.takeIf { it.isNotBlank() }
 
                 val preferencesText = if (safeProxySenderName == null) {
-                    val activeProfile = preferencesManager.getUserPreferencesFlow().first()
-                    buildPreferencesText(activeProfile)
+                    val preferenceProfile =
+                        userPreferencesManager.getUserPreferencesFlow(
+                            preferenceProfileIdOverride?.takeIf { it.isNotBlank() }.orEmpty()
+                        ).first()
+                    buildPreferencesText(preferenceProfile)
                 } else {
                     val proxyCard = characterCardManager.findCharacterCardByName(safeProxySenderName)
                     if (proxyCard == null) {

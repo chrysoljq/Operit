@@ -3070,6 +3070,9 @@
     <string name="character_card_model_switch_confirm_title">Change Character Card Bound Model</string>
     <string name="character_card_model_switch_confirm_message">This character card currently has a bound chat model. Continuing will update the model binding of this character card and will not modify the global chat model configuration.</string>
     <string name="character_card_model_switch_confirm_action">Confirm Change</string>
+    <string name="character_card_memory_switch_confirm_title">Change Character Card Bound Memory Config</string>
+    <string name="character_card_memory_switch_confirm_message">This character card currently has a bound memory config. Continuing will update the memory binding of this character card and will not modify the global memory configuration.</string>
+    <string name="character_card_memory_switch_confirm_action">Confirm Change</string>
     <string name="import_key_suffix">Import key %1$s</string>
     <string name="custom_parameters">Custom Parameters</string>
     <string name="filediff_tool_result">Tool execution result</string>
@@ -4110,6 +4113,11 @@
     <string name="character_card_chat_model_follow_global">Follow Global</string>
     <string name="character_card_chat_model_fixed_config">Fixed Config</string>
     <string name="character_card_chat_model_specify_fixed_config">Specify Fixed Config</string>
+    <string name="character_card_memory_profile_binding">Memory Profile Binding</string>
+    <string name="character_card_memory_profile_follow_global">Follow Global</string>
+    <string name="character_card_memory_profile_fixed_profile">Fixed Config</string>
+    <string name="character_card_memory_profile_specify_fixed_profile">Specify Fixed Memory Config</string>
+    <string name="character_card_memory_profile_select">Select Memory Config</string>
     <string name="character_card_tool_access_title">Custom Allowed Tools</string>
     <string name="character_card_tool_access_enable">Enable role-card tool whitelist</string>
     <string name="character_card_tool_access_follow_global">Currently following global settings</string>

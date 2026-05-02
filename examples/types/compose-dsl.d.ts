@@ -26,8 +26,24 @@ export type ComposeArrangement =
 
 export type ComposeAlignment = "start" | "center" | "end";
 
+export type ComposeShapeType =
+  | "rounded"
+  | "cut"
+  | "circle"
+  | "pill";
+
 export interface ComposeShape {
+  type?: ComposeShapeType;
   cornerRadius?: number;
+  radius?: number;
+  topStart?: number;
+  topEnd?: number;
+  bottomStart?: number;
+  bottomEnd?: number;
+  topLeft?: number;
+  topRight?: number;
+  bottomLeft?: number;
+  bottomRight?: number;
 }
 
 export interface ComposeBorder {
@@ -98,6 +114,161 @@ export interface ComposeCanvasBrush {
   colors: ComposeColor[];
 }
 
+export type ComposeHorizontalAlignment =
+  | "start"
+  | "center"
+  | "end"
+  | "left"
+  | "right"
+  | "centerHorizontally";
+
+export type ComposeVerticalAlignment =
+  | "top"
+  | "center"
+  | "bottom"
+  | "start"
+  | "end"
+  | "centerVertically";
+
+export type ComposeBoxAlignment =
+  | "center"
+  | "topStart"
+  | "startTop"
+  | "topCenter"
+  | "centerTop"
+  | "topEnd"
+  | "endTop"
+  | "centerStart"
+  | "startCenter"
+  | "centerEnd"
+  | "endCenter"
+  | "bottomStart"
+  | "startBottom"
+  | "bottomCenter"
+  | "centerBottom"
+  | "bottomEnd"
+  | "endBottom";
+
+export type ComposeModifierAlign =
+  | ComposeHorizontalAlignment
+  | ComposeVerticalAlignment
+  | ComposeBoxAlignment;
+
+export interface ComposeModifierPadding {
+  all?: number;
+  horizontal?: number;
+  vertical?: number;
+  start?: number;
+  top?: number;
+  end?: number;
+  bottom?: number;
+}
+
+export interface ComposeModifierOffset {
+  x?: number;
+  y?: number;
+}
+
+export interface ComposeModifierAxisBounds {
+  min?: number;
+  max?: number;
+}
+
+export interface ComposeModifierWidthBounds extends ComposeModifierAxisBounds {
+  minWidth?: number;
+  maxWidth?: number;
+}
+
+export interface ComposeModifierHeightBounds extends ComposeModifierAxisBounds {
+  minHeight?: number;
+  maxHeight?: number;
+}
+
+export interface ComposeModifierSizeBounds {
+  min?: number;
+  max?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
+export interface ComposeModifierDefaultMinSize {
+  all?: number;
+  minWidth?: number;
+  minHeight?: number;
+}
+
+export interface ComposeModifierWrapContentWidthOptions {
+  align?: ComposeHorizontalAlignment;
+  unbounded?: boolean;
+}
+
+export interface ComposeModifierWrapContentHeightOptions {
+  align?: ComposeVerticalAlignment;
+  unbounded?: boolean;
+}
+
+export interface ComposeModifierWrapContentSizeOptions {
+  align?: ComposeBoxAlignment;
+  unbounded?: boolean;
+}
+
+export interface ComposeModifierShadowOptions {
+  elevation: number;
+  shape?: ComposeShape;
+  clip?: boolean;
+}
+
+export interface ComposeModifierCombinedClickableOptions {
+  onClick: () => void | Promise<void>;
+  onLongClick?: () => void | Promise<void>;
+  onDoubleClick?: () => void | Promise<void>;
+}
+
+export interface ComposePointerOffsetEvent {
+  x: number;
+  y: number;
+}
+
+export interface ComposeDragGestureEvent extends ComposePointerOffsetEvent {
+  deltaX: number;
+  deltaY: number;
+}
+
+export interface ComposeSizeChangedEvent {
+  width: number;
+  height: number;
+}
+
+export interface ComposeGloballyPositionedEvent {
+  rootX: number;
+  rootY: number;
+  width: number;
+  height: number;
+  windowX: number;
+  windowY: number;
+}
+
+export interface ComposeModifierTapGesturesOptions {
+  onPress?: (event: ComposePointerOffsetEvent) => void | Promise<void>;
+  onTap?: (event: ComposePointerOffsetEvent) => void | Promise<void>;
+  onDoubleTap?: (event: ComposePointerOffsetEvent) => void | Promise<void>;
+  onLongPress?: (event: ComposePointerOffsetEvent) => void | Promise<void>;
+}
+
+export interface ComposeModifierDragGesturesOptions {
+  onDragStart?: (event: ComposePointerOffsetEvent) => void | Promise<void>;
+  onDrag?: (event: ComposeDragGestureEvent) => void | Promise<void>;
+  onDragEnd?: () => void | Promise<void>;
+  onDragCancel?: () => void | Promise<void>;
+}
+
+export interface ComposeModifierTransformGesturesOptions {
+  panZoomLock?: boolean;
+  onGesture: (event: ComposeCanvasTransformEvent) => void | Promise<void>;
+}
+
 export interface ComposeCanvasTransform {
   scale?: number;
   offsetX?: number;
@@ -115,10 +286,7 @@ export interface ComposeCanvasTransformEvent {
   rotation: number;
 }
 
-export interface ComposeCanvasSizeEvent {
-  width: number;
-  height: number;
-}
+export interface ComposeCanvasSizeEvent extends ComposeSizeChangedEvent {}
 
 export interface ComposeWebViewPageEvent {
   url?: string | null;
@@ -171,6 +339,138 @@ export interface ComposeWebViewConsoleEvent {
   sourceId?: string | null;
   lineNumber?: number | null;
   level?: string | null;
+}
+
+export interface ComposeWebViewState {
+  url?: string | null;
+  title?: string | null;
+  loading: boolean;
+  progress: number;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+
+export interface ComposeWebViewLifecycleEvent {
+  type: "created" | "disposed" | "pageCommitVisible" | "renderProcessGone";
+  url?: string | null;
+  title?: string | null;
+  loading?: boolean;
+  progress?: number;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  didCrash?: boolean;
+  rendererPriorityAtExit?: number | null;
+}
+
+export interface ComposeWebViewNavigationRequest {
+  url: string;
+  method?: string | null;
+  headers?: Record<string, string>;
+  isMainFrame?: boolean;
+  hasGesture?: boolean;
+  isRedirect?: boolean;
+  scheme?: string | null;
+}
+
+export type ComposeWebViewNavigationDecision =
+  | { action: "allow" }
+  | { action: "cancel" }
+  | {
+      action: "rewrite";
+      url: string;
+      headers?: Record<string, string>;
+    }
+  | {
+      action: "external";
+      url?: string;
+    };
+
+export interface ComposeWebViewResourceRequest {
+  url: string;
+  method?: string | null;
+  headers?: Record<string, string>;
+  isMainFrame?: boolean;
+  hasGesture?: boolean;
+  isRedirect?: boolean;
+  scheme?: string | null;
+}
+
+export type ComposeWebViewResourceResponse =
+  | {
+      mimeType?: string;
+      encoding?: string;
+      statusCode?: number;
+      reasonPhrase?: string;
+      headers?: Record<string, string>;
+      text: string;
+      base64?: never;
+      filePath?: never;
+    }
+  | {
+      mimeType?: string;
+      encoding?: string;
+      statusCode?: number;
+      reasonPhrase?: string;
+      headers?: Record<string, string>;
+      base64: string;
+      text?: never;
+      filePath?: never;
+    }
+  | {
+      mimeType?: string;
+      encoding?: string;
+      statusCode?: number;
+      reasonPhrase?: string;
+      headers?: Record<string, string>;
+      filePath: string;
+      text?: never;
+      base64?: never;
+    };
+
+export type ComposeWebViewResourceDecision =
+  | { action: "allow" }
+  | { action: "block" }
+  | {
+      action: "rewrite";
+      url: string;
+      headers?: Record<string, string>;
+    }
+  | {
+      action: "respond";
+      response: ComposeWebViewResourceResponse;
+    };
+
+export type ComposeWebViewJavascriptInterfaceMethod = (
+  ...args: unknown[]
+) => unknown | Promise<unknown>;
+
+export type ComposeWebViewJavascriptInterface = Record<
+  string,
+  ComposeWebViewJavascriptInterfaceMethod
+>;
+
+export interface ComposeWebViewLoadHtmlOptions {
+  baseUrl?: string;
+  mimeType?: string;
+  encoding?: string;
+}
+
+export interface ComposeWebViewController {
+  readonly key: string;
+  loadUrl(url: string, headers?: Record<string, string>): void;
+  loadHtml(html: string, options?: ComposeWebViewLoadHtmlOptions): void;
+  reload(): void;
+  stopLoading(): void;
+  goBack(): void;
+  goForward(): void;
+  clearHistory(): void;
+  evaluateJavascript<TResult = unknown>(script: string): Promise<TResult | null | undefined>;
+  getState(): ComposeWebViewState | null | undefined;
+  addJavascriptInterface(
+    name: string,
+    object: ComposeWebViewJavascriptInterface
+  ): void;
+  removeJavascriptInterface(name: string): void;
 }
 
 export type ComposeWebViewMixedContentMode =
@@ -372,8 +672,56 @@ export type ComposeCanvasCommand =
   | ComposeCanvasDrawTextCommand
   | ComposeCanvasDrawIconCommand;
 
+export type ComposeModifierName =
+  | "fillMaxSize"
+  | "fillMaxWidth"
+  | "fillMaxHeight"
+  | "width"
+  | "height"
+  | "requiredWidth"
+  | "requiredHeight"
+  | "size"
+  | "requiredSize"
+  | "padding"
+  | "offset"
+  | "widthIn"
+  | "heightIn"
+  | "sizeIn"
+  | "requiredWidthIn"
+  | "requiredHeightIn"
+  | "requiredSizeIn"
+  | "defaultMinSize"
+  | "wrapContentWidth"
+  | "wrapContentHeight"
+  | "wrapContentSize"
+  | "aspectRatio"
+  | "alpha"
+  | "rotate"
+  | "scale"
+  | "zIndex"
+  | "background"
+  | "border"
+  | "clip"
+  | "clipToBounds"
+  | "shadow"
+  | "clickable"
+  | "combinedClickable"
+  | "tapGestures"
+  | "dragGestures"
+  | "transformGestures"
+  | "onSizeChanged"
+  | "onGloballyPositioned"
+  | "imePadding"
+  | "statusBarsPadding"
+  | "navigationBarsPadding"
+  | "systemBarsPadding"
+  | "safeDrawingPadding"
+  | "weight"
+  | "align"
+  | "matchParentSize";
+
 export interface ComposeModifierOp {
-  name: string;
+  name: ComposeModifierName;
   args?: unknown[];
 }
 
@@ -381,9 +729,79 @@ export interface ComposeModifierValue {
   __modifierOps: ComposeModifierOp[];
 }
 
-export type ComposeModifierProxy = ComposeModifierValue & {
-  [method: string]: (...args: unknown[]) => ComposeModifierProxy;
-};
+export interface ComposeModifierProxy extends ComposeModifierValue {
+  fillMaxSize(fraction?: number): ComposeModifierProxy;
+  fillMaxWidth(fraction?: number): ComposeModifierProxy;
+  fillMaxHeight(fraction?: number): ComposeModifierProxy;
+  width(value: number): ComposeModifierProxy;
+  height(value: number): ComposeModifierProxy;
+  requiredWidth(value: number): ComposeModifierProxy;
+  requiredHeight(value: number): ComposeModifierProxy;
+  size(value: number): ComposeModifierProxy;
+  size(width: number, height: number): ComposeModifierProxy;
+  requiredSize(value: number): ComposeModifierProxy;
+  requiredSize(width: number, height: number): ComposeModifierProxy;
+  padding(value: number): ComposeModifierProxy;
+  padding(horizontal: number, vertical: number): ComposeModifierProxy;
+  padding(start: number, top: number, end: number, bottom: number): ComposeModifierProxy;
+  padding(values: ComposeModifierPadding): ComposeModifierProxy;
+  offset(x: number, y?: number): ComposeModifierProxy;
+  offset(values: ComposeModifierOffset): ComposeModifierProxy;
+  widthIn(min?: number, max?: number): ComposeModifierProxy;
+  widthIn(bounds: ComposeModifierWidthBounds): ComposeModifierProxy;
+  heightIn(min?: number, max?: number): ComposeModifierProxy;
+  heightIn(bounds: ComposeModifierHeightBounds): ComposeModifierProxy;
+  sizeIn(minWidth: number, minHeight: number, maxWidth: number, maxHeight: number): ComposeModifierProxy;
+  sizeIn(bounds: ComposeModifierSizeBounds): ComposeModifierProxy;
+  requiredWidthIn(min?: number, max?: number): ComposeModifierProxy;
+  requiredWidthIn(bounds: ComposeModifierWidthBounds): ComposeModifierProxy;
+  requiredHeightIn(min?: number, max?: number): ComposeModifierProxy;
+  requiredHeightIn(bounds: ComposeModifierHeightBounds): ComposeModifierProxy;
+  requiredSizeIn(minWidth: number, minHeight: number, maxWidth: number, maxHeight: number): ComposeModifierProxy;
+  requiredSizeIn(bounds: ComposeModifierSizeBounds): ComposeModifierProxy;
+  defaultMinSize(minWidth: number, minHeight?: number): ComposeModifierProxy;
+  defaultMinSize(values: ComposeModifierDefaultMinSize): ComposeModifierProxy;
+  wrapContentWidth(): ComposeModifierProxy;
+  wrapContentWidth(align: ComposeHorizontalAlignment, unbounded?: boolean): ComposeModifierProxy;
+  wrapContentWidth(options: ComposeModifierWrapContentWidthOptions): ComposeModifierProxy;
+  wrapContentHeight(): ComposeModifierProxy;
+  wrapContentHeight(align: ComposeVerticalAlignment, unbounded?: boolean): ComposeModifierProxy;
+  wrapContentHeight(options: ComposeModifierWrapContentHeightOptions): ComposeModifierProxy;
+  wrapContentSize(): ComposeModifierProxy;
+  wrapContentSize(align: ComposeBoxAlignment, unbounded?: boolean): ComposeModifierProxy;
+  wrapContentSize(options: ComposeModifierWrapContentSizeOptions): ComposeModifierProxy;
+  aspectRatio(ratio: number): ComposeModifierProxy;
+  alpha(value: number): ComposeModifierProxy;
+  rotate(value: number): ComposeModifierProxy;
+  scale(value: number): ComposeModifierProxy;
+  zIndex(value: number): ComposeModifierProxy;
+  background(value: ComposeColor, shape?: ComposeShape): ComposeModifierProxy;
+  background(value: ComposeCanvasBrush, shape?: ComposeShape): ComposeModifierProxy;
+  border(width: number, value: ComposeColor, shape?: ComposeShape): ComposeModifierProxy;
+  border(width: number, value: ComposeCanvasBrush, shape?: ComposeShape): ComposeModifierProxy;
+  clip(shape: ComposeShape): ComposeModifierProxy;
+  clipToBounds(): ComposeModifierProxy;
+  shadow(elevation: number, shape?: ComposeShape, clip?: boolean): ComposeModifierProxy;
+  shadow(options: ComposeModifierShadowOptions): ComposeModifierProxy;
+  clickable(onClick: () => void | Promise<void>): ComposeModifierProxy;
+  combinedClickable(options: ComposeModifierCombinedClickableOptions): ComposeModifierProxy;
+  tapGestures(options: ComposeModifierTapGesturesOptions): ComposeModifierProxy;
+  dragGestures(options: ComposeModifierDragGesturesOptions): ComposeModifierProxy;
+  transformGestures(options: ComposeModifierTransformGesturesOptions): ComposeModifierProxy;
+  onSizeChanged(onSizeChanged: (event: ComposeSizeChangedEvent) => void | Promise<void>): ComposeModifierProxy;
+  onGloballyPositioned(
+    onGloballyPositioned: (event: ComposeGloballyPositionedEvent) => void | Promise<void>
+  ): ComposeModifierProxy;
+  imePadding(): ComposeModifierProxy;
+  statusBarsPadding(): ComposeModifierProxy;
+  navigationBarsPadding(): ComposeModifierProxy;
+  systemBarsPadding(): ComposeModifierProxy;
+  safeDrawingPadding(): ComposeModifierProxy;
+  weight(weight: number, fill?: boolean): ComposeModifierProxy;
+  align(alignment: ComposeModifierAlign): ComposeModifierProxy;
+  matchParentSize(): ComposeModifierProxy;
+  toJSON(): ComposeModifierValue;
+}
 
 export interface ComposeTextFieldStyle {
   fontSize?: number;
@@ -590,6 +1008,7 @@ export interface WebViewProps extends ComposeCommonProps {
   cacheMode?: ComposeWebViewCacheMode;
   safeBrowsingEnabled?: boolean;
   acceptThirdPartyCookies?: boolean;
+  controller?: ComposeWebViewController;
   onPageStarted?: (event: ComposeWebViewPageEvent) => void | Promise<void>;
   onPageFinished?: (event: ComposeWebViewPageEvent) => void | Promise<void>;
   onReceivedError?: (event: ComposeWebViewErrorEvent) => void | Promise<void>;
@@ -599,6 +1018,22 @@ export interface WebViewProps extends ComposeCommonProps {
   onConsoleMessage?: (event: ComposeWebViewConsoleEvent) => void | Promise<void>;
   onUrlChanged?: (event: ComposeWebViewNavigationEvent) => void | Promise<void>;
   onProgressChanged?: (event: ComposeWebViewProgressEvent) => void | Promise<void>;
+  onStateChanged?: (event: ComposeWebViewState) => void | Promise<void>;
+  onLifecycleEvent?: (event: ComposeWebViewLifecycleEvent) => void | Promise<void>;
+  onShouldOverrideUrlLoading?: (
+    request: ComposeWebViewNavigationRequest
+  ) =>
+    | ComposeWebViewNavigationDecision
+    | null
+    | undefined
+    | Promise<ComposeWebViewNavigationDecision | null | undefined>;
+  onInterceptRequest?: (
+    request: ComposeWebViewResourceRequest
+  ) =>
+    | ComposeWebViewResourceDecision
+    | null
+    | undefined
+    | Promise<ComposeWebViewResourceDecision | null | undefined>;
 }
 
 export interface ComposeNode {
@@ -681,6 +1116,7 @@ export interface ComposeDslContext {
   navigate(route: string, args?: Record<string, unknown>): Promise<void> | void;
   showToast(message: string): Promise<void> | void;
   reportError(error: unknown): Promise<void> | void;
+  createWebViewController(key: string): ComposeWebViewController;
 
   /**
    * Returns runtime module spec parsed from a registered toolpkg runtime module entry.

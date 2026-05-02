@@ -86,6 +86,7 @@ object MemoryLibrary {
             conversationHistory: List<Pair<String, String>>,
             content: String,
             aiService: AIService,
+            profileIdOverride: String? = null,
             onSuccess: (suspend () -> Unit)? = null,
             onError: (suspend (Exception) -> Unit)? = null
     ) {
@@ -98,7 +99,8 @@ object MemoryLibrary {
                     toolHandler,
                     conversationHistory,
                     content,
-                    aiService
+                    aiService,
+                    profileIdOverride = profileIdOverride
                 )
                 onSuccess?.invoke()
             } catch (e: CancellationException) {

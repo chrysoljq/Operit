@@ -110,6 +110,7 @@ object MessageImageGenerator {
             if (messages.isEmpty()) {
                 throw IllegalArgumentException("Message list cannot be empty")
             }
+            val allowExpandedThinkingFullHeight = initialThinkingExpanded
             
             // 获取 Activity 和根视图，用于临时附加 ComposeView
             val activity = context.findActivity() ?: throw IllegalStateException("Context is not an Activity.")
@@ -277,6 +278,7 @@ object MessageImageGenerator {
                                                                     aiMessageLiquidGlassEnabled = bubbleAiBubbleLiquidGlass,
                                                                     aiMessageWaterGlassEnabled = bubbleAiBubbleWaterGlass,
                                                                     initialThinkingExpanded = initialThinkingExpanded,
+                                                                    allowExpandedThinkingFullHeight = allowExpandedThinkingFullHeight,
                                                                     expandThinkToolsGroups = expandThinkToolsGroups,
                                                                     forceShowThinkingProcess = forceShowThinkingProcess,
                                                                     enableDialogs = false
@@ -297,6 +299,7 @@ object MessageImageGenerator {
                                                                     thinkingTextColor = thinkingTextColor,
                                                                     supportToolMarkup = true,
                                                                     initialThinkingExpanded = initialThinkingExpanded,
+                                                                    allowExpandedThinkingFullHeight = allowExpandedThinkingFullHeight,
                                                                     expandThinkToolsGroups = expandThinkToolsGroups,
                                                                     forceShowThinkingProcess = forceShowThinkingProcess,
                                                                     enableDialogs = false

@@ -15,12 +15,12 @@
         {
             "name": "REMOTE_OPERIT_BASE_URL",
             "description": { "zh": "远程 Operit 地址，例如 http://192.168.1.23:8094", "en": "Remote Operit URL, for example http://192.168.1.23:8094" },
-            "required": true
+            "required": false
         },
         {
             "name": "REMOTE_OPERIT_TOKEN",
             "description": { "zh": "远程 Operit 的 Bearer Token", "en": "Bearer token of the remote Operit" },
-            "required": true
+            "required": false
         },
         {
             "name": "REMOTE_OPERIT_TIMEOUT_MS",

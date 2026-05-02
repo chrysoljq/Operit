@@ -45,6 +45,7 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.CharacterCardMemoryProfileBindingMode
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.ApiPreferences
@@ -505,6 +506,15 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             ?.chatModelConfigId
     val characterCardBoundChatModelIndex =
         activeCharacterCard?.chatModelIndex?.coerceAtLeast(0) ?: 0
+    val characterCardBoundMemoryProfileId =
+        activeCharacterCard
+            ?.takeIf {
+                activePrompt is ActivePrompt.CharacterCard &&
+                    CharacterCardMemoryProfileBindingMode.normalize(it.memoryProfileBindingMode) ==
+                    CharacterCardMemoryProfileBindingMode.FIXED_PROFILE &&
+                    !it.memoryProfileId.isNullOrBlank()
+            }
+            ?.memoryProfileId
     
 
 
@@ -1069,7 +1079,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         actualViewModel.manuallySummarizeConversation()
                                     },
                                     characterCardBoundChatModelConfigId = characterCardBoundChatModelConfigId,
-                                    characterCardBoundChatModelIndex = characterCardBoundChatModelIndex
+                                    characterCardBoundChatModelIndex = characterCardBoundChatModelIndex,
+                                    characterCardBoundMemoryProfileId = characterCardBoundMemoryProfileId
                             )
                         }
                     }
@@ -1115,6 +1126,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         characterCardBoundChatModelConfigId,
                                 characterCardBoundChatModelIndex =
                                         characterCardBoundChatModelIndex,
+                                characterCardBoundMemoryProfileId =
+                                        characterCardBoundMemoryProfileId,
                                 onShowMemoryFolderDialog = {
                                     showMemoryFolderDialog = true
                                 },
@@ -1492,6 +1505,7 @@ private fun ChatInputBottomBar(
     onNavigateToModelConfig: () -> Unit,
     characterCardBoundChatModelConfigId: String?,
     characterCardBoundChatModelIndex: Int,
+    characterCardBoundMemoryProfileId: String?,
     onShowMemoryFolderDialog: () -> Unit,
     onRequestAutoScrollToBottom: () -> Unit,
 ) {
@@ -1677,6 +1691,7 @@ private fun ChatInputBottomBar(
                 onNavigateToModelConfig = onNavigateToModelConfig,
                 characterCardBoundChatModelConfigId = characterCardBoundChatModelConfigId,
                 characterCardBoundChatModelIndex = characterCardBoundChatModelIndex,
+                characterCardBoundMemoryProfileId = characterCardBoundMemoryProfileId,
                 pendingQueueMessages = pendingQueueMessages,
                 isPendingQueueExpanded = isPendingQueueExpanded,
                 onPendingQueueExpandedChange = { isPendingQueueExpanded = it },

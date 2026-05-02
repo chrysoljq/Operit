@@ -7,6 +7,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -55,6 +56,7 @@ class CustomXmlRenderer(
     private val showThinkingProcess: Boolean = true,
     private val showStatusTags: Boolean = true,
     private val initialThinkingExpanded: Boolean = false,
+    private val allowExpandedThinkingFullHeight: Boolean = false,
     private val enableDialogs: Boolean = true,  // 新增参数：是否启用弹窗功能，默认启用
     private val fallback: XmlContentRenderer = DefaultXmlRenderer()
 ) : XmlContentRenderer {
@@ -388,6 +390,8 @@ class CustomXmlRenderer(
             }
 
         var expanded by remember { mutableStateOf(initialThinkingExpanded) }
+        var thinkBodyFullHeight by
+            remember { mutableStateOf(allowExpandedThinkingFullHeight && initialThinkingExpanded) }
         var thinkExpandSession by remember { mutableIntStateOf(0) }
         var skipCollapseAnimationOnce by remember { mutableStateOf(false) }
         val scrollState = rememberScrollState()
@@ -395,6 +399,7 @@ class CustomXmlRenderer(
         var userHasInteractedWithScroll by remember { mutableStateOf(false) }
         var isProgrammaticScroll by remember { mutableStateOf(false) }
         val thinkVisibilityState = remember { MutableTransitionState(initialThinkingExpanded) }
+        val thinkBodyToggleInteractionSource = remember { MutableInteractionSource() }
 
         val accessibilityDesc = stringResource(R.string.thinking_process_block)
 
@@ -470,6 +475,8 @@ class CustomXmlRenderer(
                 }
             }
         val useStreamingThinkMarkdown = shouldComposeThinkBody && isThinkingInProgress && (thinkMarkdownStream != null)
+        val renderExpandedThinkWithFullHeight =
+            (allowExpandedThinkingFullHeight || thinkBodyFullHeight) && expanded
 
         LaunchedEffect(expanded, thinkText) {
             if (shouldComposeThinkBody && autoScrollEnabled) {
@@ -548,14 +555,38 @@ class CustomXmlRenderer(
                 ) {
                     if (shouldComposeThinkBody && (thinkText.isNotBlank() || thinkMarkdownStream != null)) {
                             val hierarchyLineColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                            val thinkContainerModifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(top = 2.dp, bottom = 4.dp)
+                                    .animateContentSize(
+                                        animationSpec = tween(durationMillis = 240)
+                                    )
+                                    .then(
+                                        if (renderExpandedThinkWithFullHeight) {
+                                            Modifier
+                                        } else {
+                                            Modifier.heightIn(max = 300.dp)
+                                        }
+                                    )
+                            val thinkContentModifier =
+                                Modifier.fillMaxWidth()
+                                    .then(
+                                        if (renderExpandedThinkWithFullHeight) {
+                                            Modifier
+                                        } else {
+                                            Modifier.verticalScroll(scrollState)
+                                        }
+                                    )
+                                    .clickable(
+                                        enabled = expanded,
+                                        interactionSource = thinkBodyToggleInteractionSource,
+                                        indication = null,
+                                    ) {
+                                        thinkBodyFullHeight = !thinkBodyFullHeight
+                                    }
+                                    .padding(start = 24.dp)
                             Box(
-                                modifier =
-                                    Modifier.fillMaxWidth()
-                                        .padding(top = 2.dp, bottom = 4.dp)
-                                        .animateContentSize(
-                                            animationSpec = tween(durationMillis = 240)
-                                        )
-                                        .heightIn(max = 300.dp)
+                                modifier = thinkContainerModifier
                             ) {
                                 CanvasIndentedGuide(
                                     modifier = Modifier.matchParentSize(),
@@ -563,10 +594,7 @@ class CustomXmlRenderer(
                                 )
 
                                 Box(
-                                    modifier =
-                                        Modifier.fillMaxWidth()
-                                            .verticalScroll(scrollState)
-                                            .padding(start = 24.dp)
+                                    modifier = thinkContentModifier
                                 ) {
                                     if (useStreamingThinkMarkdown) {
                                             val baseTypography = MaterialTheme.typography

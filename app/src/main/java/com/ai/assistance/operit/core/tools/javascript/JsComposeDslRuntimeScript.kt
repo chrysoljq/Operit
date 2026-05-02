@@ -9,22 +9,32 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                 return !!(__value && typeof __value.then === 'function');
             }
 
-            function __operit_wrap_compose_response(__bundle, __tree) {
-                return {
-                    tree: __tree,
+            function __operit_wrap_compose_response(__bundle, __tree, __actionResult) {
+                var __response = {
                     state: __bundle.state,
                     memo: __bundle.memo
                 };
+                if (typeof __tree !== 'undefined') {
+                    __response.tree = __tree;
+                }
+                if (typeof __actionResult !== 'undefined') {
+                    __response.actionResult = __actionResult;
+                }
+                return __response;
             }
 
-            function __operit_build_compose_response(__bundle, __entry) {
+            function __operit_build_compose_response(__bundle, __entry, __actionResult) {
                 var __tree = __entry(__bundle.ctx);
                 if (__operit_is_promise(__tree)) {
                     return __tree.then(function(__resolvedTree) {
-                        return __operit_wrap_compose_response(__bundle, __resolvedTree);
+                        return __operit_wrap_compose_response(
+                            __bundle,
+                            __resolvedTree,
+                            __actionResult
+                        );
                     });
                 }
-                return __operit_wrap_compose_response(__bundle, __tree);
+                return __operit_wrap_compose_response(__bundle, __tree, __actionResult);
             }
 
             function __operitResolveComposeEntry() {
@@ -232,12 +242,20 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                     return Promise.resolve();
                 }
 
-                function __operit_build_final_response() {
+                function __operit_build_final_response(__actionResult) {
                     return __operit_flush_state_changes().then(function() {
                         if (__noRender) {
-                            return null;
+                            return __operit_wrap_compose_response(
+                                __bundle,
+                                undefined,
+                                __actionResult
+                            );
                         }
-                        return __operit_build_compose_response(__bundle, __entry);
+                        return __operit_build_compose_response(
+                            __bundle,
+                            __entry,
+                            __actionResult
+                        );
                     });
                 }
 
@@ -262,8 +280,8 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                         // Additional state updates during await phases are pushed by state-change listeners.
                         __operit_schedule_intermediate_render();
                     }
-                    return __maybePromise.then(function() {
-                        return __operit_build_final_response().then(function(__finalResponse) {
+                    return __maybePromise.then(function(__resolvedActionResult) {
+                        return __operit_build_final_response(__resolvedActionResult).then(function(__finalResponse) {
                             __operit_finalize_action();
                             return __finalResponse;
                         });
@@ -272,7 +290,7 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                         throw __actionError;
                     });
                 }
-                return __operit_build_final_response().then(function(__finalResponse) {
+                return __operit_build_final_response(__maybePromise).then(function(__finalResponse) {
                     __operit_finalize_action();
                     return __finalResponse;
                 });

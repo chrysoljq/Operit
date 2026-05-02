@@ -924,8 +924,10 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
             ) {
                 val props = node.props
                 val onClick = ToolPkgComposeDslParser.extractActionId(props["onClick"])
+                val contentPadding = props.commonPaddingSpecOrNull()
+                val modifierProps = if (contentPadding != null) props.withoutCommonPaddingProps() else props
                 val resolvedModifier =
-                    applyScopedCommonModifier(Modifier, props, modifierResolver).let { modifier ->
+                    applyScopedCommonModifier(Modifier, modifierProps, modifierResolver).let { modifier ->
                         if (!onClick.isNullOrBlank()) {
                             modifier.clickable { onAction(onClick, null) }
                         } else {
@@ -940,14 +942,16 @@ def build_component_renderer_function(spec: ComponentSpec, params: Sequence[Para
                     tonalElevation = props.dp("tonalElevation"),
                     shadowElevation = props.dp("shadowElevation"),
                     content = {
-                        renderSlotChildren(
-                            node = node,
-                            slotName = "content",
-                            onAction = onAction,
-                            nodePath = nodePath,
-                            modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
-                            fallbackToChildren = true
-                        )
+                        Box(modifier = contentPadding?.applyTo(Modifier) ?: Modifier) {
+                            renderSlotChildren(
+                                node = node,
+                                slotName = "content",
+                                onAction = onAction,
+                                nodePath = nodePath,
+                                modifierResolver = { base, slotProps -> defaultComposeDslModifierResolver(base, slotProps) },
+                                fallbackToChildren = true
+                            )
+                        }
                     }
                 )
             }
@@ -1559,6 +1563,8 @@ def _generic_default_value_expr(component: str, param: Param) -> Optional[str]:
         return expr
     if _is_string_type(type_name):
         return f'props.string("{name}")'
+    if name == "colors" and _is_plain_button_like(component):
+        return "buttonColors"
     if _is_color_type(type_name):
         if component == "Surface" and name == "color":
             return (
@@ -1589,6 +1595,55 @@ def _supports_text_fallback_for_content(component: str) -> bool:
     )
 
 
+def _is_plain_button_like(component: str) -> bool:
+    return component in {
+        "Button",
+        "ElevatedButton",
+        "FilledTonalButton",
+        "OutlinedButton",
+        "TextButton",
+    }
+
+
+def _button_colors_defaults_expr(component: str) -> str | None:
+    defaults_by_component = {
+        "Button": "androidx.compose.material3.ButtonDefaults.buttonColors",
+        "ElevatedButton": "androidx.compose.material3.ButtonDefaults.elevatedButtonColors",
+        "FilledTonalButton": "androidx.compose.material3.ButtonDefaults.filledTonalButtonColors",
+        "OutlinedButton": "androidx.compose.material3.ButtonDefaults.outlinedButtonColors",
+        "TextButton": "androidx.compose.material3.ButtonDefaults.textButtonColors",
+    }
+    return defaults_by_component.get(component)
+
+
+def _button_colors_renderer_prelude(component: str) -> List[str]:
+    factory = _button_colors_defaults_expr(component)
+    if factory is None:
+        return []
+    return [
+        '    val containerColor = props.colorOrNull("containerColor")',
+        '    val contentColor = props.colorOrNull("contentColor")',
+        '    val disabledContainerColor = props.colorOrNull("disabledContainerColor")',
+        '    val disabledContentColor = props.colorOrNull("disabledContentColor")',
+        '    val buttonColors =',
+        '        if (',
+        '            containerColor != null ||',
+        '                contentColor != null ||',
+        '                disabledContainerColor != null ||',
+        '                disabledContentColor != null',
+        '        ) {',
+        f'            {factory}(',
+        '                containerColor = containerColor ?: Color.Unspecified,',
+        '                contentColor = contentColor ?: Color.Unspecified,',
+        '                disabledContainerColor = disabledContainerColor ?: Color.Unspecified,',
+        '                disabledContentColor = disabledContentColor ?: Color.Unspecified',
+        '            )',
+        '        } else {',
+        f'            {factory}()',
+        '        }',
+    ]
+
+
 def build_generic_renderer_function(spec: ComponentSpec, params: Sequence[Param]) -> str:
     component = spec.dsl_name
     func_name = f"render{component}Node"
@@ -1602,6 +1657,7 @@ def build_generic_renderer_function(spec: ComponentSpec, params: Sequence[Param]
     lines.append("    modifierResolver: ComposeDslModifierResolver")
     lines.append(") {")
     lines.append("    val props = node.props")
+    lines.extend(_button_colors_renderer_prelude(component))
 
     has_spacing = any("Arrangement." in p.type for p in params)
     if has_spacing:
@@ -1841,7 +1897,7 @@ def build_ts_generated_file(
         if component == "IconButton" or component.endswith("IconButton") or component == "IconToggleButton":
             emitted.setdefault("icon", ("string", False))
 
-        if component in {"Button", "FilledTonalButton", "OutlinedButton"}:
+        if _is_plain_button_like(component):
             emitted.setdefault("contentPadding", ("ComposePadding", False))
 
         if component == "Button":
@@ -1849,6 +1905,11 @@ def build_ts_generated_file(
 
         if component == "Button" or component.endswith("Button"):
             emitted.setdefault("shape", ("ComposeShape", False))
+        if _is_plain_button_like(component):
+            emitted.setdefault("containerColor", ("ComposeColor", False))
+            emitted.setdefault("contentColor", ("ComposeColor", False))
+            emitted.setdefault("disabledContainerColor", ("ComposeColor", False))
+            emitted.setdefault("disabledContentColor", ("ComposeColor", False))
 
         if component == "Card" or component.endswith("Card"):
             emitted.setdefault("containerColor", ("ComposeColor", False))

@@ -24,6 +24,7 @@ RECEIVER_COMPONENT_REFRESH = (
 )
 REMOTE_PACKAGES_DIR = f"/sdcard/Android/data/{APP_PACKAGE}/files/packages"
 HOT_RELOAD_STATE_FILE = ".sync_example_packages_hot_reload_state.json"
+LOCAL_SYNC_STATE_FILE = ".sync_example_packages_local_state.json"
 
 
 @dataclass(frozen=True)
@@ -45,32 +46,185 @@ def _run_checked_command(command: list[str], cwd: Path, *, dry_run: bool) -> Non
         raise RuntimeError(f"Command failed with exit code {completed.returncode}: {command_text}")
 
 
-def _prebuild_examples(repo_root: Path, examples_dir: Path, *, dry_run: bool) -> None:
+def _load_local_sync_state(path: Path) -> dict[str, dict[str, str]]:
+    if not path.is_file():
+        return {"prebuild": {}, "outputs": {}}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"prebuild": {}, "outputs": {}}
+
+    if not isinstance(data, dict):
+        return {"prebuild": {}, "outputs": {}}
+
+    normalized: dict[str, dict[str, str]] = {"prebuild": {}, "outputs": {}}
+    for section in ("prebuild", "outputs"):
+        entry = data.get(section, {})
+        if not isinstance(entry, dict):
+            continue
+        normalized[section] = {
+            str(name): str(signature)
+            for name, signature in entry.items()
+            if isinstance(name, str) and isinstance(signature, str)
+        }
+    return normalized
+
+
+def _save_local_sync_state(path: Path, state: dict[str, dict[str, str]]) -> None:
+    path.write_text(
+        json.dumps(state, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _iter_signature_files(paths: list[Path]) -> list[Path]:
+    seen: set[Path] = set()
+    files: list[Path] = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        if path in seen:
+            continue
+        seen.add(path)
+        files.append(path)
+    files.sort(key=lambda p: p.as_posix().lower())
+    return files
+
+
+def _compute_paths_signature(base_dir: Path, paths: list[Path]) -> str:
+    digest = hashlib.sha256()
+    for file_path in _iter_signature_files(paths):
+        relative_path = file_path.relative_to(base_dir).as_posix()
+        digest.update(relative_path.encode("utf-8"))
+        digest.update(b"\0")
+        with file_path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _collect_root_prebuild_inputs(examples_dir: Path) -> list[Path]:
+    paths: list[Path] = []
+    tsconfig = examples_dir / "tsconfig.json"
+    if tsconfig.is_file():
+        paths.append(tsconfig)
+
+    for child in examples_dir.iterdir():
+        if child.is_file() and child.suffix.lower() in {".ts", ".d.ts"}:
+            paths.append(child)
+
+    types_dir = examples_dir / "types"
+    if types_dir.is_dir():
+        for file_path in types_dir.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in {".ts", ".d.ts"}:
+                paths.append(file_path)
+
+    return paths
+
+
+def _collect_child_prebuild_inputs(examples_dir: Path, child_dir: Path) -> list[Path]:
+    paths: list[Path] = []
+    tsconfig = child_dir / "tsconfig.json"
+    if tsconfig.is_file():
+        paths.append(tsconfig)
+
+    for file_path in child_dir.rglob("*"):
+        if "node_modules" in file_path.parts:
+            continue
+        if file_path.is_file() and file_path.suffix.lower() in {".ts", ".d.ts"}:
+            paths.append(file_path)
+
+    types_dir = examples_dir / "types"
+    if types_dir.is_dir():
+        for file_path in types_dir.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in {".ts", ".d.ts"}:
+                paths.append(file_path)
+
+    package_json = child_dir / "package.json"
+    if package_json.is_file():
+        paths.append(package_json)
+        build_script = child_dir / "build.js"
+        if build_script.is_file():
+            paths.append(build_script)
+
+    return paths
+
+
+def _needs_root_prebuild(examples_dir: Path, plans: list[SyncPlanItem]) -> bool:
+    for plan in plans:
+        if plan.mode != "copy":
+            continue
+        if plan.source.parent != examples_dir:
+            continue
+        sibling_ts = plan.source.with_suffix(".ts")
+        sibling_dts = plan.source.with_suffix(".d.ts")
+        if sibling_ts.is_file() or sibling_dts.is_file():
+            return True
+    return False
+
+
+def _prebuild_examples(
+    repo_root: Path,
+    examples_dir: Path,
+    plans: list[SyncPlanItem],
+    *,
+    dry_run: bool,
+    local_state: dict[str, dict[str, str]],
+) -> None:
     root_tsconfig = examples_dir / "tsconfig.json"
     if not root_tsconfig.is_file():
         raise FileNotFoundError(f"Missing tsconfig.json: {root_tsconfig}")
 
-    _run_checked_command(
-        ["pnpm", "exec", "tsc", "-p", str(root_tsconfig)],
-        cwd=repo_root,
-        dry_run=dry_run,
+    prebuild_state = local_state.setdefault("prebuild", {})
+
+    if _needs_root_prebuild(examples_dir, plans):
+        root_signature = _compute_paths_signature(repo_root, _collect_root_prebuild_inputs(examples_dir))
+        if prebuild_state.get("root") == root_signature:
+            print(f"SKIP-PREBUILD(ROOT): {examples_dir}")
+        else:
+            _run_checked_command(
+                ["pnpm", "exec", "tsc", "-p", str(root_tsconfig)],
+                cwd=repo_root,
+                dry_run=dry_run,
+            )
+            if not dry_run:
+                prebuild_state["root"] = root_signature
+    else:
+        print("SKIP-PREBUILD(ROOT): no planned root TS outputs")
+
+    planned_child_dirs = sorted(
+        {
+            plan.source
+            for plan in plans
+            if plan.source.is_dir() and plan.source.parent == examples_dir and plan.source.name != "types"
+        },
+        key=lambda p: p.name.lower(),
     )
 
-    child_dirs = sorted((p for p in examples_dir.iterdir() if p.is_dir()), key=lambda p: p.name.lower())
-    for child_dir in child_dirs:
-        if child_dir.name == "types":
-            print(f"SKIP-TYPES: {child_dir}")
-            continue
-
+    for child_dir in planned_child_dirs:
         tsconfig = child_dir / "tsconfig.json"
         if not tsconfig.is_file():
             raise FileNotFoundError(f"Missing tsconfig.json: {tsconfig}")
 
-        _run_checked_command(
-            ["pnpm", "exec", "tsc", "-p", str(tsconfig)],
-            cwd=repo_root,
-            dry_run=dry_run,
+        child_signature = _compute_paths_signature(
+            repo_root,
+            _collect_child_prebuild_inputs(examples_dir, child_dir),
         )
+        child_key = f"child:{child_dir.name}"
+        should_run_tsc = prebuild_state.get(child_key) != child_signature
+
+        if should_run_tsc:
+            _run_checked_command(
+                ["pnpm", "exec", "tsc", "-p", str(tsconfig)],
+                cwd=repo_root,
+                dry_run=dry_run,
+            )
+            if not dry_run:
+                prebuild_state[child_key] = child_signature
+        else:
+            print(f"SKIP-PREBUILD: {child_dir}")
 
         manifest = child_dir / "manifest.json"
         if manifest.is_file():
@@ -78,12 +232,59 @@ def _prebuild_examples(repo_root: Path, examples_dir: Path, *, dry_run: bool) ->
             continue
 
         package_json = child_dir / "package.json"
-        if package_json.is_file():
+        build_key = f"child-build:{child_dir.name}"
+        should_run_build = should_run_tsc or prebuild_state.get(build_key) != child_signature
+        if package_json.is_file() and should_run_build:
             _run_checked_command(
                 ["pnpm", "build"],
                 cwd=child_dir,
                 dry_run=dry_run,
             )
+            if not dry_run:
+                prebuild_state[build_key] = child_signature
+        elif package_json.is_file():
+            print(f"SKIP-BUILD: {child_dir}")
+
+
+def _compute_plan_signature(repo_root: Path, plan: SyncPlanItem) -> str:
+    if plan.mode == "copy":
+        return _compute_paths_signature(repo_root, [plan.source])
+
+    return _compute_paths_signature(repo_root, _iter_files_for_pack(repo_root, plan.source))
+
+
+def _prune_local_sync_state_outputs(
+    output_state: dict[str, str],
+    planned_destination_names: set[str],
+) -> None:
+    for destination_name in list(output_state.keys()):
+        if destination_name not in planned_destination_names:
+            output_state.pop(destination_name, None)
+
+
+def _prune_local_sync_state_prebuild(
+    prebuild_state: dict[str, str],
+    planned_child_names: set[str],
+    keep_root: bool,
+) -> None:
+    for key in list(prebuild_state.keys()):
+        if key == "root":
+            if not keep_root:
+                prebuild_state.pop(key, None)
+            continue
+        if not key.startswith("child"):
+            continue
+        _, _, child_name = key.partition(":")
+        if child_name not in planned_child_names:
+            prebuild_state.pop(key, None)
+
+
+def _prebuild_planned_child_names(examples_dir: Path, plans: list[SyncPlanItem]) -> set[str]:
+    return {
+        plan.source.name
+        for plan in plans
+        if plan.source.is_dir() and plan.source.parent == examples_dir and plan.source.name != "types"
+    }
 
 
 def _read_whitelist_file(path: Path) -> list[str]:
@@ -621,12 +822,6 @@ def main() -> int:
         print(f"ERROR: examples dir not found: {examples_dir}", file=sys.stderr)
         return 2
 
-    try:
-        _prebuild_examples(repo_root, examples_dir, dry_run=args.dry_run)
-    except Exception as exc:  # pragma: no cover - runtime command failure path
-        print(f"ERROR: prebuild step failed: {exc}", file=sys.stderr)
-        return 3
-
     sync_mode = args.mode
 
     whitelist: list[str]
@@ -657,16 +852,9 @@ def main() -> int:
         print("- Provide --include <name> or create packages_whitelist.txt in repo root.")
         return 0
 
-    if not args.dry_run:
-        packages_dir.mkdir(parents=True, exist_ok=True)
-
-    copied = 0
-    packed = 0
-    missing = 0
-    deleted = 0
-
     plans: list[SyncPlanItem] = []
     seen_dest_names: set[str] = set()
+    missing = 0
 
     for item in final_items:
         plan = _resolve_plan_item_from_roots(source_roots, item)
@@ -682,27 +870,66 @@ def main() -> int:
         seen_dest_names.add(plan.destination_name)
         plans.append(plan)
 
+    local_state_file = repo_root / LOCAL_SYNC_STATE_FILE
+    local_state = _load_local_sync_state(local_state_file)
+    output_state = local_state.setdefault("outputs", {})
+    prebuild_state = local_state.setdefault("prebuild", {})
+
+    try:
+        _prebuild_examples(
+            repo_root,
+            examples_dir,
+            plans,
+            dry_run=args.dry_run,
+            local_state=local_state,
+        )
+    except Exception as exc:  # pragma: no cover - runtime command failure path
+        print(f"ERROR: prebuild step failed: {exc}", file=sys.stderr)
+        return 3
+
+    if not args.dry_run:
+        packages_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    packed = 0
+    deleted = 0
+
     deleted = _delete_unplanned_outputs(
         packages_dir,
         planned_destination_names=seen_dest_names,
         dry_run=args.dry_run,
     )
+    _prune_local_sync_state_outputs(output_state, seen_dest_names)
+    _prune_local_sync_state_prebuild(
+        prebuild_state,
+        _prebuild_planned_child_names(examples_dir, plans),
+        keep_root=_needs_root_prebuild(examples_dir, plans),
+    )
 
     for plan in plans:
         dest = packages_dir / plan.destination_name
+        plan_signature = _compute_plan_signature(repo_root, plan)
 
         if plan.mode == "copy":
+            if not args.dry_run and dest.is_file() and output_state.get(plan.destination_name) == plan_signature:
+                print(f"SKIP-COPY: {plan.source} -> {dest}")
+                continue
             action = "COPY" if not args.dry_run else "DRY-COPY"
             print(f"{action}: {plan.source} -> {dest}")
             if not args.dry_run:
                 shutil.copy2(plan.source, dest)
+                output_state[plan.destination_name] = plan_signature
                 copied += 1
             continue
 
+        if not args.dry_run and dest.is_file() and output_state.get(plan.destination_name) == plan_signature:
+            print(f"SKIP-PACK: {plan.source} -> {dest}")
+            continue
         action = "PACK" if not args.dry_run else "DRY-PACK"
         print(f"{action}: {plan.source} -> {dest}")
         if not args.dry_run:
             _pack_toolpkg_folder(repo_root, plan.source, dest)
+            output_state[plan.destination_name] = plan_signature
             packed += 1
 
     print(
@@ -723,6 +950,9 @@ def main() -> int:
                 )
             except Exception as exc:
                 print(f"SKIP-HOT-RELOAD: {exc}", file=sys.stderr)
+
+    if not args.dry_run:
+        _save_local_sync_state(local_state_file, local_state)
 
     return 0 if missing == 0 else 1
 

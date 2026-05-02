@@ -54,6 +54,8 @@ data class CharacterCard(
     val chatModelBindingMode: String = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL, // 对话模型绑定模式
     val chatModelConfigId: String? = null, // 固定绑定时使用的配置ID
     val chatModelIndex: Int = 0, // 固定绑定时使用的模型索引
+    val memoryProfileBindingMode: String = CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL, // 记忆配置绑定模式
+    val memoryProfileId: String? = null, // 固定绑定时使用的记忆配置ID
     val toolAccessConfig: CharacterCardToolAccessConfig = CharacterCardToolAccessConfig(), // 角色卡自定义工具白名单
     val isDefault: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
@@ -66,6 +68,15 @@ object CharacterCardChatModelBindingMode {
 
     fun normalize(mode: String?): String {
         return if (mode == FIXED_CONFIG) FIXED_CONFIG else FOLLOW_GLOBAL
+    }
+}
+
+object CharacterCardMemoryProfileBindingMode {
+    const val FOLLOW_GLOBAL = "FOLLOW_GLOBAL"
+    const val FIXED_PROFILE = "FIXED_PROFILE"
+
+    fun normalize(mode: String?): String {
+        return if (mode == FIXED_PROFILE) FIXED_PROFILE else FOLLOW_GLOBAL
     }
 }
 
@@ -123,6 +134,8 @@ data class OperitCharacterCardPayload(
     val chatModelBindingMode: String = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL,
     val chatModelConfigId: String? = null,
     val chatModelIndex: Int = 0,
+    val memoryProfileBindingMode: String = CharacterCardMemoryProfileBindingMode.FOLLOW_GLOBAL,
+    val memoryProfileId: String? = null,
     val toolAccessConfig: CharacterCardToolAccessConfig? = null
 )
 
