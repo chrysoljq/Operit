@@ -525,7 +525,7 @@ function Screen(ctx) {
             ])
         ]));
     }
-    return ctx.UI.Column({
+    return ctx.UI.LazyColumn({
         onLoad: async () => {
             if (!hasInitializedState.value) {
                 hasInitializedState.set(true);

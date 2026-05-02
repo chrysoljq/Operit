@@ -270,15 +270,15 @@ function Screen(ctx) {
                 horizontalAlignment: "center",
                 padding: { horizontal: 12, vertical: 18 },
             }, [
-            UI.Box({
-                fillMaxWidth: true,
-                contentAlignment: "center",
-                padding: { horizontal: 28, vertical: 12 },
-            }, UI.Text({
-                text: easterEggLine,
-                style: "bodySmall",
-                color: "#6B7280",
-            })),
+                UI.Box({
+                    fillMaxWidth: true,
+                    contentAlignment: "center",
+                    padding: { horizontal: 28, vertical: 12 },
+                }, UI.Text({
+                    text: easterEggLine,
+                    style: "bodySmall",
+                    color: "#6B7280",
+                })),
                 UI.Row({
                     spacing: 10,
                     verticalAlignment: "center",

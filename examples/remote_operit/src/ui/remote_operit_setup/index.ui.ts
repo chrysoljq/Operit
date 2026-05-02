@@ -596,7 +596,7 @@ export default function Screen(ctx: ComposeDslContext): ComposeNode {
     );
   }
 
-  return ctx.UI.Column(
+  return ctx.UI.LazyColumn(
     {
       onLoad: async () => {
         if (!hasInitializedState.value) {

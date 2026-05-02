@@ -1371,7 +1371,6 @@ internal fun applyCommonModifier(
             resolveColorValue(
                 props["backgroundColor"]
                     ?: props["background"]
-                    ?: props["containerColor"]
             )
         if (backgroundColor != null) {
             val shape = shapeFromValue(props["backgroundShape"]) ?: shapeFromValue(props["shape"])
