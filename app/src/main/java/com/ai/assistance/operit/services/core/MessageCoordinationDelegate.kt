@@ -149,7 +149,7 @@ class MessageCoordinationDelegate(
         return AIMessageManager.calculateStableContextWindow(
             enhancedAiService = service,
             chatId = chatId,
-            chatHistory = chatId?.let { chatHistoryDelegate.getChatHistory(it) }.orEmpty(),
+            chatHistory = chatId?.let { chatHistoryDelegate.getRuntimeChatHistory(it) }.orEmpty(),
             workspacePath = currentChat?.workspace,
             workspaceEnv = currentChat?.workspaceEnv,
             promptFunctionType = promptFunctionType,
@@ -592,7 +592,7 @@ class MessageCoordinationDelegate(
 
         // 如果不是续写，检查是否需要总结
         if (turnOptions.persistTurn && !isBackgroundSend && !isContinuation && !skipSummaryCheck) {
-            val currentMessages = chatHistoryDelegate.chatHistory.value
+            val currentMessages = runBlocking { chatHistoryDelegate.getCurrentRuntimeChatHistorySnapshot() }
             val currentTokens = tokenStatsDelegate.currentWindowSizeFlow.value
             val maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt()
 
@@ -609,11 +609,14 @@ class MessageCoordinationDelegate(
             if (isShouldGenerateSummary) {
                 val snapshotMessages = currentMessages.toList()
                 val insertPosition = chatHistoryDelegate.findProperSummaryPosition(snapshotMessages)
+                val beforeTimestamp = snapshotMessages.getOrNull(insertPosition - 1)?.timestamp
+                val afterTimestamp = snapshotMessages.getOrNull(insertPosition)?.timestamp
 
                 // 异步生成总结，不阻塞当前消息发送
                 launchAsyncSummaryForSend(
                     snapshotMessages = snapshotMessages,
-                    insertPosition = insertPosition,
+                    beforeTimestamp = beforeTimestamp,
+                    afterTimestamp = afterTimestamp,
                     originalChatId = chatId,
                     roleCardId = roleCardId,
                     chatModelConfigIdOverride = resolvedChatModelConfigIdOverride,
@@ -748,7 +751,7 @@ class MessageCoordinationDelegate(
         val attachments = attachmentDelegate.attachments.value
         val replyToMessage = uiBridge.getReplyToMessage()
 
-        val isFirstMessage = chatHistoryDelegate.getChatHistory(chatId).none { it.sender == "user" }
+        val isFirstMessage = !chatHistoryDelegate.hasUserMessage(chatId)
         if (isFirstMessage) {
             val newTitle =
                 when {
@@ -850,7 +853,7 @@ class MessageCoordinationDelegate(
                 )
 
                 val beforeLastAiTimestamp =
-                    chatHistoryDelegate.getChatHistory(chatId)
+                    chatHistoryDelegate.getRuntimeChatHistory(chatId)
                         .lastOrNull { it.sender == "ai" }
                         ?.timestamp
                         ?: Long.MIN_VALUE
@@ -899,7 +902,7 @@ class MessageCoordinationDelegate(
                     return@forEachIndexed
                 }
 
-                val newAiMessage = chatHistoryDelegate.getChatHistory(chatId)
+                val newAiMessage = chatHistoryDelegate.getRuntimeChatHistory(chatId)
                     .asReversed()
                     .firstOrNull { it.sender == "ai" && it.timestamp > beforeLastAiTimestamp }
                 if (newAiMessage != null && newAiMessage.content.isNotBlank()) {
@@ -1268,7 +1271,7 @@ class MessageCoordinationDelegate(
     ) {
         if (!apiConfigDelegate.enableSummary.value) return
 
-        val currentMessages = chatHistoryDelegate.getChatHistory(chatId)
+        val currentMessages = chatHistoryDelegate.getRuntimeChatHistory(chatId)
         val currentTokens = tokenStatsDelegate.getLastCurrentWindowSize(chatId)
         val maxTokens = (apiConfigDelegate.contextLength.value * 1024).toInt()
         val shouldSummarize = AIMessageManager.shouldGenerateSummary(
@@ -1334,7 +1337,10 @@ class MessageCoordinationDelegate(
                 uiStateDelegate.showToast(context.getString(R.string.chat_ai_service_unavailable_memory))
                 return@launch
             }
-            if (chatHistoryDelegate.chatHistory.value.isEmpty()) {
+            val currentChatId = chatHistoryDelegate.currentChatId.value
+            val runtimeHistory =
+                currentChatId?.let { chatHistoryDelegate.getRuntimeChatHistory(it) }.orEmpty()
+            if (runtimeHistory.isEmpty()) {
                 uiStateDelegate.showToast(context.getString(R.string.chat_history_empty_no_update))
                 return@launch
             }
@@ -1344,13 +1350,12 @@ class MessageCoordinationDelegate(
 
             try {
                 // Convert ChatMessage list to List<Pair<String, String>>
-                val history = chatHistoryDelegate.chatHistory.value.map { it.sender to it.content }
+                val history = runtimeHistory.map { it.sender to it.content }
                 // Get the last message content
-                val lastMessageContent =
-                    chatHistoryDelegate.chatHistory.value.lastOrNull()?.content ?: ""
+                val lastMessageContent = runtimeHistory.lastOrNull()?.content ?: ""
                 val roleCardId =
                     resolveWindowEstimateRoleCardId(
-                        chatId = chatHistoryDelegate.currentChatId.value,
+                        chatId = currentChatId,
                         roleCardId = null
                     )
                 val preferenceProfileIdOverride =
@@ -1554,7 +1559,8 @@ class MessageCoordinationDelegate(
 
     private fun launchAsyncSummaryForSend(
         snapshotMessages: List<ChatMessage>,
-        insertPosition: Int,
+        beforeTimestamp: Long?,
+        afterTimestamp: Long?,
         originalChatId: String?,
         roleCardId: String?,
         chatModelConfigIdOverride: String? = null,
@@ -1600,19 +1606,11 @@ class MessageCoordinationDelegate(
                     return@launch
                 }
 
-                val currentMessages = chatHistoryDelegate.chatHistory.value
-                if (insertPosition < 0 || insertPosition > currentMessages.size) {
-                    AppLogger.w(
-                        TAG,
-                        "Async summary insert skipped: position out of bounds: $insertPosition, size=${currentMessages.size}"
-                    )
-                    return@launch
-                }
-
                 chatHistoryDelegate.addSummaryMessage(
                     summaryMessage = summaryMessage,
-                    insertPosition = insertPosition,
-                    chatIdOverride = originalChatId
+                    beforeTimestamp = beforeTimestamp,
+                    afterTimestamp = afterTimestamp,
+                    chatIdOverride = originalChatId,
                 )
 
                 refreshStableContextWindow(
@@ -1702,21 +1700,29 @@ class MessageCoordinationDelegate(
                 return false
             }
 
-            val currentMessages = currentChatId?.let { chatHistoryDelegate.getChatHistory(it) }.orEmpty()
+            val currentMessages =
+                currentChatId?.let { chatHistoryDelegate.getRuntimeChatHistory(it) }.orEmpty()
             if (currentMessages.isEmpty()) {
                 AppLogger.d(TAG, "历史记录为空，无需总结")
                 return false
             }
 
-            val insertPosition = chatHistoryDelegate.findProperSummaryPosition(currentMessages)
+            val summaryInsertReferenceMessages = currentMessages
+            val insertPosition =
+                chatHistoryDelegate.findProperSummaryPosition(summaryInsertReferenceMessages)
+            val beforeTimestamp =
+                summaryInsertReferenceMessages.getOrNull(insertPosition - 1)?.timestamp
+            val afterTimestamp =
+                summaryInsertReferenceMessages.getOrNull(insertPosition)?.timestamp
             val summaryMessage =
                 AIMessageManager.summarizeMemory(service, currentMessages, autoContinue, effectiveIsGroupChat)
 
             if (summaryMessage != null) {
                 chatHistoryDelegate.addSummaryMessage(
                     summaryMessage = summaryMessage,
-                    insertPosition = insertPosition,
-                    chatIdOverride = currentChatId
+                    beforeTimestamp = beforeTimestamp,
+                    afterTimestamp = afterTimestamp,
+                    chatIdOverride = currentChatId,
                 )
 
                 refreshStableContextWindow(

@@ -56,6 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.ChatMessageDisplayMode
+import com.ai.assistance.operit.data.model.ChatMessageLocatorPreview
 import com.ai.assistance.operit.ui.features.chat.components.lazy.LazyListState as ChatLazyListState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -67,6 +68,8 @@ private data class ChatScrollNavigatorSnapshot(
     val isScrollInProgress: Boolean,
 )
 
+private const val LOCATOR_PREVIEW_CHAR_COUNT = 48
+
 internal data class ChatScrollMessageAnchor(
     val absoluteTopPx: Float,
     val heightPx: Int,
@@ -74,15 +77,18 @@ internal data class ChatScrollMessageAnchor(
 
 private data class ChatMessageLocatorEntry(
     val index: Int,
-    val message: ChatMessage,
+    val preview: ChatMessageLocatorPreview,
 )
 
 @Composable
 internal fun ChatScrollNavigator(
     chatHistory: List<ChatMessage>,
+    currentChatId: String? = null,
     scrollState: ChatLazyListState,
     minVisibleIndex: Int,
     visibleMessageCount: Int,
+    loadLocatorEntries: (suspend (String) -> List<ChatMessageLocatorPreview>)? = null,
+    onJumpToMessageTimestamp: ((Long) -> Unit)? = null,
     onJumpToMessage: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -136,6 +142,37 @@ internal fun ChatScrollNavigator(
     }
 
     val activeMessageIndex = currentMessageIndex
+    val activeMessageTimestamp = activeMessageIndex?.let { chatHistory.getOrNull(it)?.timestamp }
+    var locatorEntries by remember(currentChatId) { mutableStateOf<List<ChatMessageLocatorPreview>>(emptyList()) }
+    var isLoadingLocatorEntries by remember(currentChatId) { mutableStateOf(false) }
+    var locatorLoadFailed by remember(currentChatId) { mutableStateOf(false) }
+
+    LaunchedEffect(
+        currentChatId,
+        chatHistory.size,
+        chatHistory.firstOrNull()?.timestamp,
+        chatHistory.lastOrNull()?.timestamp,
+    ) {
+        if (currentChatId.isNullOrBlank() || loadLocatorEntries == null) {
+            locatorEntries = chatHistory.map(::toLocatorPreview)
+            isLoadingLocatorEntries = false
+            locatorLoadFailed = false
+            return@LaunchedEffect
+        }
+
+        isLoadingLocatorEntries = true
+        locatorLoadFailed = false
+        locatorEntries =
+            runCatching { loadLocatorEntries(currentChatId) }
+                .onFailure { locatorLoadFailed = true }
+                .getOrElse { emptyList() }
+        isLoadingLocatorEntries = false
+    }
+
+    val activeGlobalMessageIndex =
+        activeMessageTimestamp?.let { timestamp ->
+            locatorEntries.indexOfFirst { it.timestamp == timestamp }.takeIf { it >= 0 }
+        }
 
     AnimatedVisibility(
         visible = showNavigatorChip && activeMessageIndex != null,
@@ -146,11 +183,15 @@ internal fun ChatScrollNavigator(
         val bubbleColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f)
         val anchorLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
         val anchorDotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+        val progressTotalCount =
+            locatorEntries.size.takeIf { it > 0 } ?: chatHistory.size
+        val progressIndex =
+            activeGlobalMessageIndex ?: activeMessageIndex ?: 0
         val progress =
-            if (chatHistory.size <= 1) {
+            if (progressTotalCount <= 1) {
                 1f
             } else {
-                (activeMessageIndex!!.toFloat() / (chatHistory.lastIndex).toFloat()).coerceIn(0f, 1f)
+                (progressIndex.toFloat() / (progressTotalCount - 1).toFloat()).coerceIn(0f, 1f)
             }
 
         Row(
@@ -225,14 +266,21 @@ internal fun ChatScrollNavigator(
         }
     }
 
-    if (showLocatorDialog && activeMessageIndex != null) {
+    if (showLocatorDialog && activeMessageTimestamp != null) {
         ChatMessageLocatorDialog(
-            chatHistory = chatHistory,
-            currentMessageIndex = activeMessageIndex,
+            locatorEntries = locatorEntries,
+            currentMessageTimestamp = activeMessageTimestamp,
+            isLoading = isLoadingLocatorEntries,
+            loadFailed = locatorLoadFailed,
             onDismiss = { showLocatorDialog = false },
-            onJumpToMessage = { targetIndex ->
+            onJumpToMessage = { targetTimestamp ->
                 showLocatorDialog = false
-                onJumpToMessage(targetIndex)
+                val targetIndex = chatHistory.indexOfFirst { it.timestamp == targetTimestamp }
+                if (targetIndex >= 0) {
+                    onJumpToMessage(targetIndex)
+                } else {
+                    onJumpToMessageTimestamp?.invoke(targetTimestamp)
+                }
             },
         )
     }
@@ -241,9 +289,12 @@ internal fun ChatScrollNavigator(
 @Composable
 internal fun ChatScrollNavigator(
     chatHistory: List<ChatMessage>,
+    currentChatId: String? = null,
     scrollState: ScrollState,
-    messageAnchors: Map<Int, ChatScrollMessageAnchor>,
+    messageAnchors: Map<Long, ChatScrollMessageAnchor>,
     viewportHeightPx: Int,
+    loadLocatorEntries: (suspend (String) -> List<ChatMessageLocatorPreview>)? = null,
+    onJumpToMessageTimestamp: ((Long) -> Unit)? = null,
     onJumpToMessage: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -267,15 +318,21 @@ internal fun ChatScrollNavigator(
         }
     }
 
-    LaunchedEffect(scrollState, viewportHeightPx, chatHistory.size) {
+    LaunchedEffect(
+        scrollState,
+        viewportHeightPx,
+        chatHistory.size,
+        chatHistory.firstOrNull()?.timestamp,
+        chatHistory.lastOrNull()?.timestamp,
+    ) {
         snapshotFlow {
             ChatScrollNavigatorSnapshot(
                 centeredMessageIndex =
                     resolveCenteredMessageIndex(
                         scrollState = scrollState,
                         viewportHeightPx = viewportHeightPx,
+                        chatHistory = chatHistory,
                         messageAnchors = messageAnchors,
-                        totalMessageCount = chatHistory.size,
                     ),
                 isScrollInProgress = scrollState.isScrollInProgress,
             )
@@ -297,6 +354,37 @@ internal fun ChatScrollNavigator(
     }
 
     val activeMessageIndex = currentMessageIndex
+    val activeMessageTimestamp = activeMessageIndex?.let { chatHistory.getOrNull(it)?.timestamp }
+    var locatorEntries by remember(currentChatId) { mutableStateOf<List<ChatMessageLocatorPreview>>(emptyList()) }
+    var isLoadingLocatorEntries by remember(currentChatId) { mutableStateOf(false) }
+    var locatorLoadFailed by remember(currentChatId) { mutableStateOf(false) }
+
+    LaunchedEffect(
+        currentChatId,
+        chatHistory.size,
+        chatHistory.firstOrNull()?.timestamp,
+        chatHistory.lastOrNull()?.timestamp,
+    ) {
+        if (currentChatId.isNullOrBlank() || loadLocatorEntries == null) {
+            locatorEntries = chatHistory.map(::toLocatorPreview)
+            isLoadingLocatorEntries = false
+            locatorLoadFailed = false
+            return@LaunchedEffect
+        }
+
+        isLoadingLocatorEntries = true
+        locatorLoadFailed = false
+        locatorEntries =
+            runCatching { loadLocatorEntries(currentChatId) }
+                .onFailure { locatorLoadFailed = true }
+                .getOrElse { emptyList() }
+        isLoadingLocatorEntries = false
+    }
+
+    val activeGlobalMessageIndex =
+        activeMessageTimestamp?.let { timestamp ->
+            locatorEntries.indexOfFirst { it.timestamp == timestamp }.takeIf { it >= 0 }
+        }
 
     AnimatedVisibility(
         visible = showNavigatorChip && activeMessageIndex != null,
@@ -307,11 +395,15 @@ internal fun ChatScrollNavigator(
         val bubbleColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.56f)
         val anchorLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
         val anchorDotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+        val progressTotalCount =
+            locatorEntries.size.takeIf { it > 0 } ?: chatHistory.size
+        val progressIndex =
+            activeGlobalMessageIndex ?: activeMessageIndex ?: 0
         val progress =
-            if (chatHistory.size <= 1) {
+            if (progressTotalCount <= 1) {
                 1f
             } else {
-                (activeMessageIndex!!.toFloat() / (chatHistory.lastIndex).toFloat()).coerceIn(0f, 1f)
+                (progressIndex.toFloat() / (progressTotalCount - 1).toFloat()).coerceIn(0f, 1f)
             }
 
         Row(
@@ -386,14 +478,21 @@ internal fun ChatScrollNavigator(
         }
     }
 
-    if (showLocatorDialog && activeMessageIndex != null) {
+    if (showLocatorDialog && activeMessageTimestamp != null) {
         ChatMessageLocatorDialog(
-            chatHistory = chatHistory,
-            currentMessageIndex = activeMessageIndex,
+            locatorEntries = locatorEntries,
+            currentMessageTimestamp = activeMessageTimestamp,
+            isLoading = isLoadingLocatorEntries,
+            loadFailed = locatorLoadFailed,
             onDismiss = { showLocatorDialog = false },
-            onJumpToMessage = { targetIndex ->
+            onJumpToMessage = { targetTimestamp ->
                 showLocatorDialog = false
-                onJumpToMessage(targetIndex)
+                val targetIndex = chatHistory.indexOfFirst { it.timestamp == targetTimestamp }
+                if (targetIndex >= 0) {
+                    onJumpToMessage(targetIndex)
+                } else {
+                    onJumpToMessageTimestamp?.invoke(targetTimestamp)
+                }
             },
         )
     }
@@ -401,27 +500,34 @@ internal fun ChatScrollNavigator(
 
 @Composable
 private fun ChatMessageLocatorDialog(
-    chatHistory: List<ChatMessage>,
-    currentMessageIndex: Int,
+    locatorEntries: List<ChatMessageLocatorPreview>,
+    currentMessageTimestamp: Long,
+    isLoading: Boolean,
+    loadFailed: Boolean,
     onDismiss: () -> Unit,
-    onJumpToMessage: (Int) -> Unit,
+    onJumpToMessage: (Long) -> Unit,
 ) {
-    val initialIndex = (currentMessageIndex - 2).coerceAtLeast(0)
+    val currentMessageIndex = locatorEntries.indexOfFirst { it.timestamp == currentMessageTimestamp }
+    val initialIndex =
+        currentMessageIndex
+            .takeIf { it >= 0 }
+            ?.let { (it - 2).coerceAtLeast(0) }
+            ?: 0
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     var searchQuery by remember { mutableStateOf("") }
     val hiddenPlaceholderText = stringResource(R.string.chat_hidden_user_message_placeholder)
     val normalizedSearchQuery = normalizeMessageSearchText(searchQuery)
-    val locatorEntries =
-        chatHistory.mapIndexed { index, message ->
-            ChatMessageLocatorEntry(index = index, message = message)
+    val indexedEntries =
+        locatorEntries.mapIndexed { index, preview ->
+            ChatMessageLocatorEntry(index = index, preview = preview)
         }
     val filteredEntries =
-        if (normalizedSearchQuery.isBlank()) {
-            locatorEntries
+        if (normalizedSearchQuery.isBlank() || isLoading) {
+            indexedEntries
         } else {
-            locatorEntries.filter { entry ->
+            indexedEntries.filter { entry ->
                 normalizeMessageSearchText(
-                    visibleLocatorContent(entry.message, hiddenPlaceholderText)
+                    visibleLocatorContent(entry.preview, hiddenPlaceholderText)
                 ).contains(
                     normalizedSearchQuery,
                     ignoreCase = true,
@@ -429,13 +535,13 @@ private fun ChatMessageLocatorDialog(
             }
         }
     val maxMessageLength =
-        remember(chatHistory) {
-            chatHistory.maxOfOrNull { messageContentLength(it, hiddenPlaceholderText) }
+        remember(locatorEntries) {
+            locatorEntries.maxOfOrNull { messageContentLength(it, hiddenPlaceholderText) }
                 ?.coerceAtLeast(1) ?: 1
         }
 
-    LaunchedEffect(normalizedSearchQuery, filteredEntries.size, currentMessageIndex) {
-        if (filteredEntries.isEmpty()) {
+    LaunchedEffect(normalizedSearchQuery, filteredEntries.size, currentMessageIndex, isLoading) {
+        if (isLoading || filteredEntries.isEmpty()) {
             return@LaunchedEffect
         }
 
@@ -486,8 +592,8 @@ private fun ChatMessageLocatorDialog(
                             text =
                                 stringResource(
                                     R.string.chat_message_locator_current,
-                                    currentMessageIndex + 1,
-                                    chatHistory.size,
+                                    (currentMessageIndex + 1).coerceAtLeast(0),
+                                    locatorEntries.size,
                                 ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -533,7 +639,35 @@ private fun ChatMessageLocatorDialog(
                     )
                 }
 
-                if (filteredEntries.isEmpty()) {
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.loading),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                } else if (loadFailed) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.loading_failed,
+                                    stringResource(R.string.chat_message_locator_title),
+                                ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                } else if (filteredEntries.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxWidth().height(160.dp),
                         contentAlignment = Alignment.Center,
@@ -553,15 +687,15 @@ private fun ChatMessageLocatorDialog(
                     ) {
                         itemsIndexed(
                             items = filteredEntries,
-                            key = { _, entry -> "${entry.message.timestamp}_${entry.index}" },
+                            key = { _, entry -> "${entry.preview.timestamp}_${entry.index}" },
                         ) { _, entry ->
                             ChatMessageLocatorRow(
                                 index = entry.index,
-                                message = entry.message,
+                                preview = entry.preview,
                                 isCurrent = entry.index == currentMessageIndex,
                                 maxMessageLength = maxMessageLength,
                                 searchQuery = searchQuery,
-                                onClick = { onJumpToMessage(entry.index) },
+                                onClick = { onJumpToMessage(entry.preview.timestamp) },
                             )
                         }
                     }
@@ -574,7 +708,7 @@ private fun ChatMessageLocatorDialog(
 @Composable
 private fun ChatMessageLocatorRow(
     index: Int,
-    message: ChatMessage,
+    preview: ChatMessageLocatorPreview,
     isCurrent: Boolean,
     maxMessageLength: Int,
     searchQuery: String,
@@ -584,7 +718,7 @@ private fun ChatMessageLocatorRow(
     val isDarkSurface = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val (fillColor, rawPreviewTextColor, fillAlpha) =
         if (isDarkSurface) {
-            when (message.sender) {
+            when (preview.sender) {
                 "user" ->
                     Triple(
                         MaterialTheme.colorScheme.primaryContainer,
@@ -617,7 +751,7 @@ private fun ChatMessageLocatorRow(
                     )
             }
         } else {
-            when (message.sender) {
+            when (preview.sender) {
                 "user" ->
                     Triple(
                         MaterialTheme.colorScheme.primaryContainer,
@@ -674,10 +808,10 @@ private fun ChatMessageLocatorRow(
         } else {
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
         }
-    val messageLength = messageContentLength(message, hiddenPlaceholderText)
+    val messageLength = messageContentLength(preview, hiddenPlaceholderText)
     val previewText =
         buildMessagePreview(
-            message = message,
+            preview = preview,
             hiddenPlaceholderText = hiddenPlaceholderText,
             searchQuery = searchQuery,
         )
@@ -701,7 +835,7 @@ private fun ChatMessageLocatorRow(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(senderLabelRes(message.sender)),
+                    text = stringResource(senderLabelRes(preview.sender)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -769,23 +903,22 @@ private fun resolveCenteredMessageIndex(
 private fun resolveCenteredMessageIndex(
     scrollState: ScrollState,
     viewportHeightPx: Int,
-    messageAnchors: Map<Int, ChatScrollMessageAnchor>,
-    totalMessageCount: Int,
+    chatHistory: List<ChatMessage>,
+    messageAnchors: Map<Long, ChatScrollMessageAnchor>,
 ): Int? {
-    if (viewportHeightPx <= 0 || totalMessageCount <= 0 || messageAnchors.isEmpty()) {
+    if (viewportHeightPx <= 0 || chatHistory.isEmpty() || messageAnchors.isEmpty()) {
         return null
     }
 
     val viewportCenter = scrollState.value + viewportHeightPx / 2f
-    val centeredMessage =
+    val centeredTimestamp =
         messageAnchors
             .entries
-            .filter { it.key in 0 until totalMessageCount }
             .minByOrNull { (_, anchor) ->
                 abs((anchor.absoluteTopPx + anchor.heightPx / 2f) - viewportCenter)
-            } ?: return null
+            }?.key ?: return null
 
-    return centeredMessage.key.coerceIn(0, totalMessageCount - 1)
+    return chatHistory.indexOfFirst { it.timestamp == centeredTimestamp }.takeIf { it >= 0 }
 }
 
 private fun senderLabelRes(sender: String): Int =
@@ -798,21 +931,52 @@ private fun senderLabelRes(sender: String): Int =
         else -> R.string.chat_sender_other
     }
 
-private fun visibleLocatorContent(message: ChatMessage, hiddenPlaceholderText: String): String {
+private fun toLocatorPreview(message: ChatMessage): ChatMessageLocatorPreview {
+    val previewContent =
+        if (
+            message.sender == "user" &&
+            message.displayMode == ChatMessageDisplayMode.HIDDEN_PLACEHOLDER
+        ) {
+            ""
+        } else {
+            normalizeMessageSearchText(message.content).take(LOCATOR_PREVIEW_CHAR_COUNT)
+        }
+    val contentLength =
+        if (
+            message.sender == "user" &&
+            message.displayMode == ChatMessageDisplayMode.HIDDEN_PLACEHOLDER
+        ) {
+            0
+        } else {
+            normalizeMessageSearchText(message.content).length
+        }
+    return ChatMessageLocatorPreview(
+        timestamp = message.timestamp,
+        sender = message.sender,
+        previewContent = previewContent,
+        contentLength = contentLength,
+        displayMode = message.displayMode.name,
+    )
+}
+
+private fun visibleLocatorContent(preview: ChatMessageLocatorPreview, hiddenPlaceholderText: String): String {
     return if (
-        message.sender == "user" &&
-        message.displayMode == ChatMessageDisplayMode.HIDDEN_PLACEHOLDER
+        preview.sender == "user" &&
+        preview.resolvedDisplayMode == ChatMessageDisplayMode.HIDDEN_PLACEHOLDER
     ) {
         hiddenPlaceholderText
     } else {
-        message.content
+        preview.previewContent
     }
 }
 
 private fun messageContentLength(
-    message: ChatMessage,
+    preview: ChatMessageLocatorPreview,
     hiddenPlaceholderText: String,
-): Int = visibleLocatorContent(message, hiddenPlaceholderText).length.coerceAtLeast(1)
+): Int =
+    preview.contentLength
+        .takeIf { it > 0 }
+        ?: visibleLocatorContent(preview, hiddenPlaceholderText).length.coerceAtLeast(1)
 
 private fun messageBarFraction(messageLength: Int, maxMessageLength: Int): Float {
     if (maxMessageLength <= 0) {
@@ -822,13 +986,13 @@ private fun messageBarFraction(messageLength: Int, maxMessageLength: Int): Float
 }
 
 private fun buildMessagePreview(
-    message: ChatMessage,
+    preview: ChatMessageLocatorPreview,
     hiddenPlaceholderText: String,
     searchQuery: String = "",
 ): String {
-    val content = normalizeMessageSearchText(visibleLocatorContent(message, hiddenPlaceholderText))
+    val content = normalizeMessageSearchText(visibleLocatorContent(preview, hiddenPlaceholderText))
     if (content.isEmpty()) {
-        return message.sender
+        return preview.sender
     }
 
     val normalizedSearchQuery = normalizeMessageSearchText(searchQuery)

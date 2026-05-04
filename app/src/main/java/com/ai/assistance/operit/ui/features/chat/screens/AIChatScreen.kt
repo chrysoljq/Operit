@@ -309,6 +309,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val showChatHistorySelector by actualViewModel.showChatHistorySelector.collectAsState()
     val chatHistories by actualViewModel.chatHistories.collectAsState()
     val currentChatId by actualViewModel.currentChatId.collectAsState()
+    val hasNewerDisplayHistory by actualViewModel.hasNewerDisplayHistory.collectAsState()
+    val isLoadingDisplayWindow by actualViewModel.isLoadingDisplayWindow.collectAsState()
     val popupMessage by actualViewModel.popupMessage.collectAsState()
     // 收集滚动事件
     val scrollToBottomEvent = actualViewModel.scrollToBottomEvent
@@ -671,31 +673,26 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val onAutoScrollToBottomChange = remember { { it: Boolean -> autoScrollToBottom = it } }
     val requestAutoScrollToBottom = remember { { autoScrollToBottom = true } }
     val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val latestChatHistory by rememberUpdatedState(chatHistory)
+    val latestAutoScrollToBottom by rememberUpdatedState(autoScrollToBottom)
+    val latestHasNewerDisplayHistory by rememberUpdatedState(hasNewerDisplayHistory)
+    val latestIsLoadingDisplayWindow by rememberUpdatedState(isLoadingDisplayWindow)
 
     // 处理来自ViewModel的滚动事件（流式输出时）
     LaunchedEffect(Unit) {
         scrollToBottomEvent.collect {
-            if (autoScrollToBottom) {
+            if (
+                latestAutoScrollToBottom &&
+                    !latestHasNewerDisplayHistory &&
+                    !latestIsLoadingDisplayWindow
+            ) {
                 try {
-                    if (chatHistory.isNotEmpty()) {
+                    if (latestChatHistory.isNotEmpty()) {
                         scrollState.animateScrollTo(scrollState.maxValue)
                     }
                 } catch (e: Exception) {
                     // AppLogger.e("AIChatScreen", "自动滚动失败", e)
                 }
-            }
-        }
-    }
-
-    // 消息新增时的自动滚动
-    LaunchedEffect(chatHistory.size) {
-        if (autoScrollToBottom) {
-            try {
-                if (chatHistory.isNotEmpty()) {
-                    scrollState.animateScrollTo(scrollState.maxValue)
-                }
-            } catch (e: Exception) {
-                // AppLogger.e("AIChatScreen", "自动滚动失败", e)
             }
         }
     }

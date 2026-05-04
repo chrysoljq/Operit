@@ -16,6 +16,7 @@ private const val ARTIFACT_MARKET_JSON_PREFIX = "<!-- operit-market-json: "
 private const val ARTIFACT_MARKET_PARSER_VERSION = "forge-v3"
 private const val SCRIPT_MARKET_LABEL = "script-artifact"
 private const val PACKAGE_MARKET_LABEL = "package-artifact"
+private const val PLACEHOLDER_MARKET_ARTIFACT_ID = "artifact"
 private val APP_VERSION_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?$""")
 private val MARKET_ARTIFACT_JSON =
     Json {
@@ -267,7 +268,24 @@ fun normalizeMarketArtifactId(raw: String): String {
             .replace(Regex("[^a-z0-9]+"), "-")
             .replace(Regex("-+"), "-")
             .trim('-')
-    return normalized.ifBlank { "artifact" }
+    return normalized.ifBlank { PLACEHOLDER_MARKET_ARTIFACT_ID }
+}
+
+fun isPlaceholderMarketArtifactId(raw: String): Boolean {
+    return normalizeMarketArtifactId(raw) == PLACEHOLDER_MARKET_ARTIFACT_ID
+}
+
+fun requiresStandaloneArtifactIdUpgrade(runtimePackageId: String): Boolean {
+    val trimmed = runtimePackageId.trim()
+    return trimmed.isNotBlank() &&
+        isPlaceholderMarketArtifactId(trimmed) &&
+        !trimmed.equals(PLACEHOLDER_MARKET_ARTIFACT_ID, ignoreCase = true)
+}
+
+fun validateStandaloneArtifactRuntimePackageId(runtimePackageId: String) {
+    require(!requiresStandaloneArtifactIdUpgrade(runtimePackageId)) {
+        "当前包 ID「$runtimePackageId」无法生成稳定的市场项目 ID。请改用包含英文字母或数字的包 ID（可含 -、_、.），再重新发布。"
+    }
 }
 
 fun sameArtifactRuntimePackageId(
@@ -303,6 +321,9 @@ fun buildPublishArtifactDescriptor(
     publishContext: ArtifactPublishClusterContext? = null
 ): PublishArtifactDescriptor {
     val runtimePackageId = localArtifact.packageName.trim().ifBlank { localArtifact.packageName }
+    if (publishContext == null) {
+        validateStandaloneArtifactRuntimePackageId(runtimePackageId)
+    }
     val normalizedRuntimePackageId = normalizeMarketArtifactId(runtimePackageId)
     val contextRuntimePackageId = publishContext?.runtimePackageId?.trim().orEmpty()
     if (contextRuntimePackageId.isNotBlank()) {

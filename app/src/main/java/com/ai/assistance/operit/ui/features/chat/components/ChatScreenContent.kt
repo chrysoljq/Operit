@@ -179,7 +179,9 @@ fun ChatScreenContent(
     var pendingRewindContent by remember { mutableStateOf<String?>(null) }
     var rollbackPreview by remember { mutableStateOf<List<WorkspaceBackupManager.WorkspaceFileChange>>(emptyList()) }
     var rewindPreview by remember { mutableStateOf<List<WorkspaceBackupManager.WorkspaceFileChange>>(emptyList()) }
-    var hasHiddenNewerMessages by remember { mutableStateOf(false) }
+    val hasOlderDisplayHistory by actualViewModel.hasOlderDisplayHistory.collectAsState()
+    val hasNewerDisplayHistory by actualViewModel.hasNewerDisplayHistory.collectAsState()
+    val isLoadingDisplayWindow by actualViewModel.isLoadingDisplayWindow.collectAsState()
     
     // 监听朗读状态
     val isSpeechSessionActive by actualViewModel.isSpeechSessionActive.collectAsState()
@@ -252,11 +254,28 @@ fun ChatScreenContent(
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) },
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) },
                         onCreateBranch = { timestamp -> actualViewModel.createBranch(timestamp) },
-                        onInsertSummary = { index, message -> actualViewModel.insertSummary(index, message) },
+                        onInsertSummary = { message -> actualViewModel.insertSummary(message) },
                         onMentionRoleFromAvatar = { roleName -> actualViewModel.insertRoleMention(roleName) },
                         autoScrollToBottom = autoScrollToBottom,
-                        onHasHiddenNewerMessagesChange = { hasHiddenNewerMessages = it },
                         onAutoScrollToBottomChange = onAutoScrollToBottomChange,
+                        hasOlderDisplayHistory = hasOlderDisplayHistory,
+                        hasNewerDisplayHistory = hasNewerDisplayHistory,
+                        isLoadingDisplayWindow = isLoadingDisplayWindow,
+                        onLoadOlderDisplayWindow = {
+                            actualViewModel.loadOlderMessagesForCurrentChat()
+                        },
+                        onLoadNewerDisplayWindow = {
+                            actualViewModel.loadNewerMessagesForCurrentChat()
+                        },
+                        onShowLatestDisplayWindow = {
+                            actualViewModel.showLatestMessagesForCurrentChat()
+                        },
+                        loadMessageLocatorEntries = { chatId ->
+                            actualViewModel.loadChatMessageLocatorPreviews(chatId)
+                        },
+                        onRevealMessageForLocator = { targetTimestamp ->
+                            actualViewModel.revealMessageForCurrentChat(targetTimestamp)
+                        },
                         topPadding = headerHeight,
                         bottomPadding = bottomInset,
                         chatStyle = chatStyle,
@@ -348,12 +367,29 @@ fun ChatScreenContent(
                         onSpeakMessage = { content -> actualViewModel.speakMessage(content) },
                         onReplyToMessage = { message -> actualViewModel.setReplyToMessage(message) },
                         onCreateBranch = { timestamp -> actualViewModel.createBranch(timestamp) },
-                        onInsertSummary = { index, message -> actualViewModel.insertSummary(index, message) },
+                        onInsertSummary = { message -> actualViewModel.insertSummary(message) },
                         onAutoReadMessage = { content -> actualViewModel.enableAutoReadAndSpeak(content) },
                         onMentionRoleFromAvatar = { roleName -> actualViewModel.insertRoleMention(roleName) },
                         autoScrollToBottom = autoScrollToBottom,
-                        onHasHiddenNewerMessagesChange = { hasHiddenNewerMessages = it },
                         onAutoScrollToBottomChange = onAutoScrollToBottomChange,
+                        hasOlderDisplayHistory = hasOlderDisplayHistory,
+                        hasNewerDisplayHistory = hasNewerDisplayHistory,
+                        isLoadingDisplayWindow = isLoadingDisplayWindow,
+                        onLoadOlderDisplayWindow = {
+                            actualViewModel.loadOlderMessagesForCurrentChat()
+                        },
+                        onLoadNewerDisplayWindow = {
+                            actualViewModel.loadNewerMessagesForCurrentChat()
+                        },
+                        onShowLatestDisplayWindow = {
+                            actualViewModel.showLatestMessagesForCurrentChat()
+                        },
+                        loadMessageLocatorEntries = { chatId ->
+                            actualViewModel.loadChatMessageLocatorPreviews(chatId)
+                        },
+                        onRevealMessageForLocator = { targetTimestamp ->
+                            actualViewModel.revealMessageForCurrentChat(targetTimestamp)
+                        },
                         bottomPadding = bottomInset,
                         chatStyle = chatStyle,
                         cursorUserBubbleLiquidGlass = cursorUserBubbleLiquidGlass,
@@ -778,7 +814,10 @@ fun ChatScreenContent(
             scrollState = scrollState,
             coroutineScope = coroutineScope,
             autoScrollToBottom = autoScrollToBottom,
-            hasHiddenNewerMessages = hasHiddenNewerMessages,
+            hasNewerDisplayHistory = hasNewerDisplayHistory,
+            onRequestLatestMessages = {
+                actualViewModel.showLatestMessagesForCurrentChat()
+            },
             onAutoScrollToBottomChange = onAutoScrollToBottomChange,
             modifier = Modifier
                 .align(Alignment.BottomCenter)

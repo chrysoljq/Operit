@@ -111,7 +111,6 @@ class ArtifactProjectMarketViewModel(
     private val supportedTypes = scope.supportedTypes()
     private val currentBrowsePages = mutableMapOf<PublishArtifactType, Int>()
     private val totalBrowsePages = mutableMapOf<PublishArtifactType, Int>()
-    private val loadingProjectIds = mutableSetOf<String>()
     private var searchJob: Job? = null
 
     fun loadMarketData() {
@@ -272,7 +271,6 @@ class ArtifactProjectMarketViewModel(
                         if (projectId.isBlank()) return@mapNotNull null
                         browseByProject[projectId] ?: buildSearchProjectEntry(projectId, nodes)
                     }
-            prefetchProjectDetails(_searchItems.value)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -381,7 +379,6 @@ class ArtifactProjectMarketViewModel(
                     _browseItems.value + loadedItems
                 }
             _browseItems.value = mergedItems.distinctBy { it.projectId }
-            prefetchProjectDetails(_browseItems.value)
         } else if (reset) {
             _browseItems.value = emptyList()
         }
@@ -412,49 +409,6 @@ class ArtifactProjectMarketViewModel(
             node = node,
             logTag = TAG
         )
-    }
-
-    private fun prefetchProjectDetails(items: Collection<ArtifactProjectRankEntryResponse>) {
-        val missingProjectIds =
-            items
-                .filter(::shouldPrefetchProjectDetail)
-                .map { it.projectId.trim() }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .filter { projectId ->
-                    !_projectDetails.value.containsKey(projectId) && loadingProjectIds.add(projectId)
-                }
-        if (missingProjectIds.isEmpty()) {
-            return
-        }
-
-        viewModelScope.launch {
-            val loadedProjects =
-                coroutineScope {
-                    missingProjectIds.map { projectId ->
-                        async {
-                            projectId to marketStatsApiService.getArtifactProject(projectId)
-                        }
-                    }.awaitAll()
-                }
-
-            val additions = mutableMapOf<String, ArtifactProjectDetailResponse>()
-            loadedProjects.forEach { (projectId, result) ->
-                loadingProjectIds.remove(projectId)
-                result.fold(
-                    onSuccess = { detail ->
-                        additions[projectId] = detail
-                    },
-                    onFailure = { error ->
-                        AppLogger.w(TAG, "Failed to prefetch artifact project $projectId: ${error.message}")
-                    }
-                )
-            }
-
-            if (additions.isNotEmpty()) {
-                _projectDetails.value = _projectDetails.value + additions
-            }
-        }
     }
 
     private fun resolveProjectInstallState(
@@ -520,14 +474,6 @@ class ArtifactProjectMarketViewModel(
             ?: nodes.firstOrNull { it.nodeId == projectDetail?.defaultNodeId }
             ?: nodes.firstOrNull { it.nodeId == item.latestOpenNodeId }
             ?: nodes.firstOrNull { it.nodeId == item.latestNodeId }
-    }
-
-    private fun shouldPrefetchProjectDetail(item: ArtifactProjectRankEntryResponse): Boolean {
-        return item.defaultNode?.let { defaultNode ->
-            defaultNode.runtimePackageId.isBlank() ||
-                defaultNode.sha256.isBlank() ||
-                item.runtimePackageNodeSha256s.none { it.isNotBlank() }
-        } ?: true
     }
 
     private suspend fun aggregateResults(

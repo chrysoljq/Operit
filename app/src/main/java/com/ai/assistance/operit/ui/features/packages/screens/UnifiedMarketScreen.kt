@@ -108,19 +108,19 @@ private fun RefreshMarketPaneOnEnter(onRefresh: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnRefresh by rememberUpdatedState(onRefresh)
 
-    LaunchedEffect(Unit) {
-        currentOnRefresh()
-    }
-
     DisposableEffect(lifecycleOwner) {
+        val lifecycle = lifecycleOwner.lifecycle
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            currentOnRefresh()
+        }
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 currentOnRefresh()
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
+        lifecycle.addObserver(observer)
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+            lifecycle.removeObserver(observer)
         }
     }
 }

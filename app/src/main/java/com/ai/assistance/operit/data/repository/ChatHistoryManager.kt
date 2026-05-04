@@ -13,6 +13,7 @@ import com.ai.assistance.operit.data.db.AppDatabase
 import com.ai.assistance.operit.data.model.ChatEntity
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.ChatMessageLocatorPreview
 import com.ai.assistance.operit.data.model.CharacterCardChatStats
 import com.ai.assistance.operit.data.model.CharacterGroupChatStats
 import com.ai.assistance.operit.data.model.MessageEntity
@@ -73,6 +74,7 @@ private val Context.currentChatIdDataStore by preferencesDataStore(name = "curre
 class ChatHistoryManager private constructor(private val context: Context) {
     companion object {
         private const val TAG = "ChatHistoryManager"
+        private const val LOCATOR_PREVIEW_CHAR_COUNT = 48
 
         @Volatile
         private var INSTANCE: ChatHistoryManager? = null
@@ -141,10 +143,8 @@ class ChatHistoryManager private constructor(private val context: Context) {
         if (messageEntities.isEmpty()) {
             return emptyList()
         }
-        val visibleTimestamps = messageEntities.map { it.timestamp }.toSet()
-        val variants =
-            messageVariantDao.getVariantsForChat(chatId)
-                .filter { it.messageTimestamp in visibleTimestamps }
+        val visibleTimestamps = messageEntities.map { it.timestamp }
+        val variants = messageVariantDao.getVariantsForMessages(chatId, visibleTimestamps)
         return hydrateMessages(messageEntities, variants)
     }
 
@@ -631,62 +631,191 @@ class ChatHistoryManager private constructor(private val context: Context) {
         }
     }
 
-    // 添加单条消息，并返回最终持久化的消息（位置插入时时间戳可能被重排）
-    suspend fun addMessage(chatId: String, message: ChatMessage, position: Int? = null): ChatMessage {
-        chatMutex(chatId).withLock {
-            try {
-                val messageToPersist =
-                    if (position != null) {
-                        val messages =
-                            messageDao.getMessagesForChat(
-                                chatId
-                            ) // Already ordered by timestamp
-                        if (messages.isEmpty()) {
-                            message
-                        } else {
-                            val validPosition = position.coerceIn(0, messages.size)
-                            val newTimestamp =
-                                when {
-                                    validPosition == 0 -> messages.first().timestamp - 1
-                                    validPosition >= messages.size ->
-                                        messages.last().timestamp + 1
+    private suspend fun persistMessageLocked(chatId: String, messageToPersist: ChatMessage): ChatMessage {
+        val messageEntity =
+            MessageEntity.fromChatMessage(
+                chatId = chatId,
+                message = messageToPersist,
+                orderIndex = 0
+            )
+        messageDao.insertMessage(messageEntity)
 
-                                    else -> {
-                                        val before = messages[validPosition - 1].timestamp
-                                        val after = messages[validPosition].timestamp
-                                        // Take the average to find a point in between.
-                                        // This assumes timestamps have enough space.
-                                        before + (after - before) / 2
-                                    }
-                                }
-                            message.copy(timestamp = newTimestamp)
-                        }
-                    } else {
-                        message
-                    }
+        chatDao.getChatById(chatId)?.let { chat ->
+            chatDao.updateChatMetadata(
+                chatId = chatId,
+                title = chat.title,
+                timestamp = System.currentTimeMillis(),
+                inputTokens = chat.inputTokens,
+                outputTokens = chat.outputTokens,
+                currentWindowSize = chat.currentWindowSize
+            )
+        }
 
-                // Create message entity, orderIndex is no longer used for ordering.
-                val messageEntity =
-                    MessageEntity.fromChatMessage(
-                        chatId = chatId,
-                        message = messageToPersist,
-                        orderIndex = 0
+        return messageToPersist
+    }
+
+    private suspend fun resolveAnchoredMessageLocked(
+        chatId: String,
+        message: ChatMessage,
+        beforeTimestamp: Long?,
+        afterTimestamp: Long?,
+    ): ChatMessage? {
+        if (beforeTimestamp == null && afterTimestamp == null) {
+            val hasAnyMessages = messageDao.getMessagesForChatAsc(chatId, 1).isNotEmpty()
+            return if (hasAnyMessages) {
+                AppLogger.w(TAG, "缺少插入锚点，拒绝在非空聊天中插入消息: chatId=$chatId")
+                null
+            } else {
+                message
+            }
+        }
+
+        val beforeMessage =
+            when {
+                beforeTimestamp != null -> messageDao.getMessageByTimestamp(chatId, beforeTimestamp)
+                afterTimestamp != null ->
+                    messageDao
+                        .getMessagesForChatBeforeTimestampExclusiveDesc(
+                            chatId,
+                            afterTimestamp,
+                            1,
+                        ).firstOrNull()
+
+                else -> null
+            }
+        val afterMessage =
+            when {
+                beforeTimestamp != null && afterTimestamp == null ->
+                    messageDao
+                        .getMessagesForChatAfterTimestampExclusiveAsc(
+                            chatId,
+                            beforeTimestamp,
+                            1,
+                        ).firstOrNull()
+                afterTimestamp != null -> messageDao.getMessageByTimestamp(chatId, afterTimestamp)
+                else -> null
+            }
+
+        if (beforeTimestamp != null && beforeMessage == null) {
+            AppLogger.w(
+                TAG,
+                "插入消息失败，未找到前置锚点: chatId=$chatId, beforeTimestamp=$beforeTimestamp",
+            )
+            return null
+        }
+        if (afterTimestamp != null && afterMessage == null) {
+            AppLogger.w(
+                TAG,
+                "插入消息失败，未找到后置锚点: chatId=$chatId, afterTimestamp=$afterTimestamp",
+            )
+            return null
+        }
+
+        val actualBeforeTimestamp = beforeMessage?.timestamp
+        val actualAfterTimestamp = afterMessage?.timestamp
+
+        if (
+            actualBeforeTimestamp != null &&
+            actualAfterTimestamp != null &&
+            actualBeforeTimestamp >= actualAfterTimestamp
+        ) {
+            AppLogger.w(
+                TAG,
+                "插入消息失败，前后锚点顺序非法: chatId=$chatId, before=$actualBeforeTimestamp, after=$actualAfterTimestamp",
+            )
+            return null
+        }
+
+        return when {
+            actualBeforeTimestamp != null && actualAfterTimestamp != null -> {
+                if (actualAfterTimestamp - actualBeforeTimestamp <= 1L) {
+                    AppLogger.w(
+                        TAG,
+                        "插入消息失败，前后锚点时间戳间隔不足: chatId=$chatId, before=$actualBeforeTimestamp, after=$actualAfterTimestamp",
                     )
-                messageDao.insertMessage(messageEntity)
-
-                // Update chat metadata
-                chatDao.getChatById(chatId)?.let { chat ->
-                    chatDao.updateChatMetadata(
-                        chatId = chatId,
-                        title = chat.title,
-                        timestamp = System.currentTimeMillis(),
-                        inputTokens = chat.inputTokens,
-                        outputTokens = chat.outputTokens,
-                        currentWindowSize = chat.currentWindowSize
+                    null
+                } else {
+                    message.copy(
+                        timestamp =
+                            actualBeforeTimestamp +
+                                (actualAfterTimestamp - actualBeforeTimestamp) / 2L,
                     )
                 }
+            }
 
-                return messageToPersist
+            actualBeforeTimestamp != null -> {
+                message.copy(timestamp = actualBeforeTimestamp + 1L)
+            }
+
+            actualAfterTimestamp != null -> {
+                message.copy(timestamp = actualAfterTimestamp - 1L)
+            }
+
+            else -> message
+        }
+    }
+
+    suspend fun addSummaryMessageBetweenSliceNeighbors(
+        chatId: String,
+        message: ChatMessage,
+        beforeTimestamp: Long?,
+        afterTimestamp: Long?,
+    ): ChatMessage? {
+        chatMutex(chatId).withLock {
+            try {
+                val beforeMessage =
+                    when {
+                        beforeTimestamp != null -> messageDao.getMessageByTimestamp(chatId, beforeTimestamp)
+                        afterTimestamp != null ->
+                            messageDao
+                                .getMessagesForChatBeforeTimestampExclusiveDesc(
+                                    chatId,
+                                    afterTimestamp,
+                                    1,
+                                ).firstOrNull()
+                        else -> null
+                    }
+                val afterMessage =
+                    when {
+                        beforeTimestamp != null && afterTimestamp == null ->
+                            messageDao
+                                .getMessagesForChatAfterTimestampExclusiveAsc(
+                                    chatId,
+                                    beforeTimestamp,
+                                    1,
+                                ).firstOrNull()
+                        afterTimestamp != null -> messageDao.getMessageByTimestamp(chatId, afterTimestamp)
+                        else -> null
+                    }
+
+                if (beforeMessage?.sender == "summary" || afterMessage?.sender == "summary") {
+                    AppLogger.w(
+                        TAG,
+                        "相邻消息已是 summary，取消插入: chatId=$chatId, before=${beforeMessage?.timestamp}, after=${afterMessage?.timestamp}",
+                    )
+                    return null
+                }
+
+                val messageToPersist =
+                    resolveAnchoredMessageLocked(
+                        chatId = chatId,
+                        message = message,
+                        beforeTimestamp = beforeTimestamp,
+                        afterTimestamp = afterTimestamp,
+                    ) ?: return null
+                return persistMessageLocked(chatId, messageToPersist)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to add summary message between slice neighbors for chat $chatId", e)
+                throw e
+            }
+        }
+    }
+
+    // 添加单条消息，并返回最终持久化的消息
+    suspend fun addMessage(chatId: String, message: ChatMessage): ChatMessage {
+        chatMutex(chatId).withLock {
+            try {
+                return persistMessageLocked(chatId, message)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to add message for chat $chatId", e)
                 throw e
@@ -1503,67 +1632,46 @@ class ChatHistoryManager private constructor(private val context: Context) {
                 val parentChat = chatDao.getChatById(parentChatId)
                     ?: throw IllegalArgumentException(context.getString(R.string.chat_history_parent_not_exist, parentChatId))
 
-                // 获取父对话的消息
-                val parentMessageEntities = messageDao.getMessagesForChat(parentChatId)
+                val branchEntity =
+                    ChatEntity(
+                        title = parentChat.title,
+                        inputTokens = parentChat.inputTokens,
+                        outputTokens = parentChat.outputTokens,
+                        currentWindowSize = parentChat.currentWindowSize,
+                        group = parentChat.group,
+                        workspace = parentChat.workspace,
+                        workspaceEnv = parentChat.workspaceEnv,
+                        parentChatId = parentChatId,
+                        characterCardName = parentChat.characterCardName,
+                        characterGroupId = parentChat.characterGroupId,
+                        locked = false,
+                    )
 
-                // 如果指定了时间戳，只复制到该时间戳的消息
-                val messagesToCopy = if (upToMessageTimestamp != null) {
-                    parentMessageEntities.filter { it.timestamp <= upToMessageTimestamp }
-                } else {
-                    parentMessageEntities
-                }
-                val copiedTimestamps = messagesToCopy.map { it.timestamp }.toSet()
-                val variantsToCopy =
-                    if (messagesToCopy.isEmpty()) {
-                        emptyList()
-                    } else {
-                        messageVariantDao.getVariantsForChat(parentChatId)
-                            .filter { it.messageTimestamp in copiedTimestamps }
-                    }
-                val branchMessages = hydrateMessages(messagesToCopy, variantsToCopy)
-
-                // 创建新对话
-                // 分支标题保持与父对话相同，通过 parentChatId 字段和 UI 图标来区分
-                val branchHistory = ChatHistory(
-                    title = parentChat.title,
-                    messages = branchMessages,
-                    inputTokens = parentChat.inputTokens, // 继承父对话的token统计
-                    outputTokens = parentChat.outputTokens, // 继承父对话的token统计
-                    currentWindowSize = parentChat.currentWindowSize, // 继承父对话的窗口大小
-                    group = parentChat.group,
-                    workspace = parentChat.workspace,
-                    parentChatId = parentChatId,
-                    characterCardName = parentChat.characterCardName, // 分支继承父对话的角色卡绑定
-                    characterGroupId = parentChat.characterGroupId // 分支继承父对话的群组绑定
-                )
-
-                // 保存分支对话
-                val branchEntity = ChatEntity.fromChatHistory(branchHistory)
                 chatDao.insertChat(branchEntity)
 
-                // 复制消息
-                val messageEntities = messagesToCopy.mapIndexed { index, message ->
-                    message.copy(
-                        messageId = 0,
-                        chatId = branchEntity.id,
-                        orderIndex = index,
+                val copiedMessageCount =
+                    messageDao.countMessagesForChatUpToTimestamp(parentChatId, upToMessageTimestamp)
+                if (copiedMessageCount > 0) {
+                    messageDao.copyMessagesToChat(
+                        sourceChatId = parentChatId,
+                        targetChatId = branchEntity.id,
+                        upToTimestampInclusive = upToMessageTimestamp,
+                    )
+                    messageVariantDao.copyVariantsToChat(
+                        sourceChatId = parentChatId,
+                        targetChatId = branchEntity.id,
+                        upToTimestampInclusive = upToMessageTimestamp,
                     )
                 }
-                messageDao.insertMessages(messageEntities)
-                if (variantsToCopy.isNotEmpty()) {
-                    messageVariantDao.insertVariants(
-                        variantsToCopy.map { variant ->
-                            variant.copy(variantId = 0, chatId = branchEntity.id)
-                        }
-                    )
-                }
+
+                val branchHistory = branchEntity.toChatHistory(emptyList())
 
                 // 设置为当前聊天
                 setCurrentChatId(branchHistory.id)
 
                 AppLogger.d(
                     TAG,
-                    "创建分支对话: ${branchHistory.id}, 父对话: $parentChatId, 消息数: ${messagesToCopy.size}"
+                    "创建分支对话: ${branchHistory.id}, 父对话: $parentChatId, 消息数: $copiedMessageCount"
                 )
                 branchHistory
             } catch (e: Exception) {
@@ -1946,6 +2054,247 @@ class ChatHistoryManager private constructor(private val context: Context) {
                         e
                 )
                 throw e
+            }
+        }
+    }
+
+    suspend fun getLatestSummaryTimestamp(chatId: String): Long? {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.getLatestSummaryTimestamp(chatId)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "获取最新 summary 时间戳失败", e)
+                null
+            }
+        }
+    }
+
+    suspend fun loadMessagesAfterLatestSummaryInRange(
+        chatId: String,
+        beforeTimestampExclusive: Long? = null,
+        upToTimestampInclusive: Long? = null,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val latestSummaryTimestamp =
+                    when {
+                        beforeTimestampExclusive != null ->
+                            messageDao.getLatestSummaryTimestampBefore(
+                                chatId,
+                                beforeTimestampExclusive,
+                            )
+                        upToTimestampInclusive != null ->
+                            messageDao.getLatestSummaryTimestampUpTo(
+                                chatId,
+                                upToTimestampInclusive,
+                            )
+                        else -> messageDao.getLatestSummaryTimestamp(chatId)
+                    }
+                val messageEntities =
+                    messageDao.getMessagesForChatInRangeAsc(
+                        chatId = chatId,
+                        afterTimestampExclusive = latestSummaryTimestamp,
+                        beforeTimestampExclusive = beforeTimestampExclusive,
+                        upToTimestampInclusive = upToTimestampInclusive,
+                    )
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按总结窗口加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun hasUserMessage(chatId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.existsUserMessage(chatId)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "检查聊天是否存在用户消息失败", e)
+                false
+            }
+        }
+    }
+
+    suspend fun loadRuntimeChatMessages(chatId: String): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val latestSummaryTimestamp = messageDao.getLatestSummaryTimestamp(chatId)
+                val messageEntities =
+                    if (latestSummaryTimestamp != null) {
+                        messageDao.getMessagesForChatFromTimestampAsc(chatId, latestSummaryTimestamp)
+                    } else {
+                        messageDao.getMessagesForChat(chatId)
+                    }
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "加载运行态聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadChatMessageLocatorPreviews(chatId: String): List<ChatMessageLocatorPreview> {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.getLocatorPreviewsForChat(chatId, LOCATOR_PREVIEW_CHAR_COUNT)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "加载聊天定位轻量预览失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadChatMessagesFromTimestamp(
+        chatId: String,
+        startTimestampInclusive: Long,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    messageDao.getMessagesForChatFromTimestampAsc(chatId, startTimestampInclusive)
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按起始时间加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadChatMessagesWindow(
+        chatId: String,
+        startTimestampInclusive: Long,
+        endTimestampInclusive: Long,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    messageDao.getMessagesForChatWindowAsc(
+                        chatId = chatId,
+                        startTimestampInclusive = startTimestampInclusive,
+                        endTimestampInclusive = endTimestampInclusive,
+                    )
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按时间窗口加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadChatMessagesAscAfter(
+        chatId: String,
+        afterTimestampExclusive: Long,
+        limit: Int,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    messageDao.getMessagesForChatAfterTimestampExclusiveAsc(
+                        chatId,
+                        afterTimestampExclusive,
+                        limit,
+                    )
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按起始时间后分页加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadOlderChatMessages(
+        chatId: String,
+        beforeTimestampExclusive: Long,
+        limit: Int,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    messageDao
+                        .getMessagesForChatBeforeTimestampExclusiveDesc(
+                            chatId,
+                            beforeTimestampExclusive,
+                            limit,
+                        ).asReversed()
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "加载更早聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun hasMessagesBefore(
+        chatId: String,
+        beforeTimestampExclusive: Long,
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.existsMessagesBeforeTimestamp(chatId, beforeTimestampExclusive)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "检查是否存在更早聊天消息失败", e)
+                false
+            }
+        }
+    }
+
+    suspend fun hasMessagesAfter(
+        chatId: String,
+        afterTimestampExclusive: Long,
+    ): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.existsMessagesAfterTimestamp(chatId, afterTimestampExclusive)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "检查是否存在更新聊天消息失败", e)
+                false
+            }
+        }
+    }
+
+    suspend fun loadChatMessagesDesc(
+        chatId: String,
+        limit: Int,
+        beforeTimestampExclusive: Long? = null,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    if (beforeTimestampExclusive != null) {
+                        messageDao.getMessagesForChatBeforeTimestampExclusiveDesc(
+                            chatId,
+                            beforeTimestampExclusive,
+                            limit,
+                        )
+                    } else {
+                        messageDao.getMessagesForChatDesc(chatId, limit)
+                    }
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按倒序分页加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
+    suspend fun loadChatMessagesDescUpTo(
+        chatId: String,
+        maxTimestampInclusive: Long,
+        limit: Int,
+    ): List<ChatMessage> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val messageEntities =
+                    messageDao.getMessagesForChatBeforeTimestampDesc(
+                        chatId,
+                        maxTimestampInclusive,
+                        limit,
+                    )
+                hydrateMessages(chatId, messageEntities)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "按截止时间倒序分页加载聊天消息失败", e)
+                emptyList()
             }
         }
     }

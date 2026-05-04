@@ -531,18 +531,21 @@ class WebChatHttpBridge(
 
         val page = runBlocking {
             val structuredRenderPreferences = resolveStructuredRenderPreferences()
-            val allMessages = chatHistoryManager.loadChatMessages(chatId)
-            val eligibleMessages = if (beforeTimestamp != null) {
-                allMessages.filter { it.timestamp < beforeTimestamp }
-            } else {
-                allMessages
-            }
-            val pageMessages = eligibleMessages.takeLast(limit)
+            val fetchedMessagesDesc = chatHistoryManager.loadChatMessagesDesc(
+                chatId = chatId,
+                limit = limit + 1,
+                beforeTimestampExclusive = beforeTimestamp
+            )
+            val hasMoreBefore = fetchedMessagesDesc.size > limit
+            val pageMessages =
+                fetchedMessagesDesc
+                    .take(limit)
+                    .asReversed()
             WebChatMessagesPage(
                 messages = pageMessages.map { message ->
                     buildWebMessage(chatId, message, structuredRenderPreferences = structuredRenderPreferences)
                 },
-                hasMoreBefore = eligibleMessages.size > pageMessages.size,
+                hasMoreBefore = hasMoreBefore,
                 nextBeforeTimestamp = pageMessages.firstOrNull()?.timestamp
             )
         }

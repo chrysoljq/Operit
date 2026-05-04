@@ -34,6 +34,7 @@ import kotlinx.coroutines.launch
  * @param scrollState 滚动状态
  * @param coroutineScope 协程作用域
  * @param autoScrollToBottom 是否自动滚动到底部
+ * @param hasNewerDisplayHistory 当前窗口下方是否还有可切换到的更新内容
  * @param onAutoScrollToBottomChange 自动滚动状态变化回调
  * @param modifier 修饰符
  */
@@ -42,7 +43,8 @@ fun ScrollToBottomButton(
     scrollState: ScrollState,
     coroutineScope: CoroutineScope,
     autoScrollToBottom: Boolean,
-    hasHiddenNewerMessages: Boolean = false,
+    hasNewerDisplayHistory: Boolean = false,
+    onRequestLatestMessages: (() -> Unit)? = null,
     onAutoScrollToBottomChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -64,7 +66,7 @@ fun ScrollToBottomButton(
                     } else {
                         val isAtBottom =
                             scrollState.value >= scrollState.maxValue &&
-                                !hasHiddenNewerMessages
+                                !hasNewerDisplayHistory
                         if (isAtBottom && !autoScrollToBottom) {
                             onAutoScrollToBottomChange(true)
                             showScrollButton = false
@@ -80,6 +82,9 @@ fun ScrollToBottomButton(
         modifier = modifier,
         onClick = {
             coroutineScope.launch {
+                if (hasNewerDisplayHistory) {
+                    onRequestLatestMessages?.invoke()
+                }
                 scrollState.animateScrollTo(scrollState.maxValue)
             }
             onAutoScrollToBottomChange(true)
@@ -152,6 +157,8 @@ fun ScrollToBottomButton(
     scrollState: ComposeLazyListState,
     coroutineScope: CoroutineScope,
     autoScrollToBottom: Boolean,
+    hasNewerDisplayHistory: Boolean = false,
+    onRequestLatestMessages: (() -> Unit)? = null,
     reverseLayout: Boolean = false,
     onAutoScrollToBottomChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
@@ -186,7 +193,9 @@ fun ScrollToBottomButton(
                             showScrollButton = true
                         }
                     } else {
-                        val isAtBottom = scrollState.isAtBottom(reverseLayout = reverseLayout)
+                        val isAtBottom =
+                            scrollState.isAtBottom(reverseLayout = reverseLayout) &&
+                                !hasNewerDisplayHistory
                         if (isAtBottom && !autoScrollToBottom) {
                             onAutoScrollToBottomChange(true)
                             showScrollButton = false
@@ -203,6 +212,9 @@ fun ScrollToBottomButton(
         modifier = modifier,
         onClick = {
             coroutineScope.launch {
+                if (hasNewerDisplayHistory) {
+                    onRequestLatestMessages?.invoke()
+                }
                 if (reverseLayout) {
                     scrollState.animateScrollToItem(0)
                 } else {

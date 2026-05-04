@@ -139,7 +139,9 @@ class ChatServiceCore(
             context = context,
             coroutineScope = coroutineScope,
             getEnhancedAiService = { enhancedAiService },
-            getChatHistory = { chatId -> chatHistoryDelegate.getChatHistory(chatId) },
+            getFullChatHistory = { chatId -> chatHistoryDelegate.getChatHistory(chatId) },
+            getRuntimeChatHistory = { chatId -> chatHistoryDelegate.getRuntimeChatHistory(chatId) },
+            hasUserMessage = { chatId -> chatHistoryDelegate.hasUserMessage(chatId) },
             addMessageToChat = { chatId, message ->
                 chatHistoryDelegate.addMessageToChat(message, chatId)
             },
@@ -388,6 +390,15 @@ class ChatServiceCore(
     val currentChatId: StateFlow<String?>
         get() = chatHistoryDelegate.currentChatId
 
+    val currentChatHasOlderDisplayHistory: StateFlow<Boolean>
+        get() = chatHistoryDelegate.hasOlderDisplayHistory
+
+    val currentChatHasNewerDisplayHistory: StateFlow<Boolean>
+        get() = chatHistoryDelegate.hasNewerDisplayHistory
+
+    val currentChatIsLoadingDisplayWindow: StateFlow<Boolean>
+        get() = chatHistoryDelegate.isLoadingDisplayWindow
+
     val chatHistories: StateFlow<List<com.ai.assistance.operit.data.model.ChatHistory>>
         get() = chatHistoryDelegate.chatHistories
 
@@ -485,6 +496,24 @@ class ChatServiceCore(
     /** 重新加载聊天消息（智能合并） */
     suspend fun reloadChatMessagesSmart(chatId: String) {
         chatHistoryDelegate.reloadChatMessagesSmart(chatId)
+    }
+
+    fun loadOlderMessagesForCurrentChat() {
+        coroutineScope.launch {
+            chatHistoryDelegate.loadOlderMessagesForCurrentChat()
+        }
+    }
+
+    fun loadNewerMessagesForCurrentChat() {
+        coroutineScope.launch {
+            chatHistoryDelegate.loadNewerMessagesForCurrentChat()
+        }
+    }
+
+    fun showLatestMessagesForCurrentChat() {
+        coroutineScope.launch {
+            chatHistoryDelegate.showLatestMessagesForCurrentChat()
+        }
     }
 }
 

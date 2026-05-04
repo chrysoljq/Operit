@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.ai.assistance.operit.data.model.ChatMessageLocatorPreview
 import com.ai.assistance.operit.data.model.MessageEntity
 
 /** 消息DAO接口，定义对消息表的数据访问方法 */
@@ -18,11 +19,92 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC")
     suspend fun getMessagesForChat(chatId: String): List<MessageEntity>
 
+    @Query(
+        "SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND (:upToTimestampInclusive IS NULL OR timestamp <= :upToTimestampInclusive)"
+    )
+    suspend fun countMessagesForChatUpToTimestamp(
+        chatId: String,
+        upToTimestampInclusive: Long?,
+    ): Int
+
+    @Query(
+        """
+        SELECT
+            timestamp AS timestamp,
+            sender AS sender,
+            CASE
+                WHEN sender = 'user' AND displayMode = 'HIDDEN_PLACEHOLDER' THEN ''
+                ELSE SUBSTR(content, 1, :previewCharCount)
+            END AS previewContent,
+            CASE
+                WHEN sender = 'user' AND displayMode = 'HIDDEN_PLACEHOLDER' THEN 0
+                ELSE LENGTH(content)
+            END AS contentLength,
+            displayMode AS displayMode
+        FROM messages
+        WHERE chatId = :chatId
+        ORDER BY timestamp ASC
+        """
+    )
+    suspend fun getLocatorPreviewsForChat(
+        chatId: String,
+        previewCharCount: Int,
+    ): List<ChatMessageLocatorPreview>
+
+    @Query(
+        "SELECT * FROM messages WHERE chatId = :chatId AND timestamp >= :startTimestampInclusive ORDER BY timestamp ASC"
+    )
+    suspend fun getMessagesForChatFromTimestampAsc(
+        chatId: String,
+        startTimestampInclusive: Long,
+    ): List<MessageEntity>
+
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE chatId = :chatId
+            AND timestamp >= :startTimestampInclusive
+            AND timestamp <= :endTimestampInclusive
+        ORDER BY timestamp ASC
+        """
+    )
+    suspend fun getMessagesForChatWindowAsc(
+        chatId: String,
+        startTimestampInclusive: Long,
+        endTimestampInclusive: Long,
+    ): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC LIMIT :limit")
     suspend fun getMessagesForChatAsc(chatId: String, limit: Int): List<MessageEntity>
 
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getMessagesForChatDesc(chatId: String, limit: Int): List<MessageEntity>
+
+    @Query(
+        "SELECT * FROM messages WHERE chatId = :chatId AND timestamp > :afterTimestampExclusive ORDER BY timestamp ASC LIMIT :limit"
+    )
+    suspend fun getMessagesForChatAfterTimestampExclusiveAsc(
+        chatId: String,
+        afterTimestampExclusive: Long,
+        limit: Int,
+    ): List<MessageEntity>
+
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE chatId = :chatId
+            AND (:afterTimestampExclusive IS NULL OR timestamp > :afterTimestampExclusive)
+            AND (:beforeTimestampExclusive IS NULL OR timestamp < :beforeTimestampExclusive)
+            AND (:upToTimestampInclusive IS NULL OR timestamp <= :upToTimestampInclusive)
+        ORDER BY timestamp ASC
+        """
+    )
+    suspend fun getMessagesForChatInRangeAsc(
+        chatId: String,
+        afterTimestampExclusive: Long?,
+        beforeTimestampExclusive: Long?,
+        upToTimestampInclusive: Long?,
+    ): List<MessageEntity>
 
     @Query(
         "SELECT * FROM messages WHERE chatId = :chatId AND timestamp <= :maxTimestamp ORDER BY timestamp DESC LIMIT :limit"
@@ -32,6 +114,57 @@ interface MessageDao {
         maxTimestamp: Long,
         limit: Int
     ): List<MessageEntity>
+
+    @Query(
+        "SELECT * FROM messages WHERE chatId = :chatId AND timestamp < :beforeTimestampExclusive ORDER BY timestamp DESC LIMIT :limit"
+    )
+    suspend fun getMessagesForChatBeforeTimestampExclusiveDesc(
+        chatId: String,
+        beforeTimestampExclusive: Long,
+        limit: Int,
+    ): List<MessageEntity>
+
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM messages WHERE chatId = :chatId AND timestamp < :beforeTimestampExclusive LIMIT 1)"
+    )
+    suspend fun existsMessagesBeforeTimestamp(
+        chatId: String,
+        beforeTimestampExclusive: Long,
+    ): Boolean
+
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM messages WHERE chatId = :chatId AND timestamp > :afterTimestampExclusive LIMIT 1)"
+    )
+    suspend fun existsMessagesAfterTimestamp(
+        chatId: String,
+        afterTimestampExclusive: Long,
+    ): Boolean
+
+    @Query(
+        "SELECT timestamp FROM messages WHERE chatId = :chatId AND sender = 'summary' ORDER BY timestamp DESC LIMIT 1"
+    )
+    suspend fun getLatestSummaryTimestamp(chatId: String): Long?
+
+    @Query(
+        "SELECT timestamp FROM messages WHERE chatId = :chatId AND sender = 'summary' AND timestamp < :beforeTimestampExclusive ORDER BY timestamp DESC LIMIT 1"
+    )
+    suspend fun getLatestSummaryTimestampBefore(
+        chatId: String,
+        beforeTimestampExclusive: Long,
+    ): Long?
+
+    @Query(
+        "SELECT timestamp FROM messages WHERE chatId = :chatId AND sender = 'summary' AND timestamp <= :upToTimestampInclusive ORDER BY timestamp DESC LIMIT 1"
+    )
+    suspend fun getLatestSummaryTimestampUpTo(
+        chatId: String,
+        upToTimestampInclusive: Long,
+    ): Long?
+
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM messages WHERE chatId = :chatId AND sender = 'user' LIMIT 1)"
+    )
+    suspend fun existsUserMessage(chatId: String): Boolean
 
     @Query("SELECT chatId AS chatId, COUNT(*) AS count FROM messages GROUP BY chatId")
     suspend fun getMessageCountsByChatId(): List<ChatMessageCount>
@@ -43,6 +176,54 @@ interface MessageDao {
     /** 批量插入消息 */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)
+
+    @Query(
+        """
+        INSERT INTO messages (
+            chatId,
+            sender,
+            content,
+            timestamp,
+            orderIndex,
+            roleName,
+            selectedVariantIndex,
+            provider,
+            modelName,
+            inputTokens,
+            outputTokens,
+            cachedInputTokens,
+            sentAt,
+            outputDurationMs,
+            waitDurationMs,
+            displayMode
+        )
+        SELECT
+            :targetChatId,
+            sender,
+            content,
+            timestamp,
+            orderIndex,
+            roleName,
+            selectedVariantIndex,
+            provider,
+            modelName,
+            inputTokens,
+            outputTokens,
+            cachedInputTokens,
+            sentAt,
+            outputDurationMs,
+            waitDurationMs,
+            displayMode
+        FROM messages
+        WHERE chatId = :sourceChatId
+            AND (:upToTimestampInclusive IS NULL OR timestamp <= :upToTimestampInclusive)
+        """
+    )
+    suspend fun copyMessagesToChat(
+        sourceChatId: String,
+        targetChatId: String,
+        upToTimestampInclusive: Long?,
+    )
 
     /** 更新消息内容 */
     @Query("UPDATE messages SET content = :content WHERE messageId = :messageId")

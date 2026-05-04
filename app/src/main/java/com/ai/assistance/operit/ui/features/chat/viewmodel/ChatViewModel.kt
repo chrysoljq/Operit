@@ -28,6 +28,7 @@ import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.ChatMessageLocatorPreview
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -225,6 +226,15 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
     val chatHistories: StateFlow<List<ChatHistory>> by lazy { chatHistoryDelegate.chatHistories }
     val currentChatId: StateFlow<String?> by lazy { chatHistoryDelegate.currentChatId }
+    val hasOlderDisplayHistory: StateFlow<Boolean> by lazy {
+        chatHistoryDelegate.hasOlderDisplayHistory
+    }
+    val hasNewerDisplayHistory: StateFlow<Boolean> by lazy {
+        chatHistoryDelegate.hasNewerDisplayHistory
+    }
+    val isLoadingDisplayWindow: StateFlow<Boolean> by lazy {
+        chatHistoryDelegate.isLoadingDisplayWindow
+    }
 
     // 消息处理相关
     val userMessage: StateFlow<TextFieldValue> by lazy { messageProcessingDelegate.userMessage }
@@ -699,6 +709,30 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    fun loadOlderMessagesForCurrentChat() {
+        viewModelScope.launch {
+            chatHistoryDelegate.loadOlderMessagesForCurrentChat()
+        }
+    }
+
+    fun loadNewerMessagesForCurrentChat() {
+        viewModelScope.launch {
+            chatHistoryDelegate.loadNewerMessagesForCurrentChat()
+        }
+    }
+
+    fun showLatestMessagesForCurrentChat() {
+        viewModelScope.launch {
+            chatHistoryDelegate.showLatestMessagesForCurrentChat()
+        }
+    }
+
+    suspend fun loadChatMessageLocatorPreviews(chatId: String): List<ChatMessageLocatorPreview> =
+        chatHistoryDelegate.loadChatMessageLocatorPreviews(chatId)
+
+    suspend fun revealMessageForCurrentChat(targetTimestamp: Long): Boolean =
+        chatHistoryDelegate.revealMessageForCurrentChat(targetTimestamp)
+
     fun deleteChatHistory(chatId: String) {
         chatHistoryDelegate.deleteChatHistory(chatId) { deleted ->
             if (!deleted) {
@@ -809,7 +843,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     /** 插入总结 */
-    fun insertSummary(index: Int, message: ChatMessage) {
+    fun insertSummary(message: ChatMessage) {
         viewModelScope.launch {
             try {
                 // 获取当前会话ID并绑定
@@ -818,31 +852,26 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     uiStateDelegate.showToast(context.getString(R.string.chat_no_active_conversation))
                     return@launch
                 }
+                if (message.sender != "user" && message.sender != "ai") {
+                    uiStateDelegate.showToast(context.getString(R.string.chat_no_messages_to_summarize))
+                    return@launch
+                }
                 
                 // 设置输入处理状态（按chatId隔离）
                 messageProcessingDelegate.setInputProcessingStateForChat(
                     currentChatId,
                     InputProcessingState.Summarizing(context.getString(R.string.chat_summarizing_generating))
                 )
-                
-                // 获取当前聊天历史
-                val currentHistory = chatHistoryDelegate.chatHistory.value
-                
-                // 确定插入位置：用户消息插入在上面（index），AI消息插入在下面（index+1）
-                val insertPosition = if (message.sender == "user") {
-                    index
-                } else {
-                    index + 1
-                }
-                
-                // 获取要总结的消息：从开始到插入位置的消息
-                val historyForSummary = currentHistory.subList(0, insertPosition)
 
-                val lastSummaryIndex = historyForSummary.indexOfLast { it.sender == "summary" }
-                val messagesToSummarize = when {
-                    lastSummaryIndex == -1 -> historyForSummary
-                    else -> historyForSummary.subList(lastSummaryIndex + 1, historyForSummary.size)
-                }.filter { it.sender == "user" || it.sender == "ai" }
+                val beforeTimestamp = if (message.sender == "ai") message.timestamp else null
+                val afterTimestamp = if (message.sender == "user") message.timestamp else null
+                val messagesToSummarize =
+                    chatHistoryDelegate
+                        .loadMessagesForSummaryInsertion(
+                            chatId = currentChatId,
+                            beforeTimestampExclusive = afterTimestamp,
+                            upToTimestampInclusive = beforeTimestamp,
+                        ).filter { it.sender == "user" || it.sender == "ai" }
 
                 if (messagesToSummarize.isEmpty()) {
                     uiStateDelegate.showToast(context.getString(R.string.chat_no_messages_to_summarize))
@@ -866,14 +895,18 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
                 val summaryMessage = AIMessageManager.summarizeMemory(
                     enhancedAiService!!,
-                    historyForSummary,
+                    messagesToSummarize,
                     autoContinue = false,
                     isGroupChat = isGroupChat
                 )
 
                 if (summaryMessage != null) {
                     // 插入总结消息
-                    chatHistoryDelegate.addSummaryMessage(summaryMessage, insertPosition)
+                    chatHistoryDelegate.addSummaryMessage(
+                        summaryMessage = summaryMessage,
+                        beforeTimestamp = beforeTimestamp,
+                        afterTimestamp = afterTimestamp,
+                    )
 
                     messageCoordinationDelegate.refreshStableContextWindow(chatId = currentChatId)
 
@@ -1043,21 +1076,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun updateMessage(index: Int, editedMessage: ChatMessage) {
         viewModelScope.launch {
             try {
-                // 获取当前聊天历史
-                val currentHistory = chatHistoryDelegate.chatHistory.value.toMutableList()
-
-                // 确保索引有效
-                if (index < 0 || index >= currentHistory.size) {
+                val currentHistory = chatHistoryDelegate.chatHistory.value
+                if (currentHistory.getOrNull(index) == null) {
                     uiStateDelegate.showErrorMessage(context.getString(R.string.chat_invalid_message_index))
                     return@launch
                 }
-
-                // 更新消息
-                currentHistory[index] = editedMessage
-
-                // 将更新后的历史记录保存到ChatHistoryDelegate
-                // 注意：这里仅更新内存，因为此方法只用于单个消息内容的修改，不涉及历史截断
-                chatHistoryDelegate.updateChatHistory(currentHistory)
 
                 // 直接在数据库中更新该条消息
                 chatHistoryDelegate.addMessageToChat(editedMessage)
@@ -1206,16 +1229,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
 
                 // 截取到指定消息的历史记录（不包含该消息本身）
-                val rewindHistory = currentHistory.subList(0, index)
-                
                 // 获取要删除的第一条消息的时间戳
                 val timestampOfFirstDeletedMessage = currentHistory[index].timestamp
 
                 // **核心修复**：调用新的委托方法，原子性地更新数据库和内存
-                chatHistoryDelegate.truncateChatHistory(
-                        rewindHistory,
-                        timestampOfFirstDeletedMessage
-                )
+                chatHistoryDelegate.truncateChatHistory(timestampOfFirstDeletedMessage)
 
                 // 使用修改后的消息内容来发送
                 messageProcessingDelegate.updateUserMessage(editedContent)
@@ -1299,13 +1317,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
 
                 // 删除目标消息及其之后的所有消息
-                val newHistory = currentHistory.subList(0, index)
-
                 val timestampOfFirstDeletedMessage = currentHistory[index].timestamp
-                chatHistoryDelegate.truncateChatHistory(
-                    newHistory,
-                    timestampOfFirstDeletedMessage
-                )
+                chatHistoryDelegate.truncateChatHistory(timestampOfFirstDeletedMessage)
 
                 val plainText = AvatarEmotionManager.stripXmlLikeTags(targetMessage.content)
                 updateUserMessage(TextFieldValue(plainText))

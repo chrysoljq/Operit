@@ -28,8 +28,10 @@ import com.ai.assistance.operit.ui.features.packages.market.PublishAttemptResult
 import com.ai.assistance.operit.ui.features.packages.market.PublishProgressStage
 import com.ai.assistance.operit.ui.features.packages.market.buildArtifactMarketIssueBody
 import com.ai.assistance.operit.ui.features.packages.market.formatSupportedAppVersions
+import com.ai.assistance.operit.ui.features.packages.market.normalizeMarketArtifactId
 import com.ai.assistance.operit.ui.features.packages.market.normalizeAppVersionOrNull
 import com.ai.assistance.operit.ui.features.packages.market.sameArtifactRuntimePackageId
+import com.ai.assistance.operit.ui.features.packages.market.validateStandaloneArtifactRuntimePackageId
 import com.ai.assistance.operit.ui.features.packages.market.validateSupportedAppVersions
 import com.ai.assistance.operit.ui.features.packages.utils.ArtifactIssueParser
 import com.ai.assistance.operit.ui.features.github.GitHubOAuthCoordinator
@@ -560,7 +562,10 @@ class ArtifactMarketViewModel(
         displayName: String,
         runtimePackageId: String
     ) {
+        validateStandaloneArtifactRuntimePackageId(runtimePackageId)
+
         val normalizedTitle = normalizePublishTitle(displayName)
+        val normalizedRuntimePackageId = normalizeMarketArtifactId(runtimePackageId)
         val titleMatches =
             aggregateResults { service ->
                 service.searchIssuesByExactTitle(
@@ -601,7 +606,35 @@ class ArtifactMarketViewModel(
                     sameArtifactRuntimePackageId(existingRuntimePackageId, runtimePackageId)
             }
 
-        if (titleConflict == null && runtimeIdConflict == null) {
+        val normalizedIdConflict =
+            if (normalizedRuntimePackageId.equals(runtimePackageId.trim(), ignoreCase = true)) {
+                null
+            } else {
+                val normalizedIdMatches =
+                    aggregateResults { service ->
+                        service.searchIssues(
+                            rawQuery = "\"$normalizedRuntimePackageId\"",
+                            page = 1,
+                            openOnly = false
+                        )
+                    }.getOrElse { error ->
+                        throw IllegalStateException(
+                            "检查插件市场归一化 ID 是否重复失败：${error.message ?: "GitHub 搜索失败"}"
+                        )
+                    }
+                normalizedIdMatches.firstOrNull { existing ->
+                    val parsed = ArtifactIssueParser.parseArtifactInfo(existing)
+                    val candidateIds =
+                        listOf(
+                            parsed.projectId,
+                            parsed.runtimePackageId,
+                            parsed.normalizedId
+                        ).map(String::trim).filter(String::isNotBlank)
+                    candidateIds.any { normalizeMarketArtifactId(it) == normalizedRuntimePackageId }
+                }
+            }
+
+        if (titleConflict == null && runtimeIdConflict == null && normalizedIdConflict == null) {
             return
         }
 
@@ -611,6 +644,9 @@ class ArtifactMarketViewModel(
         }
         if (runtimeIdConflict != null) {
             conflictReasons += "ID「$runtimePackageId」已存在"
+        }
+        if (normalizedIdConflict != null) {
+            conflictReasons += "市场归一化 ID「$normalizedRuntimePackageId」已存在"
         }
 
         throw IllegalStateException(

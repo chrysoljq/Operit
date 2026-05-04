@@ -67,6 +67,117 @@ function buildCreateChatBinding(activePrompt: WebActivePromptSnapshot | null) {
   };
 }
 
+function normalizeBindingValue(value?: string | null) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+type DeleteReplacementTarget =
+  | {
+      kind: 'group';
+      characterGroupId: string;
+    }
+  | {
+      kind: 'card';
+      characterCardName: string;
+      includeUnboundChats: boolean;
+    }
+  | {
+      kind: 'unbound';
+    };
+
+function resolveDeleteReplacementTarget(
+  chat: WebChatSummary,
+  activePrompt: WebActivePromptSnapshot | null
+): DeleteReplacementTarget {
+  const characterGroupId = normalizeBindingValue(chat.character_group_id);
+  if (characterGroupId) {
+    return {
+      kind: 'group',
+      characterGroupId
+    };
+  }
+
+  const characterCardName = normalizeBindingValue(chat.character_card_name);
+  if (characterCardName) {
+    return {
+      kind: 'card',
+      characterCardName,
+      includeUnboundChats: false
+    };
+  }
+
+  if (activePrompt?.type === 'character_group') {
+    const activeGroupId = normalizeBindingValue(activePrompt.id);
+    if (activeGroupId) {
+      return {
+        kind: 'group',
+        characterGroupId: activeGroupId
+      };
+    }
+  }
+
+  if (activePrompt?.type === 'character_card') {
+    const activeCardName = normalizeBindingValue(activePrompt.name);
+    if (activeCardName) {
+      return {
+        kind: 'card',
+        characterCardName: activeCardName,
+        includeUnboundChats: true
+      };
+    }
+  }
+
+  return {
+    kind: 'unbound'
+  };
+}
+
+function matchesDeleteReplacementTarget(
+  chat: WebChatSummary,
+  target: DeleteReplacementTarget
+) {
+  const characterGroupId = normalizeBindingValue(chat.character_group_id);
+  const characterCardName = normalizeBindingValue(chat.character_card_name);
+
+  if (target.kind === 'group') {
+    return characterGroupId === target.characterGroupId;
+  }
+
+  if (target.kind === 'card') {
+    if (characterGroupId) {
+      return false;
+    }
+    if (target.includeUnboundChats) {
+      return characterCardName === null || characterCardName === target.characterCardName;
+    }
+    return characterCardName === target.characterCardName;
+  }
+
+  return characterGroupId === null && characterCardName === null;
+}
+
+function buildCreateChatBindingFromDeleteTarget(target: DeleteReplacementTarget) {
+  if (target.kind === 'group') {
+    return {
+      character_card_name: null,
+      character_group_id: target.characterGroupId
+    };
+  }
+
+  if (target.kind === 'card') {
+    return {
+      character_card_name: target.characterCardName,
+      character_group_id: null
+    };
+  }
+
+  return {
+    character_card_name: null,
+    character_group_id: null
+  };
+}
+
 function formatOutgoingAttachments(uploads: WebUploadedAttachment[]) {
   return uploads.map((upload) => ({
     id: upload.attachment_id,
@@ -669,6 +780,11 @@ export function useChatViewModel(): ChatViewModel {
     }
 
     try {
+      const isDeletingSelectedChat = selectedChatId === chat.id;
+      const deleteReplacementTarget = resolveDeleteReplacementTarget(
+        chat,
+        characterSelector?.active_prompt ?? null
+      );
       await deleteChat(token, chat.id);
       setChats((currentChats) => currentChats.filter((item) => item.id !== chat.id));
       const nextChats = await refreshChats(token);
@@ -676,10 +792,37 @@ export function useChatViewModel(): ChatViewModel {
       const hasSelectedChat = selectedChatId
         ? nextChats.some((item) => item.id === selectedChatId)
         : false;
-      if (selectedChatId === chat.id || !hasSelectedChat) {
+      if (isDeletingSelectedChat) {
+        const replacementChat =
+          nextChats.find((item) => matchesDeleteReplacementTarget(item, deleteReplacementTarget)) ??
+          null;
+
         setMessages([]);
         setTheme(null);
         setHasMoreHistoryBefore(false);
+        setAutoScrollToBottom(true);
+
+        if (replacementChat) {
+          setSelectedChatId(replacementChat.id);
+          return;
+        }
+
+        const createdChat = await createChat(token, {
+          ...buildCreateChatBindingFromDeleteTarget(deleteReplacementTarget),
+          set_current: true
+        });
+        const refreshedChats = await refreshChats(token);
+        const nextSelectedChat =
+          refreshedChats.find((item) => item.id === createdChat.id) ?? createdChat;
+        setSelectedChatId(nextSelectedChat.id);
+        return;
+      }
+
+      if (!hasSelectedChat) {
+        setMessages([]);
+        setTheme(null);
+        setHasMoreHistoryBefore(false);
+        setAutoScrollToBottom(true);
         setSelectedChatId(fallbackId);
       }
     } catch (actionError: unknown) {

@@ -45,6 +45,48 @@ interface MessageVariantDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVariants(variants: List<MessageVariantEntity>)
 
+    @Query(
+        """
+        INSERT INTO message_variants (
+            chatId,
+            messageTimestamp,
+            variantIndex,
+            content,
+            roleName,
+            provider,
+            modelName,
+            inputTokens,
+            outputTokens,
+            cachedInputTokens,
+            sentAt,
+            outputDurationMs,
+            waitDurationMs
+        )
+        SELECT
+            :targetChatId,
+            messageTimestamp,
+            variantIndex,
+            content,
+            roleName,
+            provider,
+            modelName,
+            inputTokens,
+            outputTokens,
+            cachedInputTokens,
+            sentAt,
+            outputDurationMs,
+            waitDurationMs
+        FROM message_variants
+        WHERE chatId = :sourceChatId
+            AND (:upToTimestampInclusive IS NULL OR messageTimestamp <= :upToTimestampInclusive)
+        """
+    )
+    suspend fun copyVariantsToChat(
+        sourceChatId: String,
+        targetChatId: String,
+        upToTimestampInclusive: Long?,
+    )
+
     @Update
     suspend fun updateVariant(variant: MessageVariantEntity)
 

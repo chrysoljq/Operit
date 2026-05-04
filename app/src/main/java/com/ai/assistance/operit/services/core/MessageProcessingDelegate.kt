@@ -58,7 +58,9 @@ class MessageProcessingDelegate(
         private val context: Context,
         private val coroutineScope: CoroutineScope,
         private val getEnhancedAiService: () -> EnhancedAIService?,
-        private val getChatHistory: suspend (String) -> List<ChatMessage>,
+        private val getFullChatHistory: suspend (String) -> List<ChatMessage>,
+        private val getRuntimeChatHistory: suspend (String) -> List<ChatMessage>,
+        private val hasUserMessage: suspend (String) -> Boolean,
         private val addMessageToChat: suspend (String, ChatMessage) -> Unit,
         private val saveCurrentChat: suspend () -> Unit,
         private val showErrorMessage: (String) -> Unit,
@@ -344,7 +346,7 @@ class MessageProcessingDelegate(
         chatId: String,
         snapshot: TurnCancellationSnapshot? = null,
     ) {
-        val messages = getChatHistory(chatId)
+        val messages = getRuntimeChatHistory(chatId)
         val streamingMessage =
             messages.lastOrNull { it.sender == "ai" && it.contentStream != null }
                 ?: return
@@ -549,7 +551,7 @@ class MessageProcessingDelegate(
             val effectivePersistTurn = turnOptions.persistTurn
             val effectiveHideUserMessage = effectivePersistTurn && turnOptions.hideUserMessage
             // 检查这是否是聊天中的第一条用户消息（忽略AI的开场白）
-            val isFirstMessage = getChatHistory(chatId).none { it.sender == "user" }
+            val isFirstMessage = !hasUserMessage(chatId)
             if (effectivePersistTurn && isFirstMessage && chatId != null) {
                 val newTitle =
                     when {
@@ -761,7 +763,7 @@ class MessageProcessingDelegate(
                             enhancedAiService = service,
                             chatId = activeChatId,
                             messageContent = "",
-                            chatHistory = getChatHistory(activeChatId),
+                            chatHistory = getRuntimeChatHistory(activeChatId),
                             workspacePath = workspacePath,
                             workspaceEnv = workspaceEnv,
                             promptFunctionType = promptFunctionType,
@@ -781,7 +783,7 @@ class MessageProcessingDelegate(
                 }
 
                 val loadChatHistoryStartTime = messageTimingNow()
-                val chatHistory = getChatHistory(activeChatId)
+                val chatHistory = getRuntimeChatHistory(activeChatId)
                 logMessageTiming(
                     stage = "delegate.loadChatHistory",
                     startTimeMs = loadChatHistoryStartTime,

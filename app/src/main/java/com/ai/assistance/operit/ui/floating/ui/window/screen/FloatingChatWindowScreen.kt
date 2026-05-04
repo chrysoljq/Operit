@@ -623,18 +623,29 @@ private fun ChatMessagesView(
     floatContext: FloatContext,
     _viewModel: FloatingChatWindowModeViewModel
 ) {
+    val chatCore = remember(floatContext.chatService) {
+        floatContext.chatService?.getChatCore()
+    }
+    val currentChatIdState =
+        chatCore?.currentChatId?.collectAsState(initial = null)
+            ?: remember { mutableStateOf<String?>(null) }
+    val hasOlderDisplayHistoryState =
+        chatCore?.currentChatHasOlderDisplayHistory?.collectAsState(initial = false)
+            ?: remember { mutableStateOf(false) }
+    val hasNewerDisplayHistoryState =
+        chatCore?.currentChatHasNewerDisplayHistory?.collectAsState(initial = false)
+            ?: remember { mutableStateOf(false) }
+    val isLoadingDisplayWindowState =
+        chatCore?.currentChatIsLoadingDisplayWindow?.collectAsState(initial = false)
+            ?: remember { mutableStateOf(false) }
+    val currentChatId = currentChatIdState.value
+    val hasOlderDisplayHistory = hasOlderDisplayHistoryState.value
+    val hasNewerDisplayHistory = hasNewerDisplayHistoryState.value
+    val isLoadingDisplayWindow = isLoadingDisplayWindowState.value
     val scrollState = rememberLazyListState()
-    val messagesPerPage = 10
-    // 不要使用 messages 作为 key，否则每次消息更新都会重置深度
-    var currentDepth = remember { mutableStateOf(1) }
     val messagesCount = floatContext.messages.size
-    val maxVisibleIndex = messagesCount - 1
-    val minVisibleIndex =
-        maxOf(0, maxVisibleIndex - currentDepth.value * messagesPerPage + 1)
-    val hasMoreMessages = minVisibleIndex > 0
-    val visibleMessages = floatContext.messages.subList(minVisibleIndex, messagesCount)
     val displayMessages =
-        visibleMessages
+        floatContext.messages
             .filter { it.sender != "think" }
             .asReversed()
     val messageHeightMemory = rememberChatMessageHeightMemory(displayMessages)
@@ -652,19 +663,17 @@ private fun ChatMessagesView(
     var autoScrollToBottom by remember { mutableStateOf(true) }
     val onAutoScrollToBottomChange = remember { { it: Boolean -> autoScrollToBottom = it } }
 
-    // 当消息被清空时（例如切换对话或清空历史），重置深度
-    LaunchedEffect(floatContext.messages.isEmpty()) {
-        if (floatContext.messages.isEmpty()) {
-            currentDepth.value = 1
-        }
-    }
-
     LaunchedEffect(
         messagesCount,
         floatContext.messages.firstOrNull()?.timestamp,
         floatContext.messages.lastOrNull()?.timestamp,
+        autoScrollToBottom,
+        hasNewerDisplayHistory,
+        isLoadingDisplayWindow,
     ) {
-        if (floatContext.messages.isNotEmpty() && autoScrollToBottom) {
+        if (autoScrollToBottom && hasNewerDisplayHistory && !isLoadingDisplayWindow && chatCore != null) {
+            chatCore.showLatestMessagesForCurrentChat()
+        } else if (floatContext.messages.isNotEmpty() && autoScrollToBottom) {
             scrollState.animateScrollToItem(0)
         }
     }
@@ -681,14 +690,18 @@ private fun ChatMessagesView(
                     (lastMessage?.sender == "ai" && lastMessage.content.isBlank())
             )
     val loadMoreText = stringResource(id = R.string.load_more_history)
+    val loadNewerText = stringResource(id = R.string.load_newer_history)
     val loadMoreTextStyle = MaterialTheme.typography.bodyMedium
     val renderItems = buildList<Any> {
+        if (hasNewerDisplayHistory) {
+            add(FloatingLoadNewerItem)
+        }
         if (showLoadingIndicator) {
             add(FloatingLoadingItem)
         }
         addAll(displayMessages)
-        if (hasMoreMessages) {
-            add(FloatingLoadMoreItem)
+        if (hasOlderDisplayHistory) {
+            add(FloatingLoadOlderItem)
         }
     }
 
@@ -705,19 +718,28 @@ private fun ChatMessagesView(
                 key = { _, item ->
                     when (item) {
                         is com.ai.assistance.operit.data.model.ChatMessage -> item.timestamp
-                        FloatingLoadMoreItem -> "floating_load_more_history"
+                        FloatingLoadOlderItem -> "floating_load_older_history"
+                        FloatingLoadNewerItem -> "floating_load_newer_history"
                         FloatingLoadingItem -> "floating_loading_indicator"
                         else -> item.hashCode()
                     }
                 },
             ) { renderIndex, item ->
                 when (item) {
-                    FloatingLoadMoreItem -> {
+                    FloatingLoadOlderItem -> {
                         Text(
                             text = loadMoreText,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { currentDepth.value += 1 }
+                                .clickable {
+                                    if (
+                                        hasOlderDisplayHistory &&
+                                        !isLoadingDisplayWindow &&
+                                        chatCore != null
+                                    ) {
+                                        chatCore.loadOlderMessagesForCurrentChat()
+                                    }
+                                }
                                 .padding(vertical = 16.dp),
                             style = loadMoreTextStyle,
                             color = Color.Gray,
@@ -726,9 +748,33 @@ private fun ChatMessagesView(
                         Spacer(modifier = Modifier.height(4.dp))
                     }
 
+                    FloatingLoadNewerItem -> {
+                        Text(
+                            text = loadNewerText,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (
+                                        hasNewerDisplayHistory &&
+                                        !isLoadingDisplayWindow &&
+                                        chatCore != null
+                                    ) {
+                                        chatCore.loadNewerMessagesForCurrentChat()
+                                    }
+                                }
+                                .padding(vertical = 16.dp),
+                            style = loadMoreTextStyle,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+
                     is ChatMessage -> {
-                        val displayIndex =
-                            if (showLoadingIndicator) renderIndex - 1 else renderIndex
+                        val messageListOffset =
+                            (if (hasNewerDisplayHistory) 1 else 0) +
+                                (if (showLoadingIndicator) 1 else 0)
+                        val displayIndex = renderIndex - messageListOffset
                         val actualIndex = messagesCount - 1 - displayIndex
 
                         FloatingMessageItem(
@@ -770,6 +816,10 @@ private fun ChatMessagesView(
             scrollState = scrollState,
             coroutineScope = coroutineScope,
             autoScrollToBottom = autoScrollToBottom,
+            hasNewerDisplayHistory = hasNewerDisplayHistory,
+            onRequestLatestMessages = {
+                chatCore?.showLatestMessagesForCurrentChat()
+            },
             reverseLayout = true,
             onAutoScrollToBottomChange = onAutoScrollToBottomChange,
             modifier = Modifier
@@ -779,7 +829,9 @@ private fun ChatMessagesView(
     }
 }
 
-private data object FloatingLoadMoreItem
+private data object FloatingLoadOlderItem
+
+private data object FloatingLoadNewerItem
 
 private data object FloatingLoadingItem
 

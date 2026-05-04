@@ -25,8 +25,6 @@ import org.json.JSONObject
 object ModelListFetcher {
     private const val TAG = "ModelListFetcher"
     private const val ANTHROPIC_VERSION = "2023-06-01"
-    private val ZHIPU_CODING_PLAN_MODELS =
-            listOf("glm-4.7", "glm-4.6", "glm-4.5", "glm-4.5-air")
     private val KIMI_CODING_MODELS =
             listOf("kimi-for-coding")
 
@@ -88,6 +86,7 @@ object ModelListFetcher {
                             "https://generativelanguage.googleapis.com/v1beta/models"
                         }
                     }
+                    ApiProviderType.ZHIPU -> "${extractBaseUrl(apiEndpoint)}/v4/models"
                     ApiProviderType.DEEPSEEK -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.OPENROUTER -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.FOUR_ROUTER -> "${extractBaseUrl(apiEndpoint)}/v1/models"
@@ -109,16 +108,6 @@ object ModelListFetcher {
 
         AppLogger.d(TAG, "生成的模型列表URL: $modelsUrl")
         return modelsUrl
-    }
-
-    private fun isZhipuCodingPlanEndpoint(apiEndpoint: String): Boolean {
-        return apiEndpoint.contains("/coding/paas/v4", ignoreCase = true)
-    }
-
-    private fun getZhipuCodingPlanModels(): List<ModelOption> {
-        return ZHIPU_CODING_PLAN_MODELS.map { modelId ->
-            ModelOption(id = modelId, name = modelId)
-        }
     }
 
     private fun isKimiCodingEndpoint(apiEndpoint: String): Boolean {
@@ -185,14 +174,6 @@ object ModelListFetcher {
                 try {
                     val completedEndpoint =
                             EndpointCompleter.completeEndpoint(apiEndpoint, apiProviderType)
-
-                    if (
-                            apiProviderType == ApiProviderType.ZHIPU &&
-                                    isZhipuCodingPlanEndpoint(completedEndpoint)
-                    ) {
-                        AppLogger.d(TAG, "检测到智谱Coding Plan端点，返回文档约束的固定模型列表")
-                        return@withContext Result.success(getZhipuCodingPlanModels())
-                    }
 
                     if (
                             apiProviderType == ApiProviderType.MOONSHOT &&
@@ -340,6 +321,7 @@ object ModelListFetcher {
                                     ApiProviderType.NOUS_PORTAL,
                                     ApiProviderType.INFINIAI,
                                     ApiProviderType.ALIPAY_BAILING,
+                                    ApiProviderType.ZHIPU,
                                     ApiProviderType.LMSTUDIO,
                                     ApiProviderType.OLLAMA,
                                     ApiProviderType.PPINFRA -> parseOpenAIModelResponse(context, responseBody)
