@@ -1774,6 +1774,10 @@ private fun ChatInputBottomBar(
                     return@launch
                 }
                 ChatInputSubmitActions.CONSUME -> {
+                    if (submitDecision.clearInput) {
+                        actualViewModel.updateUserMessage(TextFieldValue(""))
+                        actualViewModel.resetAttachmentPanelState()
+                    }
                     showChatInputHookMessage(submitDecision.message)
                     return@launch
                 }

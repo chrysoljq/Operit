@@ -352,7 +352,7 @@ interface PromptTurn {
 - `{ action: 'allow' }`
 - `{ action: 'block', message?: string }`
 - `{ action: 'replace', text: string }`
-- `{ action: 'consume', message?: string }`
+- `{ action: 'consume', message?: string, clearInput?: boolean }`
 - 或对应的 `Promise`
 
 ### Prompt 相关返回

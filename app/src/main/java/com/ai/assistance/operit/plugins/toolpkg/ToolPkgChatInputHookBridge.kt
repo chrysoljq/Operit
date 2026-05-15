@@ -191,6 +191,7 @@ internal object ToolPkgChatInputHookBridge {
                     action = action,
                     text = textValue,
                     message = decoded["message"]?.toString(),
+                    clearInput = decoded["clearInput"] == true,
                     metadata = metadata
                 )
             }

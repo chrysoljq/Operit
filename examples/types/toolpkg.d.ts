@@ -130,6 +130,7 @@ export namespace ToolPkg {
         action?: "allow" | "block" | "replace" | "consume";
         text?: string;
         message?: string;
+        clearInput?: boolean;
         metadata?: JsonObject;
     }
 

@@ -42,6 +42,7 @@ data class ChatInputHookResult(
     val action: String = ChatInputSubmitActions.ALLOW,
     val text: String? = null,
     val message: String? = null,
+    val clearInput: Boolean = false,
     val metadata: Map<String, Any?> = emptyMap()
 )
 
