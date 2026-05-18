@@ -226,6 +226,8 @@ class MessageProcessingDelegate(
     suspend fun buildUserMessageContentForGroupOrchestration(
         messageText: String,
         attachments: List<AttachmentInfo>,
+        workspacePath: String?,
+        workspaceEnv: String?,
         replyToMessage: ChatMessage?,
         chatId: String? = null
     ): String = withContext(Dispatchers.IO) {
@@ -240,6 +242,8 @@ class MessageProcessingDelegate(
             context = context,
             messageText = messageText,
             attachments = attachments,
+            workspacePath = workspacePath,
+            workspaceEnv = workspaceEnv,
             replyToMessage = replyToMessage,
             enableDirectImageProcessing = enableDirectImageProcessing,
             enableDirectAudioProcessing = enableDirectAudioProcessing,
@@ -583,6 +587,8 @@ class MessageProcessingDelegate(
                 messageText = messageText,
                 proxySenderName = proxySenderNameOverride,
                 attachments = attachments,
+                workspacePath = workspacePath,
+                workspaceEnv = workspaceEnv,
                 replyToMessage = replyToMessage,
                 enableDirectImageProcessing = enableDirectImageProcessing,
                 enableDirectAudioProcessing = enableDirectAudioProcessing,
@@ -681,6 +687,7 @@ class MessageProcessingDelegate(
             var turnOutputTokens = 0
             var turnCachedInputTokens = 0
             var calculateNextWindowSize: (suspend () -> Int?)? = null
+            var cancellationToPropagate: kotlinx.coroutines.CancellationException? = null
             try {
                 // if (!NetworkUtils.isNetworkAvailable(context)) {
                 //     withContext(Dispatchers.Main) { showErrorMessage("网络连接不可用") }
@@ -1247,29 +1254,35 @@ class MessageProcessingDelegate(
                     AppLogger.d(TAG, "消息发送被取消")
                     finalInputStateAfterSend = EnhancedInputProcessingState.Idle
                     shouldNotifyTurnComplete = false
-                    throw e
+                    cancellationToPropagate = e
+                } else {
+                    AppLogger.e(TAG, "发送消息时出错", e)
+                    setChatInputProcessingState(
+                        chatId,
+                        EnhancedInputProcessingState.Error(context.getString(R.string.message_send_failed, e.message))
+                    )
+                    withContext(Dispatchers.Main) { showErrorMessage(context.getString(R.string.message_send_failed, e.message)) }
                 }
-                AppLogger.e(TAG, "发送消息时出错", e)
-                setChatInputProcessingState(
-                    chatId,
-                    EnhancedInputProcessingState.Error(context.getString(R.string.message_send_failed, e.message))
-                )
-                withContext(Dispatchers.Main) { showErrorMessage(context.getString(R.string.message_send_failed, e.message)) }
             } finally {
                 val finalizeMessageStartTime = messageTimingNow()
                 val deferTurnCompleteToAsyncJob =
-                    finalizeMessageAndNotify(
-                    chatId = chatId,
-                    activeChatId = activeChatId,
-                    aiMessageProvider = { aiMessage },
-                    isWaifuModeEnabled = isWaifuModeEnabled,
-                    skipFinalAutoRead = didStreamAutoRead && !isWaifuModeEnabled,
-                    syncWaifuMessageMetrics = { sourceMessage ->
-                        syncWaifuMessageMetricsHandler?.invoke(sourceMessage)
-                    },
-                    calculateNextWindowSize = calculateNextWindowSize,
-                    turnOptions = turnOptions
-                )
+                    if (cancellationToPropagate == null) {
+                        finalizeMessageAndNotify(
+                            chatId = chatId,
+                            activeChatId = activeChatId,
+                            aiMessageProvider = { aiMessage },
+                            isWaifuModeEnabled = isWaifuModeEnabled,
+                            skipFinalAutoRead = didStreamAutoRead && !isWaifuModeEnabled,
+                            syncWaifuMessageMetrics = { sourceMessage ->
+                                syncWaifuMessageMetricsHandler?.invoke(sourceMessage)
+                            },
+                            calculateNextWindowSize = calculateNextWindowSize,
+                            turnOptions = turnOptions
+                        )
+                    } else {
+                        AppLogger.d(TAG, "取消回合不执行消息收尾: chatId=$activeChatId")
+                        false
+                    }
                 logMessageTiming(
                     stage = "delegate.finalizeMessage",
                     startTimeMs = finalizeMessageStartTime,
@@ -1326,6 +1339,7 @@ class MessageProcessingDelegate(
                     chatRuntime.sendJob = null
                 }
             }
+            cancellationToPropagate?.let { throw it }
         }
         chatRuntime.sendJob = sendJob
     }
@@ -1366,6 +1380,7 @@ class MessageProcessingDelegate(
             EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)),
         )
         var terminalState: EnhancedInputProcessingState? = null
+        var exceptionToPropagate: Exception? = null
 
         try {
             val service =
@@ -1533,16 +1548,16 @@ class MessageProcessingDelegate(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) {
                 terminalState = EnhancedInputProcessingState.Idle
-                throw e
+            } else {
+                AppLogger.e(TAG, "单条重新生成失败", e)
+                setChatInputProcessingState(
+                    chatId,
+                    EnhancedInputProcessingState.Error(
+                        context.getString(R.string.chat_regenerate_single_failed, e.message ?: "")
+                    ),
+                )
             }
-            AppLogger.e(TAG, "单条重新生成失败", e)
-            setChatInputProcessingState(
-                chatId,
-                EnhancedInputProcessingState.Error(
-                    context.getString(R.string.chat_regenerate_single_failed, e.message ?: "")
-                ),
-            )
-            throw e
+            exceptionToPropagate = e
         } finally {
             clearCurrentTurnToolInvocationCount(chatId)
             if (chatRuntime.sendJob === currentJob) {
@@ -1561,6 +1576,7 @@ class MessageProcessingDelegate(
                 setChatInputProcessingState(chatId, EnhancedInputProcessingState.Idle)
             }
         }
+        exceptionToPropagate?.let { throw it }
     }
 
     private suspend fun notifyTurnComplete(
@@ -1660,6 +1676,7 @@ class MessageProcessingDelegate(
         chatRuntime.streamCollectionJob = null
         chatRuntime.stateCollectionJob?.cancel()
         chatRuntime.stateCollectionJob = null
+        chatRuntime.responseStream = null
         chatRuntime.currentTurnOptions = ChatTurnOptions()
         chatRuntime.requestSentAt = 0L
         chatRuntime.requestStartElapsed = 0L

@@ -689,6 +689,47 @@ fun getJsToolsDefinition(): String {
                         return toolCall("input_in_terminal_session", params);
                     }
                 },
+                music: {
+                    play: (options) => {
+                        if (!options || typeof options !== "object" || Array.isArray(options)) {
+                            throw new Error("music.play requires one options object");
+                        }
+                        const params = { ...options };
+                        if (params.sourceType !== undefined && params.sourceType !== null) {
+                            params.source_type = String(params.sourceType);
+                            delete params.sourceType;
+                        }
+                        if (params.startPositionMs !== undefined && params.startPositionMs !== null) {
+                            params.start_position_ms = String(params.startPositionMs);
+                            delete params.startPositionMs;
+                        }
+                        if (params.source !== undefined && params.source !== null) {
+                            params.source = String(params.source);
+                        }
+                        if (params.source_type !== undefined && params.source_type !== null) {
+                            params.source_type = String(params.source_type);
+                        }
+                        if (params.title !== undefined && params.title !== null) {
+                            params.title = String(params.title);
+                        }
+                        if (params.artist !== undefined && params.artist !== null) {
+                            params.artist = String(params.artist);
+                        }
+                        if (params.loop !== undefined) {
+                            params.loop = !!params.loop;
+                        }
+                        if (params.volume !== undefined && params.volume !== null) {
+                            params.volume = String(params.volume);
+                        }
+                        return toolCall("music_play", params);
+                    },
+                    pause: () => toolCall("music_pause", {}),
+                    resume: () => toolCall("music_resume", {}),
+                    stop: () => toolCall("music_stop", {}),
+                    seek: (positionMs) => toolCall("music_seek", { position_ms: String(positionMs) }),
+                    setVolume: (volume) => toolCall("music_set_volume", { volume: String(volume) }),
+                    status: () => toolCall("music_status", {})
+                },
                 // 执行Intent
                 intent: (options = {}) => {
                     return toolCall("execute_intent", options);

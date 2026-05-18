@@ -3964,7 +3964,6 @@
     <string name="copy_intro_prompt">复制引导词</string>
     <string name="tone_prompt_label">语气词：</string>
     <string name="copy_tone_prompt">复制语气词</string>
-    <string name="copy_all_content">复制全部内容</string>
     <string name="old_config_usage_tip">您可以复制这些内容到新的角色卡系统中使用。</string>
     <string name="close">关闭</string>
     

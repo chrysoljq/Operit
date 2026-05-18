@@ -11,7 +11,7 @@ import {
     SleepResultData, StringResultData, SystemSettingData, AppOperationData, AppListData,
     DeviceInfoResultData, NotificationData, LocationData,
     UIPageResultData, UIActionResultData, CombinedOperationResultData, AutomationExecutionResultData,
-    CalculationResultData, FFmpegResultData, ADBResultData, IntentResultData, TerminalCommandResultData, HiddenTerminalCommandResultData, TerminalSessionScreenResultData,
+    CalculationResultData, FFmpegResultData, ADBResultData, IntentResultData, TerminalCommandResultData, HiddenTerminalCommandResultData, TerminalSessionScreenResultData, MusicPlaybackResultData,
     FilePartContentData, FileApplyResultData, WorkflowListResultData, WorkflowResultData, WorkflowDetailResultData,
     StringResultData, ChatServiceStartResultData, ChatCreationResultData, ChatListResultData, ChatFindResultData, AgentStatusResultData,
     ChatSwitchResultData, ChatTitleUpdateResultData, ChatDeleteResultData, MessageSendResultData, MemoryQueryResultData, MemoryLinkResultData, MemoryLinkQueryResultData, GrepResultData,
@@ -149,6 +149,15 @@ export interface ToolResultMap {
     'execute_in_terminal_session_streaming': TerminalCommandResultData;
     'execute_hidden_terminal_command': HiddenTerminalCommandResultData;
     'get_terminal_session_screen': TerminalSessionScreenResultData;
+
+    // Music playback operations
+    'music_play': MusicPlaybackResultData;
+    'music_pause': MusicPlaybackResultData;
+    'music_resume': MusicPlaybackResultData;
+    'music_stop': MusicPlaybackResultData;
+    'music_seek': MusicPlaybackResultData;
+    'music_set_volume': MusicPlaybackResultData;
+    'music_status': MusicPlaybackResultData;
 
     // Workflow operations
     'get_all_workflows': WorkflowListResultData;

@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
-import android.widget.Toast
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -12,6 +11,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,14 +21,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,14 +39,12 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,16 +53,20 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -88,51 +89,18 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.ui.draw.alpha
-import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
+import com.ai.assistance.operit.ui.common.markdown.LocalMarkdownTextSelectionAutoScrollController
+import com.ai.assistance.operit.ui.common.markdown.MarkdownTextSelectionRequest
+import com.ai.assistance.operit.ui.common.markdown.MarkdownTextSelectionAutoScrollController
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageStyleConfig
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleStyleChatMessage
-import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.WaifuMessageProcessor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
-
-/**
- * 清理消息中的XML标签，保留Markdown格式和纯文本内容
- */
-private fun cleanXmlTags(content: String): String {
-    return content
-        // 移除状态标签
-        .replace(ChatMarkupRegex.statusTag, "")
-        .replace(ChatMarkupRegex.statusSelfClosingTag, "")
-        // 移除思考标签（包括 <think> 和 <thinking>）
-        .replace(ChatMarkupRegex.thinkTag, "")
-        .replace(ChatMarkupRegex.thinkSelfClosingTag, "")
-        // 移除搜索来源标签
-        .replace(ChatMarkupRegex.searchTag, "")
-        .replace(ChatMarkupRegex.searchSelfClosingTag, "")
-        // 移除工具标签
-        .replace(ChatMarkupRegex.toolTag, "")
-        .replace(ChatMarkupRegex.toolSelfClosingTag, "")
-        // 移除工具结果标签
-        .replace(ChatMarkupRegex.toolResultTag, "")
-        .replace(ChatMarkupRegex.toolResultSelfClosingTag, "")
-        // 移除emotion标签
-        .replace(ChatMarkupRegex.emotionTag, "")
-        // 移除附件与工作区上下文
-        .replace(ChatMarkupRegex.workspaceAttachmentTag, "")
-        .replace(ChatMarkupRegex.attachmentTag, "")
-        .replace(ChatMarkupRegex.attachmentSelfClosingTag, "")
-        // 移除多媒体链接标签
-        .let(MediaLinkParser::removeImageLinks)
-        .let(MediaLinkParser::removeMediaLinks)
-        // 移除其他常见的XML标签
-        // .replace(Regex("<[^>]*>"), "")
-        .trim()
-}
 
 private fun isHiddenUserPlaceholder(message: ChatMessage): Boolean {
     return message.sender == "user" &&
@@ -163,7 +131,6 @@ fun ChatArea(
     hasBackgroundImage: Boolean = false,
     modifier: Modifier = Modifier,
     onSelectMessageToEdit: ((Int, ChatMessage, String) -> Unit)? = null,
-    onCopyMessage: ((ChatMessage) -> Unit)? = null,
     onDeleteMessage: ((Int) -> Unit)? = null,
     onDeleteCurrentMessageVariant: ((Int) -> Unit)? = null,
     onDeleteMessagesFrom: ((Int) -> Unit)? = null,
@@ -212,6 +179,7 @@ fun ChatArea(
     showChatFloatingDotsAnimation: Boolean = true,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val showMessageTokenStats by
@@ -221,6 +189,7 @@ fun ChatArea(
     val showMessageTimestamp by
         displayPreferencesManager.showMessageTimestamp.collectAsState(initial = false)
     var viewportHeightPx by remember { mutableStateOf(0) }
+    var viewportTopInWindowPx by remember { mutableStateOf(0f) }
     val messageAnchors = remember(currentChatId) { mutableStateMapOf<Long, ChatScrollMessageAnchor>() }
     var pendingJumpToMessageTimestamp by remember(currentChatId) { mutableStateOf<Long?>(null) }
     val lastMessage = chatHistory.lastOrNull()
@@ -327,6 +296,89 @@ fun ChatArea(
             showLoadingIndicator &&
             chatStyle == ChatStyle.BUBBLE &&
             lastMessage?.sender == "ai"
+    val textSelectionEdgePx = with(density) { 72.dp.toPx() }
+    val textSelectionMaxScrollStepPx = with(density) { 22.dp.toPx() }
+    val textSelectionAutoScrollMovementThresholdPx = with(density) { 2.dp.toPx() }
+    val currentViewportHeightPx = rememberUpdatedState(viewportHeightPx)
+    val currentViewportTopInWindowPx = rememberUpdatedState(viewportTopInWindowPx)
+    val currentTextSelectionEdgePx = rememberUpdatedState(textSelectionEdgePx)
+    val currentTextSelectionMaxScrollStepPx = rememberUpdatedState(textSelectionMaxScrollStepPx)
+    val currentTextSelectionAutoScrollMovementThresholdPx =
+        rememberUpdatedState(textSelectionAutoScrollMovementThresholdPx)
+    val textSelectionAutoScrollController =
+        remember(scrollState) {
+            var lastAutoScrollYInViewport: Float? = null
+            var pausedAutoScrollEdge: Int? = null
+            val resetAutoScrollState = {
+                lastAutoScrollYInViewport = null
+                pausedAutoScrollEdge = null
+            }
+            MarkdownTextSelectionAutoScrollController(
+                scrollByEdge = scrollByEdge@{ positionInWindow ->
+                    val viewportHeight = currentViewportHeightPx.value
+                    if (viewportHeight <= 0 || scrollState.maxValue <= 0) {
+                        resetAutoScrollState()
+                        return@scrollByEdge false
+                    }
+                    val edgePx = currentTextSelectionEdgePx.value
+                    val maxScrollStepPx = currentTextSelectionMaxScrollStepPx.value
+                    val yInViewport = positionInWindow.y - currentViewportTopInWindowPx.value
+                    val edge =
+                        when {
+                            yInViewport < edgePx -> -1
+                            viewportHeight - yInViewport < edgePx -> 1
+                            else -> 0
+                        }
+                    val previousY = lastAutoScrollYInViewport
+                    val movementY = previousY?.let { yInViewport - it } ?: 0f
+                    lastAutoScrollYInViewport = yInViewport
+                    if (edge == 0) {
+                        pausedAutoScrollEdge = null
+                        return@scrollByEdge false
+                    }
+
+                    val movementThresholdPx = currentTextSelectionAutoScrollMovementThresholdPx.value
+                    val movingAwayFromEdge =
+                        (edge < 0 && movementY > movementThresholdPx) ||
+                            (edge > 0 && movementY < -movementThresholdPx)
+                    if (movingAwayFromEdge) {
+                        pausedAutoScrollEdge = edge
+                        return@scrollByEdge false
+                    }
+                    if (pausedAutoScrollEdge == edge) {
+                        val movingBackToEdge =
+                            (edge < 0 && movementY < -movementThresholdPx) ||
+                                (edge > 0 && movementY > movementThresholdPx)
+                        if (movingBackToEdge) {
+                            pausedAutoScrollEdge = null
+                        } else {
+                            return@scrollByEdge false
+                        }
+                    } else if (pausedAutoScrollEdge != null) {
+                        pausedAutoScrollEdge = null
+                    }
+
+                    val scrollDelta =
+                        if (edge < 0) {
+                            val intensity = ((edgePx - yInViewport) / edgePx).coerceIn(0f, 1f)
+                            -maxScrollStepPx * intensity
+                        } else {
+                            val intensity = ((edgePx - (viewportHeight - yInViewport)) / edgePx)
+                                .coerceIn(0f, 1f)
+                            maxScrollStepPx * intensity
+                        }
+                    val target =
+                        (scrollState.value + scrollDelta.roundToInt()).coerceIn(0, scrollState.maxValue)
+                    val scrollChangePx = (target - scrollState.value).toFloat()
+                    if (scrollChangePx == 0f) {
+                        false
+                    } else {
+                        scrollState.dispatchRawDelta(scrollChangePx) != 0f
+                    }
+                },
+                reset = resetAutoScrollState,
+            )
+        }
 
     Box(
         modifier =
@@ -334,17 +386,21 @@ fun ChatArea(
                 .background(Color.Transparent)
                 .onGloballyPositioned { coordinates ->
                     viewportHeightPx = coordinates.size.height
+                    viewportTopInWindowPx = coordinates.positionInWindow().y
                 },
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = horizontalPadding)
-                    .verticalScroll(scrollState)
-                    .background(Color.Transparent)
-                    .padding(top = topPadding, bottom = bottomPadding),
+        CompositionLocalProvider(
+            LocalMarkdownTextSelectionAutoScrollController provides textSelectionAutoScrollController,
         ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = horizontalPadding)
+                        .verticalScroll(scrollState)
+                        .background(Color.Transparent)
+                        .padding(top = topPadding, bottom = bottomPadding),
+            ) {
             if (hasOlderDisplayHistory) {
                 Text(
                     text = stringResource(id = R.string.load_more_history),
@@ -393,7 +449,6 @@ fun ChatArea(
                             thinkingBackgroundColor = thinkingBackgroundColor,
                             thinkingTextColor = thinkingTextColor,
                             onSelectMessageToEdit = onSelectMessageToEdit,
-                            onCopyMessage = onCopyMessage,
                             onDeleteMessage = onDeleteMessage,
                             onDeleteCurrentMessageVariant = onDeleteCurrentMessageVariant,
                             onDeleteMessagesFrom = onDeleteMessagesFrom,
@@ -493,6 +548,7 @@ fun ChatArea(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+        }
 
         ChatScrollNavigator(
             chatHistory = chatHistory,
@@ -562,7 +618,6 @@ private fun MessageItem(
     thinkingBackgroundColor: Color,
     thinkingTextColor: Color,
     onSelectMessageToEdit: ((Int, ChatMessage, String) -> Unit)?,
-    onCopyMessage: ((ChatMessage) -> Unit)?,
     onDeleteMessage: ((Int) -> Unit)?,
     onDeleteCurrentMessageVariant: ((Int) -> Unit)?,
     onDeleteMessagesFrom: ((Int) -> Unit)?,
@@ -604,17 +659,27 @@ private fun MessageItem(
     var showMessageInfoDialog by remember { mutableStateOf(false) }
     var showHiddenUserMessageDialog by remember { mutableStateOf(false) }
     var showDeleteMessageConfirmDialog by remember { mutableStateOf(false) }
-    var copyPreviewText by remember { mutableStateOf<String?>(null) }
+    var messagePositionInWindow by remember { mutableStateOf(Offset.Zero) }
+    var lastPressPositionInWindow by remember { mutableStateOf(Offset.Zero) }
+    var selectionRequestId by remember { mutableStateOf(0L) }
+    var textSelectionRequest by remember(message.timestamp) {
+        mutableStateOf<MarkdownTextSelectionRequest?>(null)
+    }
 
 
     // 只有用户和AI的消息才能被操作
     val isActionable = message.sender == "user" || message.sender == "ai"
     val isHiddenUserMessage = isHiddenUserPlaceholder(message)
+    val currentTextSelectionRequest =
+        if (message.sender == "ai") textSelectionRequest else null
 
     Box(
         modifier =
         Modifier
             .alpha(if (isHidden) 0f else 1f)
+            .onGloballyPositioned { coordinates ->
+                messagePositionInWindow = coordinates.positionInWindow()
+            }
             .then(
                 if (isSelected) {
                     Modifier.background(
@@ -623,6 +688,15 @@ private fun MessageItem(
                     )
                 } else Modifier
             )
+            .pointerInput(messagePositionInWindow) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    lastPressPositionInWindow = messagePositionInWindow + down.position
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                    } while (event.changes.any { it.pressed })
+                }
+            }
             .combinedClickable(
                 onClick = {
                     if (isMultiSelectMode && isActionable) {
@@ -658,6 +732,7 @@ private fun MessageItem(
                         onDeleteMessage = onDeleteMessage,
                         index = index,
                         enableDialogs = enableDialogs,
+                        textSelectionRequest = currentTextSelectionRequest,
                         onEditSummary = { summaryMessage ->
                             onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
                         }
@@ -690,6 +765,7 @@ private fun MessageItem(
                         index = index,
                         enableDialogs = enableDialogs,
                         onRoleAvatarLongPress = onMentionRoleFromAvatar,
+                        textSelectionRequest = currentTextSelectionRequest,
                         onEditSummary = { summaryMessage ->
                             onSelectMessageToEdit?.invoke(index, summaryMessage, "summary")
                         }
@@ -721,11 +797,8 @@ private fun MessageItem(
             expanded = showContextMenu,
             onDismissRequest = { showContextMenu = false },
             modifier = Modifier
-                .width(180.dp),
-            shape = RoundedCornerShape(6.dp),
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 1f),
-            tonalElevation = 6.dp,
-            shadowElevation = 10.dp,
+                .width(180.dp)
+                .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(6.dp)),
             properties = PopupProperties(
                 focusable = true,
                 dismissOnBackPress = true,
@@ -733,31 +806,36 @@ private fun MessageItem(
             )
         ) {
             if (!isHiddenUserMessage) {
-                // 复制选项
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(id = R.string.copy_message),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontSize = 13.sp
-                        )
-                    },
-                    onClick = {
-                        val cleanContent = cleanXmlTags(message.content)
-                        copyPreviewText = cleanContent
-                        onCopyMessage?.invoke(message)
-                        showContextMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = stringResource(id = R.string.copy_message),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    modifier = Modifier.height(36.dp)
-                )
+                if (message.sender == "ai") {
+                    // 复制选项
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(id = R.string.copy_message),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontSize = 13.sp
+                            )
+                        },
+                        onClick = {
+                            selectionRequestId += 1L
+                            textSelectionRequest =
+                                MarkdownTextSelectionRequest(
+                                    id = selectionRequestId,
+                                    positionInWindow = lastPressPositionInWindow,
+                                )
+                            showContextMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(id = R.string.copy_message),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        modifier = Modifier.height(36.dp)
+                    )
+                }
 
                 // 朗读消息选项
                 DropdownMenuItem(
@@ -1105,69 +1183,6 @@ private fun MessageItem(
             )
         }
 
-        copyPreviewText?.let { previewText ->
-            MessageCopyPreviewBottomSheet(
-                text = previewText,
-                onDismiss = { copyPreviewText = null }
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MessageCopyPreviewBottomSheet(
-    text: String,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
-        ) {
-            Text(
-                text = stringResource(id = R.string.copy_message),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-            BasicTextField(
-                value = text,
-                onValueChange = {},
-                readOnly = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 520.dp)
-                    .padding(bottom = 12.dp)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(text))
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.message_copied_to_clipboard),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                ) {
-                    Text(text = stringResource(id = R.string.copy_all_content))
-                }
-            }
-        }
     }
 }
 

@@ -24,6 +24,7 @@ import com.ai.assistance.operit.data.model.ChatMessageTimestampAllocator
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.process.WorkspaceAttachmentProcessor
 import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.ChatUtils
@@ -104,6 +105,8 @@ object AIMessageManager {
      *
      * @param messageText 用户输入的原始文本。
      * @param attachments 附件列表。
+     * @param workspacePath 工作区路径。
+     * @param workspaceEnv 工作区环境标签。
      * @param replyToMessage 回复消息。
      * @param enableDirectImageProcessing 是否将图片附件转换为link标签（用于直接图片处理）。
      * @param enableDirectAudioProcessing 是否将音频附件转换为link标签（用于直接音频处理）。
@@ -115,6 +118,8 @@ object AIMessageManager {
         messageText: String,
         proxySenderName: String? = null,
         attachments: List<AttachmentInfo>,
+        workspacePath: String? = null,
+        workspaceEnv: String? = null,
         replyToMessage: ChatMessage? = null,
         enableDirectImageProcessing: Boolean = false,
         enableDirectAudioProcessing: Boolean = false,
@@ -156,6 +161,25 @@ object AIMessageManager {
             stage = "buildUserMessageContent.replyTag",
             startTimeMs = replyTagStartTime,
             details = "hasReply=${replyToMessage != null}, length=${replyTag.length}"
+        )
+
+        // 2. 构建工作区标签
+        val workspaceTagStartTime = messageTimingNow()
+        val normalizedWorkspacePath = workspacePath?.trim().orEmpty()
+        val workspaceTag =
+            if (normalizedWorkspacePath.isNotEmpty() &&
+                !processedMessageText.contains("<workspace_attachment", ignoreCase = true)
+            ) {
+                "<workspace_attachment>" +
+                    WorkspaceAttachmentProcessor.generateWorkspaceAttachment(workspaceEnv) +
+                    "</workspace_attachment>"
+            } else {
+                ""
+            }
+        logMessageTiming(
+            stage = "buildUserMessageContent.workspaceTag",
+            startTimeMs = workspaceTagStartTime,
+            details = "hasWorkspace=${normalizedWorkspacePath.isNotEmpty()}, length=${workspaceTag.length}"
         )
 
         // 3. 构建附件标签
@@ -239,7 +263,7 @@ object AIMessageManager {
         )
 
         // 4. 组合最终消息
-        val finalMessageContent = listOf(proxySenderTag, processedMessageText, attachmentTags, replyTag)
+        val finalMessageContent = listOf(proxySenderTag, processedMessageText, attachmentTags, workspaceTag, replyTag)
             .filter { it.isNotBlank() }
             .joinToString(" ")
         logMessageTiming(

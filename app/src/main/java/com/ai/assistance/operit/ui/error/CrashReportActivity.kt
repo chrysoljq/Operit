@@ -281,7 +281,7 @@ private fun restartApp(context: Context) {
     val pendingIntent = PendingIntent.getActivity(context, 0, intent, flags)
 
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    alarmManager.setExact(
+    alarmManager.set(
         AlarmManager.RTC,
         System.currentTimeMillis() + 200,
         pendingIntent

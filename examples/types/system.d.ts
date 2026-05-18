@@ -6,7 +6,8 @@ import {
     StringResultData, SleepResultData, SystemSettingData, AppOperationData, AppListData,
     AppUsageTimeResultData, DeviceInfoResultData, NotificationData, LocationData,
     ADBResultData, IntentResultData, TerminalCommandResultData, TerminalStreamEventData, HiddenTerminalCommandResultData,
-    TerminalSessionCreationResultData, TerminalSessionCloseResultData, TerminalSessionScreenResultData
+    TerminalSessionCreationResultData, TerminalSessionCloseResultData, TerminalSessionScreenResultData,
+    MusicPlaybackResultData
 } from './results';
 
 /**
@@ -225,5 +226,48 @@ export namespace System {
             input?: string;
             control?: string;
         }): Promise<StringResultData>;
+    }
+
+    /**
+     * App music playback operations.
+     */
+    namespace music {
+        /**
+         * Play audio inside the app.
+         * @param options Playback options
+         */
+        function play(options: {
+            source: string;
+            sourceType: 'path' | 'url' | 'uri';
+            title?: string;
+            artist?: string;
+            loop?: boolean;
+            volume?: number | string;
+            startPositionMs?: number | string;
+        }): Promise<MusicPlaybackResultData>;
+
+        /** Pause current music playback. */
+        function pause(): Promise<MusicPlaybackResultData>;
+
+        /** Resume current music playback. */
+        function resume(): Promise<MusicPlaybackResultData>;
+
+        /** Stop current music playback. */
+        function stop(): Promise<MusicPlaybackResultData>;
+
+        /**
+         * Seek current music playback.
+         * @param positionMs Target position in milliseconds
+         */
+        function seek(positionMs: number | string): Promise<MusicPlaybackResultData>;
+
+        /**
+         * Set playback volume.
+         * @param volume Volume from 0 to 1
+         */
+        function setVolume(volume: number | string): Promise<MusicPlaybackResultData>;
+
+        /** Get current music playback status. */
+        function status(): Promise<MusicPlaybackResultData>;
     }
 }

@@ -752,6 +752,9 @@ class MessageCoordinationDelegate(
             timeline.add(context.getString(R.string.message_role_user) to originalUserText)
         }
 
+        val currentChat = chatHistoryDelegate.chatHistories.value.firstOrNull { it.id == chatId }
+        val workspacePath = currentChat?.workspace
+        val workspaceEnv = currentChat?.workspaceEnv
         val attachments = attachmentDelegate.attachments.value
         val replyToMessage = uiBridge.getReplyToMessage()
 
@@ -770,6 +773,8 @@ class MessageCoordinationDelegate(
             messageProcessingDelegate.buildUserMessageContentForGroupOrchestration(
                 messageText = originalUserText,
                 attachments = attachments,
+                workspacePath = workspacePath,
+                workspaceEnv = workspaceEnv,
                 replyToMessage = replyToMessage,
                 chatId = chatId
             )

@@ -140,6 +140,15 @@ object ToolGetter {
     }
 
     /**
+     * 获取音乐播放工具执行器
+     * @param context 应用上下文
+     * @return 音乐播放工具执行器实现（标准版本）
+     */
+    fun getMusicPlaybackTools(context: Context): StandardMusicPlaybackTools {
+        return StandardMusicPlaybackTools(context)
+    }
+
+    /**
      * 获取内存查询工具执行器
      * @param context 应用上下文
      * @return 内存查询工具执行器实现（只有标准版本）

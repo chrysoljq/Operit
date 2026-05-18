@@ -172,6 +172,101 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "music_play",
+                            description = "Play audio inside the app using the built-in music player.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "source",
+                                        type = "string",
+                                        description = "audio source",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_type",
+                                        type = "string",
+                                        description = "source type: path | url | uri",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "title",
+                                        type = "string",
+                                        description = "optional display title",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "artist",
+                                        type = "string",
+                                        description = "optional display artist",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "loop",
+                                        type = "boolean",
+                                        description = "optional, repeat this track",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "volume",
+                                        type = "number",
+                                        description = "optional, 0 to 1",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "start_position_ms",
+                                        type = "integer",
+                                        description = "optional start position in milliseconds",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_pause",
+                            description = "Pause the current app music playback.",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_resume",
+                            description = "Resume the current app music playback.",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_stop",
+                            description = "Stop the current app music playback.",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_seek",
+                            description = "Seek the current app music playback.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "position_ms",
+                                        type = "integer",
+                                        description = "target position in milliseconds",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_set_volume",
+                            description = "Set the current app music playback volume.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "volume",
+                                        type = "number",
+                                        description = "volume from 0 to 1",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_status",
+                            description = "Get the current app music playback status.",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
                             name = "browser_click",
                             description = "Click an element on the current page by browser_snapshot ref, including refs inside same-origin iframes.",
                             parametersStructured =
@@ -2829,6 +2924,101 @@ object SystemToolPromptsInternal {
                                         required = true
                                     )
                                 )
+                        ),
+                        ToolPrompt(
+                            name = "music_play",
+                            description = "使用应用内置音乐播放器播放音频。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "source",
+                                        type = "string",
+                                        description = "音频来源",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "source_type",
+                                        type = "string",
+                                        description = "来源类型：path | url | uri",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "title",
+                                        type = "string",
+                                        description = "可选，显示标题",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "artist",
+                                        type = "string",
+                                        description = "可选，显示艺术家",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "loop",
+                                        type = "boolean",
+                                        description = "可选，循环当前曲目",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "volume",
+                                        type = "number",
+                                        description = "可选，0 到 1",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "start_position_ms",
+                                        type = "integer",
+                                        description = "可选，开始播放位置，单位毫秒",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_pause",
+                            description = "暂停当前应用内音乐播放。",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_resume",
+                            description = "继续当前应用内音乐播放。",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_stop",
+                            description = "停止当前应用内音乐播放。",
+                            parametersStructured = emptyList()
+                        ),
+                        ToolPrompt(
+                            name = "music_seek",
+                            description = "跳转当前应用内音乐播放位置。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "position_ms",
+                                        type = "integer",
+                                        description = "目标位置，单位毫秒",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_set_volume",
+                            description = "设置当前应用内音乐播放音量。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "volume",
+                                        type = "number",
+                                        description = "音量，0 到 1",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "music_status",
+                            description = "获取当前应用内音乐播放状态。",
+                            parametersStructured = emptyList()
                         ),
                         ToolPrompt(
                             name = "browser_click",

@@ -4040,7 +4040,6 @@
     <string name="copy_intro_prompt">Copy Intro Prompt</string>
     <string name="tone_prompt_label">Tone Prompt:</string>
     <string name="copy_tone_prompt">Copy Tone Prompt</string>
-    <string name="copy_all_content">Copy All Content</string>
     <string name="old_config_usage_tip">You can copy this content for use in the new character card system.</string>
     <string name="close">Close</string>
     

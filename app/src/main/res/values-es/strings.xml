@@ -3787,7 +3787,6 @@ Ahora puede usar el modo AutoGLM en la interfaz de conversación.</string>
     <string name="copy_intro_prompt">Copiar prompt de introducción</string>
     <string name="tone_prompt_label">Prompt de tono:</string>
     <string name="copy_tone_prompt">Copiar prompt de tono</string>
-    <string name="copy_all_content">Copiar todo el contenido</string>
     <string name="old_config_usage_tip">Puedes copiar este contenido al nuevo sistema de tarjetas de personaje.</string>
     <string name="waifu_mode">Modo Waifu</string>
     <string name="waifu_mode_description">Al activarlo, las respuestas de la IA se enviarán frase por frase divididas por puntuación, creando una experiencia de conversación más natural.</string>

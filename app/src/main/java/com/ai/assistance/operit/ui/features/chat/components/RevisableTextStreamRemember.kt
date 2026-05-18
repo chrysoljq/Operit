@@ -22,7 +22,7 @@ fun rememberRevisableTextStream(sourceStream: Stream<String>?): Stream<String>? 
     val carrier = sourceStream as? TextStreamEventCarrier ?: return sourceStream
 
     var displayStream by remember(sourceStream) {
-        mutableStateOf<Stream<String>>(MutableSharedStream(replay = Int.MAX_VALUE))
+        mutableStateOf<Stream<String>?>(MutableSharedStream(replay = Int.MAX_VALUE))
     }
 
     LaunchedEffect(sourceStream) {
@@ -46,6 +46,7 @@ fun rememberRevisableTextStream(sourceStream: Stream<String>?): Stream<String>? 
                                 stateMutex.withLock {
                                     tracker.rollback(event.id)
                                 } ?: return@collect
+                            val previousDisplayStream = currentDisplayStream
                             val replacementStream =
                                 MutableSharedStream<String>(replay = Int.MAX_VALUE)
                             if (snapshot.isNotEmpty()) {
@@ -53,6 +54,7 @@ fun rememberRevisableTextStream(sourceStream: Stream<String>?): Stream<String>? 
                             }
                             currentDisplayStream = replacementStream
                             displayStream = replacementStream
+                            previousDisplayStream.resetReplayCache()
                         }
                     }
                 }
@@ -69,6 +71,8 @@ fun rememberRevisableTextStream(sourceStream: Stream<String>?): Stream<String>? 
                 }
             } finally {
                 eventJob.cancelAndJoin()
+                currentDisplayStream.resetReplayCache()
+                displayStream = null
             }
         }
     }

@@ -43,6 +43,8 @@ import {
     TerminalCommandResultData as _TerminalCommandResultData,
     TerminalStreamEventData as _TerminalStreamEventData,
     HiddenTerminalCommandResultData as _HiddenTerminalCommandResultData,
+    MusicPlaybackState as _MusicPlaybackState,
+    MusicPlaybackResultData as _MusicPlaybackResultData,
     CombinedOperationResultData as _CombinedOperationResultData,
     AutomationExecutionResultData as _AutomationExecutionResultData,
     FilePartContentData as _FilePartContentData,
@@ -195,6 +197,8 @@ declare global {
     type TerminalCommandResultData = _TerminalCommandResultData;
     type TerminalStreamEventData = _TerminalStreamEventData;
     type HiddenTerminalCommandResultData = _HiddenTerminalCommandResultData;
+    type MusicPlaybackState = _MusicPlaybackState;
+    type MusicPlaybackResultData = _MusicPlaybackResultData;
     type CombinedOperationResultData = _CombinedOperationResultData;
     type AutomationExecutionResultData = _AutomationExecutionResultData;
     type FilePartContentData = _FilePartContentData;

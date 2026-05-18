@@ -401,6 +401,74 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    // 音乐播放工具
+    val musicPlaybackTools = ToolGetter.getMusicPlaybackTools(context)
+
+    handler.registerTool(
+            name = "music_play",
+            descriptionGenerator = { tool ->
+                val source = tool.parameters.find { it.name == "source" }?.value ?: ""
+                "Play music: $source"
+            },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.play(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_pause",
+            descriptionGenerator = { _ -> "Pause music playback" },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.pause(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_resume",
+            descriptionGenerator = { _ -> "Resume music playback" },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.resume(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_stop",
+            descriptionGenerator = { _ -> "Stop music playback" },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.stop(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_seek",
+            descriptionGenerator = { tool ->
+                val positionMs = tool.parameters.find { it.name == "position_ms" }?.value ?: ""
+                "Seek music playback to ${positionMs}ms"
+            },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.seek(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_set_volume",
+            descriptionGenerator = { tool ->
+                val volume = tool.parameters.find { it.name == "volume" }?.value ?: ""
+                "Set music playback volume to $volume"
+            },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.setVolume(tool) }
+            }
+    )
+
+    handler.registerTool(
+            name = "music_status",
+            descriptionGenerator = { _ -> "Get music playback status" },
+            executor = { tool ->
+                runBlocking(Dispatchers.IO) { musicPlaybackTools.status(tool) }
+            }
+    )
+
     handler.registerTool(
             name = "read_environment_variable",
             descriptionGenerator = { tool ->

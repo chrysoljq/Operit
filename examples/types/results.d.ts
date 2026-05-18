@@ -573,6 +573,38 @@ export interface HiddenTerminalCommandResultData {
 }
 
 /**
+ * Music playback result data
+ */
+export type MusicPlaybackState = 'idle' | 'preparing' | 'playing' | 'paused' | 'ended' | 'stopped' | 'error';
+
+export interface MusicPlaybackResultData {
+    /** Playback state */
+    state: MusicPlaybackState;
+    /** Current audio source */
+    source?: string | null;
+    /** Current audio source type */
+    sourceType?: string | null;
+    /** Display title */
+    title?: string | null;
+    /** Display artist */
+    artist?: string | null;
+    /** Duration in milliseconds, when known */
+    durationMs?: number | null;
+    /** Current playback position in milliseconds */
+    positionMs: number;
+    /** Buffered playback position in milliseconds */
+    bufferedPositionMs: number;
+    /** Playback volume from 0 to 1 */
+    volume: number;
+    /** Whether current track loops */
+    loop: boolean;
+    /** Operation message */
+    message: string;
+    /** Returns a formatted string representation of the music playback result */
+    toString(): string;
+}
+
+/**
  * Terminal session creation result data
  */
 export interface TerminalSessionCreationResultData {

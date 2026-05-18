@@ -326,6 +326,39 @@ data class HiddenTerminalCommandResultData(
     }
 }
 
+/** 音乐播放结果数据 */
+@Serializable
+data class MusicPlaybackResultData(
+        val state: String,
+        val source: String? = null,
+        val sourceType: String? = null,
+        val title: String? = null,
+        val artist: String? = null,
+        val durationMs: Long? = null,
+        val positionMs: Long = 0L,
+        val bufferedPositionMs: Long = 0L,
+        val volume: Float = 1f,
+        val loop: Boolean = false,
+        val message: String = ""
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Music Playback Result:")
+        sb.appendLine("State: $state")
+        if (!title.isNullOrBlank()) sb.appendLine("Title: $title")
+        if (!artist.isNullOrBlank()) sb.appendLine("Artist: $artist")
+        if (!source.isNullOrBlank()) sb.appendLine("Source: $source")
+        if (!sourceType.isNullOrBlank()) sb.appendLine("Source Type: $sourceType")
+        durationMs?.let { sb.appendLine("Duration: ${it}ms") }
+        sb.appendLine("Position: ${positionMs}ms")
+        sb.appendLine("Buffered Position: ${bufferedPositionMs}ms")
+        sb.appendLine("Volume: $volume")
+        sb.appendLine("Loop: $loop")
+        if (message.isNotBlank()) sb.appendLine("Message: $message")
+        return sb.toString()
+    }
+}
+
 /** 计算结果结构化数据 */
 @Serializable
 data class CalculationResultData(
